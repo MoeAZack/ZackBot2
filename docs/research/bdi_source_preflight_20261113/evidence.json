@@ -1,0 +1,383 @@
+{
+  "total_zip_bytes": 3664899,
+  "results": [
+    {
+      "symbol": "BTCUSDT",
+      "date": "2026-09-02",
+      "url": "https://data.binance.vision/data/futures/um/daily/bookDepth/BTCUSDT/BTCUSDT-bookDepth-2026-09-02.zip",
+      "zip_bytes": 564722,
+      "sha256": "facd2e2378191fd59cc944de5b9080e95e40b03911b39f9be29d82f5e42485bb",
+      "published_sha256": "facd2e2378191fd59cc944de5b9080e95e40b03911b39f9be29d82f5e42485bb",
+      "checksum_match": true,
+      "zip_entry": "BTCUSDT-bookDepth-2026-09-02.csv",
+      "schema": [
+        "timestamp",
+        "percentage",
+        "depth",
+        "notional"
+      ],
+      "rows": 34560,
+      "unique_timestamps": 2880,
+      "rowgroups_per_timestamp": {
+        "12": 2880
+      },
+      "duplicate_timestamp_percentage_pairs": 0,
+      "timestamp_ordered": true,
+      "first_timestamp": "2026-09-02 00:00:04",
+      "last_timestamp": "2026-09-02 23:59:31",
+      "minus_plus_same_timestamp_multiset": true,
+      "minus_plus_one_each_per_timestamp": true,
+      "bands": {
+        "-1": {
+          "rows": 2880,
+          "unique_timestamps": 2880,
+          "ordered": true,
+          "first": "2026-09-02 00:00:04",
+          "last": "2026-09-02 23:59:31",
+          "distinct_depth": 2878,
+          "distinct_notional": 2880,
+          "distinct_exact_notional_over_depth": 2880,
+          "zero_depth": 0,
+          "longest_identical_depth_notional_run": 1
+        },
+        "1": {
+          "rows": 2880,
+          "unique_timestamps": 2880,
+          "ordered": true,
+          "first": "2026-09-02 00:00:04",
+          "last": "2026-09-02 23:59:31",
+          "distinct_depth": 2878,
+          "distinct_notional": 2880,
+          "distinct_exact_notional_over_depth": 2880,
+          "zero_depth": 0,
+          "longest_identical_depth_notional_run": 1
+        }
+      },
+      "last_modified": "Thu, 03 Sep 2026 08:32:52 GMT"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "date": "2026-09-02",
+      "url": "https://data.binance.vision/data/futures/um/daily/bookDepth/ETHUSDT/ETHUSDT-bookDepth-2026-09-02.zip",
+      "zip_bytes": 604047,
+      "sha256": "0649e8f33491560b15ca198117b3ed3fd785279066eeea95184fe6c2539b1852",
+      "published_sha256": "0649e8f33491560b15ca198117b3ed3fd785279066eeea95184fe6c2539b1852",
+      "checksum_match": true,
+      "zip_entry": "ETHUSDT-bookDepth-2026-09-02.csv",
+      "schema": [
+        "timestamp",
+        "percentage",
+        "depth",
+        "notional"
+      ],
+      "rows": 34560,
+      "unique_timestamps": 2880,
+      "rowgroups_per_timestamp": {
+        "12": 2880
+      },
+      "duplicate_timestamp_percentage_pairs": 0,
+      "timestamp_ordered": true,
+      "first_timestamp": "2026-09-02 00:00:04",
+      "last_timestamp": "2026-09-02 23:59:31",
+      "minus_plus_same_timestamp_multiset": true,
+      "minus_plus_one_each_per_timestamp": true,
+      "bands": {
+        "-1": {
+          "rows": 2880,
+          "unique_timestamps": 2880,
+          "ordered": true,
+          "first": "2026-09-02 00:00:04",
+          "last": "2026-09-02 23:59:31",
+          "distinct_depth": 2880,
+          "distinct_notional": 2880,
+          "distinct_exact_notional_over_depth": 2880,
+          "zero_depth": 0,
+          "longest_identical_depth_notional_run": 1
+        },
+        "1": {
+          "rows": 2880,
+          "unique_timestamps": 2880,
+          "ordered": true,
+          "first": "2026-09-02 00:00:04",
+          "last": "2026-09-02 23:59:31",
+          "distinct_depth": 2880,
+          "distinct_notional": 2880,
+          "distinct_exact_notional_over_depth": 2880,
+          "zero_depth": 0,
+          "longest_identical_depth_notional_run": 1
+        }
+      },
+      "last_modified": "Thu, 03 Sep 2026 08:32:53 GMT"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "date": "2026-09-02",
+      "url": "https://data.binance.vision/data/futures/um/daily/bookDepth/SOLUSDT/SOLUSDT-bookDepth-2026-09-02.zip",
+      "zip_bytes": 562326,
+      "sha256": "7fa71fd8598e8f23560564b055a60aabb38eb885cf5a1bde7748e4e58f9faee2",
+      "published_sha256": "7fa71fd8598e8f23560564b055a60aabb38eb885cf5a1bde7748e4e58f9faee2",
+      "checksum_match": true,
+      "zip_entry": "SOLUSDT-bookDepth-2026-09-02.csv",
+      "schema": [
+        "timestamp",
+        "percentage",
+        "depth",
+        "notional"
+      ],
+      "rows": 34560,
+      "unique_timestamps": 2880,
+      "rowgroups_per_timestamp": {
+        "12": 2880
+      },
+      "duplicate_timestamp_percentage_pairs": 0,
+      "timestamp_ordered": true,
+      "first_timestamp": "2026-09-02 00:00:04",
+      "last_timestamp": "2026-09-02 23:59:31",
+      "minus_plus_same_timestamp_multiset": true,
+      "minus_plus_one_each_per_timestamp": true,
+      "bands": {
+        "-1": {
+          "rows": 2880,
+          "unique_timestamps": 2880,
+          "ordered": true,
+          "first": "2026-09-02 00:00:04",
+          "last": "2026-09-02 23:59:31",
+          "distinct_depth": 2878,
+          "distinct_notional": 2880,
+          "distinct_exact_notional_over_depth": 2880,
+          "zero_depth": 0,
+          "longest_identical_depth_notional_run": 1
+        },
+        "1": {
+          "rows": 2880,
+          "unique_timestamps": 2880,
+          "ordered": true,
+          "first": "2026-09-02 00:00:04",
+          "last": "2026-09-02 23:59:31",
+          "distinct_depth": 2880,
+          "distinct_notional": 2880,
+          "distinct_exact_notional_over_depth": 2880,
+          "zero_depth": 0,
+          "longest_identical_depth_notional_run": 1
+        }
+      },
+      "last_modified": "Thu, 03 Sep 2026 08:32:58 GMT"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "date": "2026-09-06",
+      "url": "https://data.binance.vision/data/futures/um/daily/bookDepth/BTCUSDT/BTCUSDT-bookDepth-2026-09-06.zip",
+      "zip_bytes": 493005,
+      "sha256": "215fe3b747e0a1cd52597b668c0a0270a9f35fedb4fb645fda0e4ce37694bf99",
+      "published_sha256": "215fe3b747e0a1cd52597b668c0a0270a9f35fedb4fb645fda0e4ce37694bf99",
+      "checksum_match": true,
+      "zip_entry": "BTCUSDT-bookDepth-2026-09-06.csv",
+      "schema": [
+        "timestamp",
+        "percentage",
+        "depth",
+        "notional"
+      ],
+      "rows": 34560,
+      "unique_timestamps": 2880,
+      "rowgroups_per_timestamp": {
+        "12": 2880
+      },
+      "duplicate_timestamp_percentage_pairs": 0,
+      "timestamp_ordered": true,
+      "first_timestamp": "2026-09-06 00:00:04",
+      "last_timestamp": "2026-09-06 23:59:31",
+      "minus_plus_same_timestamp_multiset": true,
+      "minus_plus_one_each_per_timestamp": true,
+      "bands": {
+        "-1": {
+          "rows": 2880,
+          "unique_timestamps": 2880,
+          "ordered": true,
+          "first": "2026-09-06 00:00:04",
+          "last": "2026-09-06 23:59:31",
+          "distinct_depth": 2871,
+          "distinct_notional": 2880,
+          "distinct_exact_notional_over_depth": 2880,
+          "zero_depth": 0,
+          "longest_identical_depth_notional_run": 1
+        },
+        "1": {
+          "rows": 2880,
+          "unique_timestamps": 2880,
+          "ordered": true,
+          "first": "2026-09-06 00:00:04",
+          "last": "2026-09-06 23:59:31",
+          "distinct_depth": 2,
+          "distinct_notional": 2,
+          "distinct_exact_notional_over_depth": 2,
+          "zero_depth": 0,
+          "longest_identical_depth_notional_run": 623
+        }
+      },
+      "last_modified": "Mon, 07 Sep 2026 07:47:31 GMT"
+    },
+    {
+      "symbol": "ETHUSDT",
+      "date": "2026-09-06",
+      "url": "https://data.binance.vision/data/futures/um/daily/bookDepth/ETHUSDT/ETHUSDT-bookDepth-2026-09-06.zip",
+      "zip_bytes": 511855,
+      "sha256": "733abf611fdb15ca026331a2c3228850ff273f706e40b51a4729e64651f3032b",
+      "published_sha256": "733abf611fdb15ca026331a2c3228850ff273f706e40b51a4729e64651f3032b",
+      "checksum_match": true,
+      "zip_entry": "ETHUSDT-bookDepth-2026-09-06.csv",
+      "schema": [
+        "timestamp",
+        "percentage",
+        "depth",
+        "notional"
+      ],
+      "rows": 34560,
+      "unique_timestamps": 2880,
+      "rowgroups_per_timestamp": {
+        "12": 2880
+      },
+      "duplicate_timestamp_percentage_pairs": 0,
+      "timestamp_ordered": true,
+      "first_timestamp": "2026-09-06 00:00:04",
+      "last_timestamp": "2026-09-06 23:59:31",
+      "minus_plus_same_timestamp_multiset": true,
+      "minus_plus_one_each_per_timestamp": true,
+      "bands": {
+        "-1": {
+          "rows": 2880,
+          "unique_timestamps": 2880,
+          "ordered": true,
+          "first": "2026-09-06 00:00:04",
+          "last": "2026-09-06 23:59:31",
+          "distinct_depth": 2880,
+          "distinct_notional": 2880,
+          "distinct_exact_notional_over_depth": 2880,
+          "zero_depth": 0,
+          "longest_identical_depth_notional_run": 1
+        },
+        "1": {
+          "rows": 2880,
+          "unique_timestamps": 2880,
+          "ordered": true,
+          "first": "2026-09-06 00:00:04",
+          "last": "2026-09-06 23:59:31",
+          "distinct_depth": 1,
+          "distinct_notional": 1,
+          "distinct_exact_notional_over_depth": 1,
+          "zero_depth": 0,
+          "longest_identical_depth_notional_run": 2880
+        }
+      },
+      "last_modified": "Mon, 07 Sep 2026 07:47:32 GMT"
+    },
+    {
+      "symbol": "SOLUSDT",
+      "date": "2026-09-06",
+      "url": "https://data.binance.vision/data/futures/um/daily/bookDepth/SOLUSDT/SOLUSDT-bookDepth-2026-09-06.zip",
+      "zip_bytes": 465111,
+      "sha256": "5c65015638e147d66baa061ab428badf216ff0763f833ab002788cfa7b45081c",
+      "published_sha256": "5c65015638e147d66baa061ab428badf216ff0763f833ab002788cfa7b45081c",
+      "checksum_match": true,
+      "zip_entry": "SOLUSDT-bookDepth-2026-09-06.csv",
+      "schema": [
+        "timestamp",
+        "percentage",
+        "depth",
+        "notional"
+      ],
+      "rows": 34560,
+      "unique_timestamps": 2880,
+      "rowgroups_per_timestamp": {
+        "12": 2880
+      },
+      "duplicate_timestamp_percentage_pairs": 0,
+      "timestamp_ordered": true,
+      "first_timestamp": "2026-09-06 00:00:04",
+      "last_timestamp": "2026-09-06 23:59:31",
+      "minus_plus_same_timestamp_multiset": true,
+      "minus_plus_one_each_per_timestamp": true,
+      "bands": {
+        "-1": {
+          "rows": 2880,
+          "unique_timestamps": 2880,
+          "ordered": true,
+          "first": "2026-09-06 00:00:04",
+          "last": "2026-09-06 23:59:31",
+          "distinct_depth": 2880,
+          "distinct_notional": 2880,
+          "distinct_exact_notional_over_depth": 2880,
+          "zero_depth": 0,
+          "longest_identical_depth_notional_run": 1
+        },
+        "1": {
+          "rows": 2880,
+          "unique_timestamps": 2880,
+          "ordered": true,
+          "first": "2026-09-06 00:00:04",
+          "last": "2026-09-06 23:59:31",
+          "distinct_depth": 4,
+          "distinct_notional": 4,
+          "distinct_exact_notional_over_depth": 4,
+          "zero_depth": 0,
+          "longest_identical_depth_notional_run": 555
+        }
+      },
+      "last_modified": "Mon, 07 Sep 2026 07:47:37 GMT"
+    },
+    {
+      "symbol": "BTCUSDT",
+      "date": "2025-01-15",
+      "url": "https://data.binance.vision/data/futures/um/daily/bookDepth/BTCUSDT/BTCUSDT-bookDepth-2025-01-15.zip",
+      "zip_bytes": 463833,
+      "sha256": "0cfcda8340633023a8d61020eb561da3a4f40e35facb02901cff8902e47e737c",
+      "published_sha256": "0cfcda8340633023a8d61020eb561da3a4f40e35facb02901cff8902e47e737c",
+      "checksum_match": true,
+      "zip_entry": "BTCUSDT-bookDepth-2025-01-15.csv",
+      "schema": [
+        "timestamp",
+        "percentage",
+        "depth",
+        "notional"
+      ],
+      "rows": 28800,
+      "unique_timestamps": 2880,
+      "rowgroups_per_timestamp": {
+        "10": 2880
+      },
+      "duplicate_timestamp_percentage_pairs": 0,
+      "timestamp_ordered": true,
+      "first_timestamp": "2025-01-15 00:00:05",
+      "last_timestamp": "2025-01-15 23:59:31",
+      "minus_plus_same_timestamp_multiset": true,
+      "minus_plus_one_each_per_timestamp": true,
+      "bands": {
+        "-1": {
+          "rows": 2880,
+          "unique_timestamps": 2880,
+          "ordered": true,
+          "first": "2025-01-15 00:00:05",
+          "last": "2025-01-15 23:59:31",
+          "distinct_depth": 2876,
+          "distinct_notional": 2880,
+          "distinct_exact_notional_over_depth": 2880,
+          "zero_depth": 0,
+          "longest_identical_depth_notional_run": 1
+        },
+        "1": {
+          "rows": 2880,
+          "unique_timestamps": 2880,
+          "ordered": true,
+          "first": "2025-01-15 00:00:05",
+          "last": "2025-01-15 23:59:31",
+          "distinct_depth": 2871,
+          "distinct_notional": 2880,
+          "distinct_exact_notional_over_depth": 2880,
+          "zero_depth": 0,
+          "longest_identical_depth_notional_run": 1
+        }
+      },
+      "last_modified": "Thu, 16 Jan 2025 06:44:18 GMT"
+    }
+  ]
+}
