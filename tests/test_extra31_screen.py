@@ -106,3 +106,61 @@ def test_load_reads_ms_timestamps_and_rejects_duplicates(tmp_path):
         RS.load_1h(str(tmp_path), 'YUSDT'); assert False
     except ValueError:
         pass
+
+
+# ---------------------------------------------------------------- SIEVE-V1 (Codex rule v1)
+import sieve_v1 as SV
+
+
+def test_sieve_cases_and_constants():
+    c = SV.CASES['cases']
+    assert SV.RISK_USD == 8.0 and SV.CAP_USD == 3333.33 and SV.SPLIT == '2025-01-01 00:00' and SV.T0 == '2022-08-26 06:00'
+    assert len(SV.case_coins('ema_st')) == 31 and len(SV.case_coins('c101')) == 23
+    assert not set(SV.case_coins('c101')) & set(c['c101']['prior_used']) and len(c['c101']['prior_used']) == 8
+    assert c['ema_st']['management'] == {'stop_atr': 2.5, 'exit': c['ema_st']['management']['exit']}
+    assert {k: v for k, v in c['c101']['management'].items() if k != 'exit'} == {'stop_atr': 1.5, 'tp_r': 1.5, 'max_bars': 8}
+
+
+def test_sieve_orders_are_fixed():
+    coins = SV.case_coins('ema_st')
+    o = SV.orders(coins, 40)
+    assert len(o) == 40 and o[0] == sorted(coins) and all(sorted(x) == sorted(coins) for x in o)
+    assert o == SV.orders(coins, 40) and len({tuple(x) for x in o}) == 40
+    assert o[1] == [sorted(coins)[i] for i in np.random.default_rng(20261113).permutation(31)]
+
+
+def _st(n=120, r=0.2, e=0.2, l=0.2, x=0.1, r23=0.1, ne=60, nl=60):
+    return dict(n=n, n_early=ne, n_late=nl, meanR7=r, meanR15=r, meanR23=r23, meanR15_early=e, meanR15_late=l, meanR15_ex_best=x)
+
+
+def test_sieve_gates_use_medians_and_order0_sample():
+    M, g = SV.gates([_st(), _st(r=-5.0), _st()])
+    assert all(g.values()) and M['meanR15'] == 0.2                    # one bad order does not move the median
+    assert not SV.gates([_st(r=-0.1), _st(r=-0.1), _st()])[1]['meanR15']
+    assert not SV.gates([_st(n=99), _st(n=99), _st()])[1]['trades']
+    assert not SV.gates([_st(ne=29), _st(), _st()])[1]['order0_30_per_half']
+    assert SV.gates([_st(), _st(ne=5), _st()])[1]['order0_30_per_half']   # only order 0 carries the sample gate
+    assert not SV.gates([_st(r23=-0.01)] * 3)[1]['meanR23'] and SV.gates([_st(r23=0.0)] * 3)[1]['meanR23']
+    assert not SV.gates([_st(x=0.0)] * 3)[1]['ex_best_coin'] and not SV.gates([_st(e=0.0)] * 3)[1]['early']
+    assert not any(SV.gates([dict(n=0, n_early=0, n_late=0)] * 3)[1].values())
+
+
+def test_sieve_order_stats_r_budget_and_best_coin_by_pnl():
+    tr = pd.DataFrame(dict(sym=['A', 'A', 'B', 'B'], t_in=pd.to_datetime(['2024-01-01', '2025-01-01', '2024-06-01', '2025-06-01']),
+                           pnl7=[16.0, 16.0, 4.0, 4.0], pnl15=[16.0, 8.0, 4.0, -4.0], pnl23=[8.0, 0.0, 0.0, -8.0], R=[2.0, 1.0, 0.5, -0.5]))
+    s = SV.order_stats(tr)
+    assert s['n'] == 4 and s['n_early'] == 2 and s['n_late'] == 2                # the split bar itself is "later"
+    assert s['meanR15'] == 0.75 and s['meanR23'] == 0.0 and s['meanR15_early'] == 1.25 and s['meanR15_late'] == 0.25
+    assert s['best_coin'] == 'A' and s['meanR15_ex_best'] == 0.0 and s['n_ex_best'] == 2
+
+
+def test_sieve_liquidity_needs_30_complete_days_and_720_bars():
+    d = _h(24 * 40); d['qv'] = 1e7 / 24 + 1.0
+    e = SV.liquidity_1h(d)
+    assert not e.iloc[:24 * 30].any() and e.iloc[24 * 30:].all()
+    d2 = d.copy(); d2.loc[d2.index >= 24 * 35, 'qv'] = 1.0                        # thin days enter the median only later
+    assert SV.liquidity_1h(d2).iloc[24 * 35]
+    d3 = d.drop(index=[24 * 31]).reset_index(drop=True)                           # a gap restarts the 720-bar run
+    assert not SV.liquidity_1h(d3).iloc[24 * 31:].any()
+    d4 = d.copy(); d4['qv'] = 1e7 / 24 - 1.0
+    assert not SV.liquidity_1h(d4).any()
