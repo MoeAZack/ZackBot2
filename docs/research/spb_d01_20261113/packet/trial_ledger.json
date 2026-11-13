@@ -1,0 +1,11 @@
+{
+  "id": "SPB-D01",
+  "trial_count": 1,
+  "status": "COMPLETED_PROVISIONAL_FAIL",
+  "freeze_sha256": "07581e68effa97cfc0f5ab6c8cfe139666287f8687f6ffc5c04996bfb8b841c4",
+  "multiple_testing": "one trial; no thresholds, coins, sides or holdout tuning",
+  "result_sha256": "566ed41c9e750d0949c8eda040ef510851f5b23d16957f34571b9768c5e47870",
+  "signals_sha256": "50455fb0362bd56b4e6b20f3b0a915663c00b56d62d68c95ff39fae05238c657",
+  "acceptance": "independent signal and cash review pending; no tuning",
+  "prior_search": "targeted local ledger/register search did not establish an exact prior basis-price reversal; broader search incomplete"
+}
