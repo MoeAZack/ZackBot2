@@ -1,0 +1,133 @@
+{
+  "head": "6e259ea5acf2379fe09bff933d7c5b05cfaa269e",
+  "base": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+  "offline_only": true,
+  "checks": {
+    "stop": {
+      "requests": 4,
+      "windows": [
+        6000,
+        10000,
+        20000,
+        30000
+      ],
+      "same_client_id": true,
+      "sync_timeouts": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "definitive_success": true
+    },
+    "close": {
+      "requests": 4,
+      "windows": [
+        6000,
+        10000,
+        20000,
+        30000
+      ],
+      "same_client_id": true,
+      "sync_timeouts": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "definitive_success": true
+    },
+    "algo_stop": {
+      "requests": 4,
+      "windows": [
+        6000,
+        10000,
+        20000,
+        30000
+      ],
+      "same_client_id": true,
+      "sync_timeouts": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "definitive_success": true
+    },
+    "open": {
+      "requests": 2,
+      "windows": [
+        6000,
+        6000
+      ],
+      "same_client_id": true,
+      "exception": "ClockRejected",
+      "lookups": 0
+    },
+    "maker": {
+      "requests": 2,
+      "windows": [
+        6000,
+        6000
+      ],
+      "same_client_id": true,
+      "exception": "ClockRejected",
+      "lookups": 0
+    },
+    "actual_engine_maker": {
+      "post_attempts": 2,
+      "windows": [
+        6000,
+        6000
+      ],
+      "same_client_id": true,
+      "status": "between"
+    },
+    "alert_failure_contained_safety_state_preserved": {
+      "stop_dirty": true,
+      "returned_false": true
+    },
+    "close_only_incident_recovers": {
+      "closed_qty": 1,
+      "remaining_qty": 0.0,
+      "incident_open": false
+    },
+    "provisional_stop_clock_alert_and_recovery": {
+      "clock_incident_raised": true,
+      "resolved_on_recovery": true,
+      "protected": true
+    },
+    "late_clock_retry_not_sent": {
+      "retry_start_seconds_after_first_rejection": [
+        6.0,
+        15.0
+      ],
+      "declared_deadline_seconds": 20,
+      "last_retry_started_after_deadline": false
+    },
+    "legacy_non1021_parity": {
+      "cases": 37296,
+      "differences": 0,
+      "scope": "Fresh offset; outcome, primary request fields except signature, retry count and sleeps. Periodic stale sync is an intentional new side effect."
+    },
+    "create_lot_identical": {
+      "sha256": "eb9ff2afca9194508438bd48ce6c723a4af0d5f661ada2b1a3b1c3e07ca9d5e5",
+      "identical": true
+    },
+    "close_original_exception_preserved_despite_alert_errors": true,
+    "mixed_transient_latency_qualification": {
+      "retry_start_seconds_after_first_clock_rejection": [
+        0.1,
+        30.125
+      ],
+      "outcome": "success",
+      "meaning": "Existing network/rate retry budget can extend total call duration; 20+15s is not a universal bound."
+    }
+  }
+}
