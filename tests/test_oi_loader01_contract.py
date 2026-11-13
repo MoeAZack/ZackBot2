@@ -1,6 +1,6 @@
 """OI-LOADER-01 admission contract twin (Codex GO 6489944476; rulings 6489828197 N1/N2, 6489428240 J1-J3).
 
-The JSON twin is authoritative, DRAFT and unsigned, is rebound to merged master 93642d8 (6493041460, then 6494813780 after #237)
+The JSON twin is authoritative and signed on protected master 851b0cd (6554387984); source citations remain content-pinned to reviewed 93642d8
 with content-addressed sha256 pins of the cited files.
 This file holds a tiny REFERENCE EVALUATOR: a pure function over a dict manifest that applies the frozen predicate.
 It imports no repo module (not the fetcher, not manifest.py) and does no I/O beyond reading the contract files.
@@ -21,7 +21,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONTRACT_DIR = os.path.join(ROOT, 'contracts', 'oi_loader_01')
 JS = os.path.join(CONTRACT_DIR, 'oi_loader_01_contract.v1.json')
 MD = os.path.join(CONTRACT_DIR, 'OI_LOADER_01_CONTRACT.md')
-MASTER = '93642d833ef0c45a3d4c143c4938f4a810421308'           # #237 merge (ruling 6494813780; #225 merge f8f03df was 6493041460)
+MASTER = '851b0cd8ff990f6ed5f66ddde84e650a7c22201f'           # signing base (ruling 6554387984)
 
 with open(JS, encoding='utf-8') as _fh:
     C = json.load(_fh)
@@ -387,20 +387,24 @@ FAIL = {'path': 'daily/metrics/BTCUSDT/BTCUSDT-metrics-2026-09-02.zip', 'symbol'
 
 
 # ------------------------------------------------------------------ contract JSON shape
-def test_json_is_draft_unsigned_and_bound_to_225(md):
+def test_json_is_signed_and_bound_to_current_master(md):
     assert C['contract'] == 'OI-LOADER-01' and C['version'] == 1
-    assert C['status'] == 'DRAFT' and C['signed_by'] is None and C['frozen_at'] is None
-    assert C['assignment'] == '6489944476' and C['ruling_source'].startswith('Codex 6489944476')
+    assert C['status'] == 'FROZEN - SIGNED BY CODEX - IMPLEMENTATION PREPARATION ONLY'
+    assert C['signed_by'] == 'Codex issuecomment-6554387984'
+    assert C['frozen_at'] == '2026-11-01T08:23:00+02:00'
+    assert C['base_commit'] == MASTER
+    assert C['assignment'] == '6489944476' and '6554387984' in C['ruling_source']
     assert C['integration_rulings'] == ['6489828197', '6489428240']
     ci = C['code_identity']
     assert ci['provenance_pr'] == 225 and ci['master_reference'] == MASTER and ci['on_master'] is True
     assert ci['master_reference_short'] == MASTER[:7] and ci['pre_merge_head'].startswith('f850323')
     assert 'rebind_required_before_signing' not in ci
-    assert ci['rebind']['status'] == 'DONE' and ci['rebind']['ruling'] == '6494813780'
+    assert ci['rebind']['status'] == 'DONE' and ci['rebind']['ruling'] == '6554387984'
     assert ci['rebind']['rebound_to'] == MASTER
     assert 'tools/research/oi_metrics_fetch.py' in ci['files']
     assert C['doc'] == os.path.basename(MD)
-    assert '**Status: DRAFT — unsigned.**' in md and 'the JSON wins any conflict' in md and '93642d8' in md
+    assert '**Status: FROZEN — signed by Codex issuecomment-6554387984.**' in md
+    assert 'the JSON wins any conflict' in md and '93642d8' in md and '851b0cd' in md
 
 
 def test_predicate_is_exactly_the_six_conjuncts_in_order():
@@ -763,7 +767,7 @@ def test_all_questions_resolved_by_ruling():
     assert set(C['ruling_6490314342']) == {'Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6'}
     assert C['disk_verification']['status'] == 'MANDATORY loader step'
     assert set(C['disk_verification']['refusals']) == {'DISK:missing', 'DISK:unreadable', 'DISK:size', 'DISK:sha256'}
-    assert C['status'] == 'DRAFT' and C['signed_by'] is None
+    assert C['status'].startswith('FROZEN - SIGNED') and C['signed_by'] == 'Codex issuecomment-6554387984'
     assert 'rebind' in json.dumps(C['code_identity'])
 
 
@@ -1020,8 +1024,9 @@ def test_every_citation_is_rebound_to_93642d8():
     assert 'f850323' not in text and text.count('@ 93642d8') >= 18
 
 
-def test_rebind_history_records_both_merges():
+def test_rebind_history_records_merges_and_signature():
     rb = C['code_identity']['rebind']
-    assert rb['status'] == 'DONE' and rb['ruling'] == '6494813780'
-    assert [(h['ruling'], h['to'][:7]) for h in rb['history']] == [('6493041460', 'f8f03df'), ('6494813780', '93642d8')]
+    assert rb['status'] == 'DONE' and rb['ruling'] == '6554387984'
+    assert [(h['ruling'], h['to'][:7]) for h in rb['history']] == [
+        ('6493041460', 'f8f03df'), ('6494813780', '93642d8'), ('6554387984', '851b0cd')]
     assert rb['history'][0]['from'] == 'f850323' and rb['history'][1]['from'] == 'f8f03df'

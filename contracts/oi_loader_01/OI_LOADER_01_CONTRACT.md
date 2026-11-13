@@ -1,18 +1,19 @@
 # OI-LOADER-01 — OI metrics manifest admission predicate (research only)
 
-**Status: DRAFT — unsigned.** Contract only: no loader code, no authority. The machine twin
+**Status: FROZEN — signed by Codex issuecomment-6554387984.** Contract only: no loader authority. The machine twin
 `oi_loader_01_contract.v1.json` is authoritative; the JSON wins any conflict. Assignment: Codex 6489944476.
-Background rulings: 6489828197 (N1/N2) and 6489428240 (J1–J3). Built from `origin/master` @ `f189ff7`.
+Background rulings: 6489828197 (N1/N2) and 6489428240 (J1–J3). Drafted from `origin/master` @ `f189ff7`;
+signed and rebound on protected master `851b0cd` by ruling 6554387984.
 
 ## 1. Code identity
 
-**Rebound (rulings 6493041460, 6494813780).** #225 merged as master `f8f03df`; #237 then merged as master `93642d8`
-(93642d833ef0c45a3d4c143c4938f4a810421308), and the cited OI files are byte-identical across both, so the pins are unchanged.
+**Rebound and signed (rulings 6493041460, 6494813780, 6554387984).** #225 merged as master `f8f03df`; #237 then merged as master `93642d8`; #238 independently reviewed and protected-merged this contract as `1faa673`; Integration signed it on protected master `851b0cd`
+(851b0cd8ff990f6ed5f66ddde84e650a7c22201f). The cited OI files are byte-identical from `93642d8` through `851b0cd`, so the pins are unchanged.
 Every citation now points at `93642d8`: the OI fetcher `tools/research/oi_metrics_fetch.py`, `oi_metrics_probe.py`
 (which holds `CUTOFF` and `parse_key`), `manifest.py` (`canonical`) and `tests/test_oi_metrics_fetch.py`. Each is pinned
 by the sha256 of its git blob at `93642d8` (JSON `code_identity.pinned_files`), so a moving master cannot break the
-pin. The files are byte-identical to the drafted #225 head `f850323`. The contract stays DRAFT and unsigned until
-Integration signs.
+pin. The files are byte-identical to the drafted #225 head `f850323`. The signature releases only a separate,
+default-OFF implementation-preparation slice; it grants no archive-read, strategy, PAPER, holdout or mainnet authority.
 
 ## 2. Admission predicate (ALL must hold)
 
@@ -87,4 +88,5 @@ authority, reading any zip or row, synthesizing a missing day.
 ## 8. Open questions for Integration
 
 None open: Q1–Q6 resolved by 6490314342, Q7 and Q8 by 6490439004. #225 has merged and the code identity is
-rebound to `93642d8` (6493041460, 6494813780); signing waits only for independent evidence and Integration's signature.
+rebound to signed master `851b0cd` (6554387984). The prior Cowork review and #238 protected full gate remain the
+independent evidence because the artifacts were byte-identical from merge `1faa673` until the metadata-only signature.

@@ -1,14 +1,14 @@
 {
   "contract": "OI-LOADER-01",
-  "title": "fail-closed admission predicate for the OI metrics manifest (research only, DRAFT, no loader code)",
+  "title": "fail-closed admission predicate for the OI metrics manifest (research only, signed; no loader authority)",
   "version": 1,
-  "status": "DRAFT",
-  "signed_by": null,
-  "frozen_at": null,
-  "base_commit": "f189ff7",
+  "status": "FROZEN - SIGNED BY CODEX - IMPLEMENTATION PREPARATION ONLY",
+  "signed_by": "Codex issuecomment-6554387984",
+  "frozen_at": "2026-11-01T08:23:00+02:00",
+  "base_commit": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
   "doc": "OI_LOADER_01_CONTRACT.md",
   "assignment": "6489944476",
-  "ruling_source": "Codex 6489944476 (GO: OI-LOADER-01 admission contract, DRAFT docs/tests only)",
+  "ruling_source": "Codex 6489944476 (draft assignment); Codex 6554387984 (integration signature and OI-LOADER-02 preparation release)",
   "integration_rulings": ["6489828197", "6489428240"],
   "ruling_6489828197": {
     "N1_N2": "authoritative true means the bulk request used explicit frozen bounds; it does not mean the dataset is complete or usable. covers() alone is never a loader admission gate. The loader fails closed unless authoritative, complete, stopped null, failures empty, covers() and a verified file entry for every required day all hold."
@@ -38,11 +38,11 @@
   },
   "code_identity": {
     "provenance_pr": 225,
-    "master_reference": "93642d833ef0c45a3d4c143c4938f4a810421308",
-    "master_reference_short": "93642d8",
+    "master_reference": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "master_reference_short": "851b0cd",
     "on_master": true,
     "pre_merge_head": "f8503237b01c9066550e9c12b239df3dda17129b",
-    "pre_merge_note": "the contract was drafted against #225 head f850323, rebound to the #225 merge f8f03df (6493041460), then to the #237 merge 93642d8 (6494813780); the cited files are byte-identical across all three (git diff f850323 f8f03df and git diff f8f03df 93642d8 are empty for them)",
+    "pre_merge_note": "the contract was drafted against #225 head f850323, rebound through #225/#237, independently reviewed and protected-merged by #238 as 1faa673, then signed on current master 851b0cd (6554387984); the four pinned source files are byte-identical from reviewed 93642d8 through 851b0cd and the contract artifacts are byte-identical from 1faa673 through 851b0cd before signing metadata",
     "files": [
       "tools/research/oi_metrics_fetch.py",
       "tools/research/oi_metrics_probe.py",
@@ -58,13 +58,14 @@
     },
     "rebind": {
       "status": "DONE",
-      "ruling": "6494813780",
-      "rebound_to": "93642d833ef0c45a3d4c143c4938f4a810421308",
+      "ruling": "6554387984",
+      "rebound_to": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
       "history": [
         {"ruling": "6493041460", "from": "f850323", "to": "f8f03df265dfd812becaa2a5bb9e9373490d4344", "reason": "#225 merged"},
-        {"ruling": "6494813780", "from": "f8f03df", "to": "93642d833ef0c45a3d4c143c4938f4a810421308", "reason": "#237 merged; the cited OI files are byte-identical (git diff f8f03df 93642d8 empty for them), so the sha256 pins are unchanged"}
+        {"ruling": "6494813780", "from": "f8f03df", "to": "93642d833ef0c45a3d4c143c4938f4a810421308", "reason": "#237 merged; the cited OI files are byte-identical (git diff f8f03df 93642d8 empty for them), so the sha256 pins are unchanged"},
+        {"ruling": "6554387984", "from": "93642d8", "to": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f", "reason": "Integration signature on current protected master; pinned sources are byte-identical from 93642d8 and the #238 contract artifacts were unchanged from protected merge 1faa673 before this metadata-only signing commit"}
       ],
-      "note": "every citation points at master 93642d8 and the cited files are pinned by sha256. The contract stays DRAFT and unsigned until Integration signs; a semantic change to a pinned file reopens it."
+      "note": "source citations intentionally remain at reviewed 93642d8 and are content-pinned by sha256; current protected-master identity is 851b0cd. The contract is signed for implementation preparation only. Any semantic change to a pinned source or admission rule reopens it."
     }
   },
   "slice": {
