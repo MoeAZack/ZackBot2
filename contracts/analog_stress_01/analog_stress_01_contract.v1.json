@@ -1,0 +1,121 @@
+{
+  "contract": "ANALOG-STRESS-01",
+  "version": 1,
+  "status": "DRAFT",
+  "base_commit": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+  "doc": "ANALOG_STRESS_01_CONTRACT.md",
+  "authority": {
+    "parameter_tuning": false,
+    "strategy_ranking": false,
+    "holdout_read": false,
+    "orders": false,
+    "paper_activation": false,
+    "mainnet": false
+  },
+  "time": {
+    "source": "UTC",
+    "report_zone": "Africa/Cairo",
+    "hardcoded_offset_allowed": false,
+    "dst_boundary_tests_required": true,
+    "block_unit": "cairo_day",
+    "session_boundaries_half_open": [
+      "[00:00,06:00)",
+      "[06:00,12:00)",
+      "[12:00,18:00)",
+      "[18:00,24:00)"
+    ],
+    "cell_assignment_timestamp": "decision_timestamp",
+    "spanning_trade_reassignment": false
+  },
+  "paths": [
+    "observed",
+    "stop_first",
+    "target_first",
+    "gap_open"
+  ],
+  "estimator": {
+    "primary": "contiguous_cairo_day_block_bootstrap",
+    "iid_primary": false,
+    "preserve_joint_fields": [
+      "day",
+      "session",
+      "symbol",
+      "side",
+      "path_state",
+      "cost_inputs"
+    ],
+    "recompute_costs_per_path": true,
+    "report_observed_separately": true,
+    "report_optimistic_pessimistic_bounds": true,
+    "block_length_cairo_days": 3,
+    "edge_policy": "circular_moving_blocks",
+    "resamples": 2000,
+    "seed": 20261102,
+    "percentiles": [
+      "0.025",
+      "0.500",
+      "0.975"
+    ],
+    "minimum_distinct_cairo_days": 30,
+    "minimum_session_observations": 20,
+    "minimum_session_distinct_days": 10
+  },
+  "path_selection": {
+    "observed": "causal_minute_order_only",
+    "pessimistic": "gap_open_if_stop_crossed_at_open_else_stop_first_if_admissible",
+    "optimistic": "gap_open_if_applicable_else_target_first_if_admissible",
+    "missing_or_impossible_fallback": false
+  },
+  "required_bindings": [
+    "source_rows_sha256",
+    "market_data_manifest_sha256",
+    "minute_path_manifest_sha256",
+    "cost_manifest_sha256",
+    "session_rules_sha256",
+    "block_rule_sha256",
+    "code_commit",
+    "tool_bundle_sha256",
+    "seed"
+  ],
+  "fail_closed": [
+    "post_cutoff_source_row",
+    "missing_minute_path",
+    "impossible_path_order",
+    "insufficient_cairo_days",
+    "insufficient_session_cell",
+    "cost_recompute_failure",
+    "manifest_mismatch",
+    "result_key_content_conflict"
+  ],
+  "required_tests": [
+    "fixed_seed_determinism",
+    "cairo_standard_time_assignment",
+    "cairo_dst_assignment",
+    "long_short_gap_open",
+    "same_minute_target_stop",
+    "incomplete_minute_data_refusal",
+    "autocorrelated_block_vs_iid_difference",
+    "costs_recomputed_for_each_path",
+    "immutable_result_packet"
+  ],
+  "result_packet": {
+    "immutable": true,
+    "reports_session_n_and_day_count": true,
+    "reports_path_coverage": true,
+    "reports_ambiguity_and_missingness": true,
+    "reports_cost_completeness": true,
+    "single_blended_path_claim": false
+  },
+  "implementation_boundary": {
+    "new_files_only": true,
+    "runtime_files_edited": false,
+    "paper_state_touched": false,
+    "oi_files_edited": false
+  },
+  "deferred": [
+    "stress_estimator",
+    "independent_execution",
+    "candidate_specific_pack",
+    "promotion_decision"
+  ]
+}
