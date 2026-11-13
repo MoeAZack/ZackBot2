@@ -1,0 +1,1318 @@
+[
+  {
+    "name": "codex/acceleration-bands-c165",
+    "head": "cc858a2443f21213e0d721d99460337845365573"
+  },
+  {
+    "name": "codex/advance-block-c225",
+    "head": "e811d16fb58649342d17b158c576dc96734f9e14"
+  },
+  {
+    "name": "codex/aggressor-flow-absorption-1h",
+    "head": "725337e449838131fb21e7db130fb142de7a7fd6"
+  },
+  {
+    "name": "codex/alligator-c135",
+    "head": "e3ecb4e73340ebeadfc8b2f39129955ba749bef2"
+  },
+  {
+    "name": "codex/alma-c150",
+    "head": "cc972da47c99b45bfc47ec26d4a621bf90c70cf7"
+  },
+  {
+    "name": "codex/analog-stress-contract",
+    "head": "0925850742bdc707ec5bfca12a0a04079170128a"
+  },
+  {
+    "name": "codex/ar2-forecast-c93",
+    "head": "d5ab4481f0cfa198fa11ed7ac917d3b558ee1f8c"
+  },
+  {
+    "name": "codex/aroon-recency-c76",
+    "head": "3d685243c3f7375feb1ff5dcfeaff75c5a1c4b6c"
+  },
+  {
+    "name": "codex/atr-shock-snapback-4h",
+    "head": "b517edc68d7a9d2069d4d7cb99be175038ff8651"
+  },
+  {
+    "name": "codex/atr-v4-assembly-identity-fix",
+    "head": "ced177c6a1a4f3e2bcfcfa5d0eaf2c4f638eb2b0"
+  },
+  {
+    "name": "codex/authority-v6-acquisition-impl",
+    "head": "86d094fa5ec9c34da5256a7559744e1485b34e31"
+  },
+  {
+    "name": "codex/authority-v6-metadata-contract",
+    "head": "8f63b5e8affd2d23a8c69d6d0185c502951aff78"
+  },
+  {
+    "name": "codex/authority-v6-runner-prep",
+    "head": "e2bc5796914b48b3bdf8d98699568550d0931ee3"
+  },
+  {
+    "name": "codex/authority-v6-unicode-checksum",
+    "head": "cb7759265e09ff932cf294c988826ef6ee33ee1c"
+  },
+  {
+    "name": "codex/awesome-oscillator-c132",
+    "head": "c1420ab7fadf3a4b7dc1ffdb2b73f51ed8125fbd"
+  },
+  {
+    "name": "codex/base-clean-gate",
+    "head": "bab155a5510990cfd363bfacf3e8a90649c760af"
+  },
+  {
+    "name": "codex/bearish-abandoned-baby-c249",
+    "head": "bec0e2c452710ad29a58be41c67d2158d90a888c"
+  },
+  {
+    "name": "codex/bearish-belt-hold-c198",
+    "head": "f8db604d8e0dc27d48e95c93742434fa1eebbe42"
+  },
+  {
+    "name": "codex/bearish-breakaway-c232",
+    "head": "6af6e56b53baa706437f92d9575c1090264be396"
+  },
+  {
+    "name": "codex/bearish-closing-marubozu-c239",
+    "head": "b5f02fa934e27b4bdbeb51f9da7123f7fcf8b13f"
+  },
+  {
+    "name": "codex/bearish-counterattack-c218",
+    "head": "fd2c88323858473d085f0969e09e7fc5972bda5d"
+  },
+  {
+    "name": "codex/bearish-engulfing-c183",
+    "head": "efe2358676cf8389ac2265dd8c1245fcc05043d7"
+  },
+  {
+    "name": "codex/bearish-harami-c187",
+    "head": "2fa4a205ae2eb5b5e98dd64c553b4a75e2f436e1"
+  },
+  {
+    "name": "codex/bearish-harami-cross-c241",
+    "head": "1d81e43966a8a88d53c588920ef536f24e58d6a0"
+  },
+  {
+    "name": "codex/bearish-kicker-c200",
+    "head": "d11c0ea69fdf232c8b01992beeee9c8b9af97f9f"
+  },
+  {
+    "name": "codex/bearish-marubozu-c194",
+    "head": "c23d6268fb82c37b6a7cf4bc9ff143b220052133"
+  },
+  {
+    "name": "codex/bearish-separating-lines-c202",
+    "head": "0ca26950ae49600b82f3638c2ac050da52b34623"
+  },
+  {
+    "name": "codex/bearish-spinning-top-c243",
+    "head": "9156060434f50f68f2f08b52690445eb0a590b2e"
+  },
+  {
+    "name": "codex/bearish-three-line-strike-c237",
+    "head": "b2b3633e239f0796801b2deb9d53db7e654bde9e"
+  },
+  {
+    "name": "codex/bearish-tristar-c247",
+    "head": "a81ad1fcf41b3e419f4913c4bce5aafc9b6992e9"
+  },
+  {
+    "name": "codex/boundary-crossing-c87",
+    "head": "72ab12a83678eaad8cf3cb103c2a3b47890f5d92"
+  },
+  {
+    "name": "codex/bpyr-eval-auth-02",
+    "head": "771feb9f81308dff2349531de84f43daa2507524"
+  },
+  {
+    "name": "codex/btc-beta-residual-c54",
+    "head": "eb7bf5f9fdd305c159e7b4264163244d742cbb24"
+  },
+  {
+    "name": "codex/btc-orderflow-leadlag-1h",
+    "head": "a9f60164429aa591e36d4f7a600fea837226e3c1"
+  },
+  {
+    "name": "codex/bullish-abandoned-baby-c248",
+    "head": "aae0f4ee3f60084ef98937a1514b61e04b32b37f"
+  },
+  {
+    "name": "codex/bullish-belt-hold-c197",
+    "head": "1139914f49d82c16a3131270fdd56e45e5d161f5"
+  },
+  {
+    "name": "codex/bullish-breakaway-c231",
+    "head": "01e37bcbf164004ecd81c80d31eb63a5f5d048eb"
+  },
+  {
+    "name": "codex/bullish-closing-marubozu-c238",
+    "head": "3b19141b6842b9ce59a5fe4b4320892b06682abc"
+  },
+  {
+    "name": "codex/bullish-counterattack-c217",
+    "head": "f36dee5155b109283110adff1dc16c6aead0e4fa"
+  },
+  {
+    "name": "codex/bullish-engulfing-c182",
+    "head": "2e8ddf66668fb6b6beabddf76db8b15d2fb5e460"
+  },
+  {
+    "name": "codex/bullish-harami-c186",
+    "head": "bf8a2cb927568b9f29b80139c2043a3a494c76db"
+  },
+  {
+    "name": "codex/bullish-harami-cross-c240",
+    "head": "723f8a5d07bc2d801fa8b4100ee5b76e7f18774f"
+  },
+  {
+    "name": "codex/bullish-kicker-c199",
+    "head": "e00780deee7444b86d0101396eadf48208c0161a"
+  },
+  {
+    "name": "codex/bullish-long-line-c254",
+    "head": "f7a1265b197fd226a62287fec352287b6926bdb3"
+  },
+  {
+    "name": "codex/bullish-marubozu-c193",
+    "head": "67e6ef665fb531ebfb260deac3b408069c753201"
+  },
+  {
+    "name": "codex/bullish-separating-lines-c201",
+    "head": "a3ff35413d7835f553b1e15e7ce5712736ae7dc8"
+  },
+  {
+    "name": "codex/bullish-spinning-top-c242",
+    "head": "bc970c139056dbb127ca6564e33bda20d740b586"
+  },
+  {
+    "name": "codex/bullish-three-line-strike-c236",
+    "head": "0c6e08bf4e59238a2d848ac6080b12e7ac09fe61"
+  },
+  {
+    "name": "codex/bullish-tristar-c246",
+    "head": "6aae1bbc211c366b9db2b8f6ed37b865dda3a56f"
+  },
+  {
+    "name": "codex/c1h-six-hourly-20261112",
+    "head": "0547b96f49788d49d562f1c599b96d6ab2e536f8"
+  },
+  {
+    "name": "codex/c13-atr-shock-causal-contract",
+    "head": "39d5374ed2dd5633eec5658b0a7ca486c042ce4e"
+  },
+  {
+    "name": "codex/c24-c41-wf-validation",
+    "head": "9e33263ef4e8e2f3dcb2b50b5a1664a229a01808"
+  },
+  {
+    "name": "codex/c255-pit-pairs-prereg",
+    "head": "0e398490c747354ce5ed683795209c72d508f01b"
+  },
+  {
+    "name": "codex/c255-stagea-runner-prestage",
+    "head": "224a1adf22fa300340b7227c2cfb74b4bb978f5f"
+  },
+  {
+    "name": "codex/c256-funding-shock-prereg-prep",
+    "head": "6cc7148a453be054f5c02ecf1eecc8369fcfc533"
+  },
+  {
+    "name": "codex/c256-funding-shock-runner-prep",
+    "head": "a9521c29cd42132c2043e63d623299f9551a7aff"
+  },
+  {
+    "name": "codex/c256-protected-eval-adapter-prep",
+    "head": "4e1bd0e905cebc88c4f94e0e83193631bc8b5745"
+  },
+  {
+    "name": "codex/c257-c259-contracts-integration",
+    "head": "f5b955bd39bbb9556fd4ed04d69bbdce71e6d858"
+  },
+  {
+    "name": "codex/c257-c259-evaluators-integration",
+    "head": "d1cbd00afea92dbcec998c8b2d43e825cfbc2f26"
+  },
+  {
+    "name": "codex/c257-c259-hourly-source-review",
+    "head": "fd70eed2e02a2723c4724b63109fee8afb650620"
+  },
+  {
+    "name": "codex/c257-funding-shock-successor",
+    "head": "27f3eef77a4d10d300a288ef917fc5842170550d"
+  },
+  {
+    "name": "codex/c258-evaluator-prep",
+    "head": "887929b868f0a3270bb91af4b56aee9ce251930e"
+  },
+  {
+    "name": "codex/c258-executable-adapter",
+    "head": "4c1be357dec4a3ed3a03e5875c3055af44b0de26"
+  },
+  {
+    "name": "codex/c258-xsec-rs-prereg",
+    "head": "976adda2653584559a5fc105468a6d422796d3a9"
+  },
+  {
+    "name": "codex/c259-btc-residual-leadlag-prereg",
+    "head": "82d02b82b774e92ffa374e6ea1be8ba5c0cfb98c"
+  },
+  {
+    "name": "codex/c259-causal-evaluator-prep",
+    "head": "a5fff71f06f0c8c159dc4e9685b862847e8eacb8"
+  },
+  {
+    "name": "codex/c259-paper-native-intents",
+    "head": "0b4583ef98f1a3a9b5188700fd0e9f20a2bc9ab8"
+  },
+  {
+    "name": "codex/c259-protected-content-lineage",
+    "head": "ba8ceeca6401f26eb6052c3f2895c26f16049ec8"
+  },
+  {
+    "name": "codex/c260-independent-review",
+    "head": "795d84ed13c29b68948ac957dda8cc4c8e9d4bfa"
+  },
+  {
+    "name": "codex/c267-preread-source-successor",
+    "head": "ca50bdfb28693d843d45e0b16e5b185e73b49972"
+  },
+  {
+    "name": "codex/c268-downside-beta-excess",
+    "head": "ed6b10cbd29e319cf0da5b934f24ddbe98130663"
+  },
+  {
+    "name": "codex/c268-downside-beta-kernel",
+    "head": "74e848fb42ee9630152003a4a1d79e2978b7404e"
+  },
+  {
+    "name": "codex/c269-overhead-notional",
+    "head": "a00158cb783ac3fbb9e5a8cf23ec6b63ce37b395"
+  },
+  {
+    "name": "codex/c270-denominator-expiry",
+    "head": "b9760e2db7ee24ebef13d307b57371be0e26361a"
+  },
+  {
+    "name": "codex/capital-shadow-ladder",
+    "head": "7e64c0d6cdf7b7b4f6b8b62665c4d603b1276b86"
+  },
+  {
+    "name": "codex/causal-v4-cli-argv-fix",
+    "head": "bfef52e98ed5e54741cabb2be70bab680d7dee1d"
+  },
+  {
+    "name": "codex/causal-v4-filter-authority-v3-staged",
+    "head": "efcb5596e8d1e3f46c74be06b3b7626597314348"
+  },
+  {
+    "name": "codex/causal-v4-final-runner-staged",
+    "head": "44802b0a7c177d1e229d15078454652434421dab"
+  },
+  {
+    "name": "codex/causal-v4-pack-management-rebind-fix",
+    "head": "6bb65ef27f904383456813bfeeaa44502feaa8d3"
+  },
+  {
+    "name": "codex/causal-v4-protected-overlays",
+    "head": "ee23d39ee8d608b32d86ee873a0f44d94678295e"
+  },
+  {
+    "name": "codex/causal-v4-rbr-atr-runtime-fix",
+    "head": "e659cc852465f043f522d25bc2b648521ee8099e"
+  },
+  {
+    "name": "codex/cci-c125",
+    "head": "8123aa9911c2ea947bc8707d6d52d14189e812c9"
+  },
+  {
+    "name": "codex/cfo-c114",
+    "head": "22d257186f4fc430076e1d5d40ef99c2995c655b"
+  },
+  {
+    "name": "codex/chaikin-money-flow-c128",
+    "head": "b5ed8f07cbfca82b1f685e74026250f9c61a68a8"
+  },
+  {
+    "name": "codex/chaikin-osc-c143",
+    "head": "32606fe3dac8131b57a07aaae6a53ccefa5c76db"
+  },
+  {
+    "name": "codex/chande-kroll-c148",
+    "head": "da0e80bff60e26e62e78205d29561633ecf39d49"
+  },
+  {
+    "name": "codex/chandelier-c174",
+    "head": "85b16c2f98464d65be0f65d26af0a63b25c00d44"
+  },
+  {
+    "name": "codex/choppiness-c79",
+    "head": "9b57fc5155e4c48821bbd09bafda2ea6fc39ba0c"
+  },
+  {
+    "name": "codex/cmo-c130",
+    "head": "eb254fd80f9a140e7836830d791bdcb9dac92153"
+  },
+  {
+    "name": "codex/cog-c112",
+    "head": "9083b8edd2fbbe25a61fd81de34071b71780f228"
+  },
+  {
+    "name": "codex/cog-oscillator-c169",
+    "head": "a0952389f2d3be6ad733286d3915cda9e4326220"
+  },
+  {
+    "name": "codex/concealing-baby-swallow-c229",
+    "head": "c4f23b24d52f7e4079c2873ee05e9572799d1624"
+  },
+  {
+    "name": "codex/connors-rsi-c133",
+    "head": "3d29fa7e3a0be967bded0dccb882a762e486bb6d"
+  },
+  {
+    "name": "codex/coppock-c107",
+    "head": "f09fa4ef10857db1c0084ecd167f733fd82fa2bd"
+  },
+  {
+    "name": "codex/cti-c119",
+    "head": "c8068ce7c7ee80687cdfc4c0d574a39cbb1fb627"
+  },
+  {
+    "name": "codex/cusum-drift-c62",
+    "head": "476b6b57fc0efdee03efdcb17cd00eef02b44481"
+  },
+  {
+    "name": "codex/daily-range-participation-c30",
+    "head": "44560457b8b82ba5a7c7d3fcee791d8da67ce384"
+  },
+  {
+    "name": "codex/dark-cloud-cover-c185",
+    "head": "3d9db72652fb0a8f340c1faac7efe91fc555d926"
+  },
+  {
+    "name": "codex/darvas-c178",
+    "head": "4064609d44332228d9e3bf7e00b853c69930f0cb"
+  },
+  {
+    "name": "codex/deliberation-c226",
+    "head": "122313a5f1ac9f74a06e0993e70cff922db082c1"
+  },
+  {
+    "name": "codex/dema-c151",
+    "head": "b2ec6e224c92f4e56c144cbc1facf899955d3ced"
+  },
+  {
+    "name": "codex/demarker-c100",
+    "head": "c2df06e6610200399c73a58497724a50297e4a22"
+  },
+  {
+    "name": "codex/descending-hawk-c206",
+    "head": "13c9806f4d9f7708b27820be51dbc1784f1b9b83"
+  },
+  {
+    "name": "codex/directional-change-c84",
+    "head": "fd998d370c56ce84ac859c3a0737fb8db75dd2f2"
+  },
+  {
+    "name": "codex/directional-sign-entropy-c42",
+    "head": "daa8b8e7ca084163ef0bdc03549b863e9c1a42a9"
+  },
+  {
+    "name": "codex/dispersion-reversion-1h",
+    "head": "adc70ea4134eb34ef4ae418501594f759eac3c2d"
+  },
+  {
+    "name": "codex/downside-gap-side-by-side-c253",
+    "head": "c118e0b0968d5d6e2c0d15b03902db555b84dbb5"
+  },
+  {
+    "name": "codex/downside-semivariance-c57",
+    "head": "ed4b5b3940b7936516bf54ae2f66366bbd71a3ea"
+  },
+  {
+    "name": "codex/downside-tasuki-gap-c251",
+    "head": "6ed6b814cbe38fc4e0afefc95c6596180ee0befa"
+  },
+  {
+    "name": "codex/dpo-c109",
+    "head": "9396409e3f1bf3668c8f9b46a193344be1096e20"
+  },
+  {
+    "name": "codex/dragonfly-doji-c215",
+    "head": "886aaa14b04b94e6b5bbfa68a07cecbf9d48242a"
+  },
+  {
+    "name": "codex/drawdown-recovery-c58",
+    "head": "8d50b822dfdacd64e6544477450f1cb035db0168"
+  },
+  {
+    "name": "codex/duplicate-policy-review-20261112",
+    "head": "5121e791a41b60c24d375de4028130c1dea93983"
+  },
+  {
+    "name": "codex/ease-of-movement-c124",
+    "head": "d8bb25ed03fadaef023a704f7fbbfaf7fb03bd4d"
+  },
+  {
+    "name": "codex/edge02-replacement-scout",
+    "head": "e4419d7c7de29a1fd95fa5cd1faebda63a78b967"
+  },
+  {
+    "name": "codex/edge02-residual-runner",
+    "head": "e060b96b2e4ad49902d4f8451e49e98fead8e4e9"
+  },
+  {
+    "name": "codex/edge02-stagea-runner",
+    "head": "5954550c522898ba180dc0a86e3c960171fa03b2"
+  },
+  {
+    "name": "codex/edge03-prereg-contract",
+    "head": "0db5bd45f791dd1a8e87caa443af42bc443d6573"
+  },
+  {
+    "name": "codex/edge03-xsec",
+    "head": "280ab9c1416aa891939dc7256b19380e79b24de2"
+  },
+  {
+    "name": "codex/edge04-legacy-reeval",
+    "head": "b5957d58f82e0247717e2111ab5b2b41dac9a24e"
+  },
+  {
+    "name": "codex/elder-impulse-c147",
+    "head": "f7f3f769896401fc7a2e4d079e3dc45d33fd34b2"
+  },
+  {
+    "name": "codex/elder-ray-c102",
+    "head": "a98b100a26595bc8d3e76733dc65b2762ae00510"
+  },
+  {
+    "name": "codex/ema-mom-long-h4",
+    "head": "1add5323c87288dc081f3dc78eb91439f75ca007"
+  },
+  {
+    "name": "codex/ema-spread-expansion-c39",
+    "head": "6bee129e6471e6955ae4a38d30109e5a485a6042"
+  },
+  {
+    "name": "codex/ema-st-short-c29",
+    "head": "7054984258e78357a5bf6923e3546b96ce7dc9c1"
+  },
+  {
+    "name": "codex/equal-high-breakout-c45",
+    "head": "378397c994d8bd55c35a29f527090cec9ee24e18"
+  },
+  {
+    "name": "codex/equal-low-breakdown-c46",
+    "head": "3d89f81993547d8943b96f3a3e68323114f99825"
+  },
+  {
+    "name": "codex/evening-doji-star-c245",
+    "head": "22a684e943fa2ddc9e69d8410e8b2128e6faf6ed"
+  },
+  {
+    "name": "codex/evening-star-c213",
+    "head": "c7162c96dd3f017982d42bdf057d0416c2934c7b"
+  },
+  {
+    "name": "codex/exp-mom-short-c27",
+    "head": "aef85f6f140884a5fc39598c5b213c1d724ed5b3"
+  },
+  {
+    "name": "codex/exp-trend-long-h3",
+    "head": "6beb6fcebcbe8ad8b2ec9cb71d366176f4521982"
+  },
+  {
+    "name": "codex/f02-eval-01",
+    "head": "a608a460d41633d07dbda493c700846f849b3dcf"
+  },
+  {
+    "name": "codex/falling-three-methods-c196",
+    "head": "55ac5f88ba9a0d02f33219f19f4664734dc27249"
+  },
+  {
+    "name": "codex/finance-skill-intake",
+    "head": "0e0445bf269fcfe06a7d90321e11963a0b8779f3"
+  },
+  {
+    "name": "codex/fisher-transform-c106",
+    "head": "e0027616d6594ee22bc9c41a96b034a5ecf5f7e1"
+  },
+  {
+    "name": "codex/floor-pivots-c177",
+    "head": "16baadfa7a3e56583bc493270382c0ebdce6a124"
+  },
+  {
+    "name": "codex/force-index-c127",
+    "head": "093d3cd8b80237e0e1151df3b89d31b149388e2e"
+  },
+  {
+    "name": "codex/fractal-chaos-bands-c168",
+    "head": "49901aaf0f6ddbbb0eb59cbe8610fd9a4c1d0269"
+  },
+  {
+    "name": "codex/frama-c110",
+    "head": "08f4e81279f0760eb97d2ab73192a9da2811149d"
+  },
+  {
+    "name": "codex/funding-dislocation-1h",
+    "head": "a54a2fae7ced8870dc08835f9e255ca28771cdca"
+  },
+  {
+    "name": "codex/funding-jitter-tolerance",
+    "head": "7bbb8084f83421552da689bbc9afec6db62d7278"
+  },
+  {
+    "name": "codex/gann-hilo-c138",
+    "head": "8dbb893b2f9b83d76e197e37f64f8341f98b223b"
+  },
+  {
+    "name": "codex/gma-c160",
+    "head": "83834c9e79dd28d08e52fd57edad2a0af3cbcda5"
+  },
+  {
+    "name": "codex/gmma-c172",
+    "head": "0577a2ee6c0dd78f3b3f595315e15f92c1466a30"
+  },
+  {
+    "name": "codex/gpu-parity-contract",
+    "head": "7161bdf2a2c99b24e304928b67e321ed992ad278"
+  },
+  {
+    "name": "codex/gravestone-doji-c216",
+    "head": "8b8f6b1c566dfbd1e6d5bcaf2a2123329f8b188f"
+  },
+  {
+    "name": "codex/h5-hourly-long-canary-20261112",
+    "head": "5c95508fbc1765705da8698aa1824f5cdf0c3a29"
+  },
+  {
+    "name": "codex/hammer-c181",
+    "head": "6210c118a844bf503737c913e0cd908aeb6dd05b"
+  },
+  {
+    "name": "codex/hanging-man-c192",
+    "head": "5b13fb8cc3124204e239792c1250252a3cdaa4fe"
+  },
+  {
+    "name": "codex/heikin-ashi-c105",
+    "head": "e38b69f8325410c5b7a60c2af29c4aa856f2af18"
+  },
+  {
+    "name": "codex/hill-tail-c72",
+    "head": "43362aad42ab0e02a737965dd3b5f818b91ce734"
+  },
+  {
+    "name": "codex/homing-pigeon-c205",
+    "head": "8b4bea440a5e28fba0929ed9b6e98e2a975beba9"
+  },
+  {
+    "name": "codex/hour-of-day-drift-c53",
+    "head": "e0c21beb49dfbe792298a0bc35c7dc53ce110bbf"
+  },
+  {
+    "name": "codex/hourly-volume-surprise-c50",
+    "head": "7ca20ea1fe021e096e78c08d8cddec2e9587e2c7"
+  },
+  {
+    "name": "codex/hull-ma-c129",
+    "head": "0bbf1af484ce1935bfeea1264049fa7a9ad35544"
+  },
+  {
+    "name": "codex/hurst-rs-c120",
+    "head": "1e7128e1f053302903ab8b7b7e49722e9a73fb55"
+  },
+  {
+    "name": "codex/ichimoku-cloud-c97",
+    "head": "44875c870bacdb694f3b24bea66f895896b4ee7b"
+  },
+  {
+    "name": "codex/identical-three-crows-c235",
+    "head": "ff1a6eb36e11c5bf56555e8cd774e6c0c3dc3b5b"
+  },
+  {
+    "name": "codex/illiquidity-reversion-c31",
+    "head": "b77401af9b2ad20d35597cde71e150d2c0bc8485"
+  },
+  {
+    "name": "codex/implied-spread-c91",
+    "head": "346f5e6d410216757d5ee398a2d08524cd020c93"
+  },
+  {
+    "name": "codex/in-neck-c221",
+    "head": "f6215a2bea3e46f08bb980c9e6021146d34b0c2a"
+  },
+  {
+    "name": "codex/inertia-c175",
+    "head": "3509b0f389dcf3bd7c10692eb8de0e8983d80f12"
+  },
+  {
+    "name": "codex/inside-bar-breakdown-c49",
+    "head": "186a13eea9b0d6015d225af2c1c39c07a7023de9"
+  },
+  {
+    "name": "codex/inside-bar-breakout-c32",
+    "head": "fc94b857e84ba251d3a0ce2cdafcb2497ddf36c3"
+  },
+  {
+    "name": "codex/intrabar-churn-c61",
+    "head": "f12a76622156acc6563ceb9dbf8f3cffe69b9701"
+  },
+  {
+    "name": "codex/inverted-hammer-c191",
+    "head": "520d3eb7f95aab009d1bfb04ab0415b940989106"
+  },
+  {
+    "name": "codex/iqr-compression-c82",
+    "head": "84600e36db864b9c254bae85d518ce1f99df61e5"
+  },
+  {
+    "name": "codex/jump-excitation-c80",
+    "head": "de14f030b09a4bd35014d107156d115c9166c41b"
+  },
+  {
+    "name": "codex/jump-variation-c66",
+    "head": "34306e574e229a0c293b4d7ed59e72379d697f65"
+  },
+  {
+    "name": "codex/kalman-innovation-c101",
+    "head": "6e52bb61e90005a80f511d04b3bd369504d46eaf"
+  },
+  {
+    "name": "codex/kama-c117",
+    "head": "97d0b43866e3d4141bf9af7519487cf3513acf21"
+  },
+  {
+    "name": "codex/keltner-reclaim-c37",
+    "head": "6beaa3d9c14809ea8ee4912d14e3a5360fd7c968"
+  },
+  {
+    "name": "codex/kendall-monotonicity-c88",
+    "head": "eda3630a87f10b98b2d89dd12cd0eb76ca17d6c5"
+  },
+  {
+    "name": "codex/klinger-c131",
+    "head": "0b6e537fa60158ea92c49781161fe527471813c9"
+  },
+  {
+    "name": "codex/kst-c134",
+    "head": "44d2442847a97b1bcf466b4c309f9aa4495e4ee5"
+  },
+  {
+    "name": "codex/ladder-bottom-c224",
+    "head": "7fbcf238637b8f00436d73396b7b2948497894b2"
+  },
+  {
+    "name": "codex/laguerre-rsi-c116",
+    "head": "5b41a452bad13f27fd5d7ce262c3694574433deb"
+  },
+  {
+    "name": "codex/large-trade-impulse-1h",
+    "head": "f1bc379ad9fcb4f0dbd08e369c81e33031ffe81e"
+  },
+  {
+    "name": "codex/leverage-effect-c64",
+    "head": "f4f58d5dfb3f51386e3a559b9636e872601a17bd"
+  },
+  {
+    "name": "codex/liquidity-sweep-rejection-15m",
+    "head": "8ddaaac0e26788b3e4e52263a575bbe6cdbfd4fb"
+  },
+  {
+    "name": "codex/llm-leak-contract",
+    "head": "13f99b086bf58c967f9fbbf5b60133795f8b437f"
+  },
+  {
+    "name": "codex/long-legged-doji-c222",
+    "head": "b10a317d269d869e5f5dcfffbc3adb92a5202728"
+  },
+  {
+    "name": "codex/long-legged-doji-short-c223",
+    "head": "5689255a846c7f596fc2ea47a6458a485dfc69ba"
+  },
+  {
+    "name": "codex/low-vol-factor-c59",
+    "head": "7b922a4a836e42b5fdbe92b2728e2b3705c620bd"
+  },
+  {
+    "name": "codex/lower-tail-dependence-c67",
+    "head": "dbb13db79020ca3e1c3ebb802c9259ea2ee3b492"
+  },
+  {
+    "name": "codex/lsma-c158",
+    "head": "42f3270aa9fad8de78c3e885d29caafc96883076"
+  },
+  {
+    "name": "codex/lz-complexity-c85",
+    "head": "b591ff7f663ec002439bdf815efa1fb315fe258d"
+  },
+  {
+    "name": "codex/ma-envelope-c161",
+    "head": "465cbfc0f215659015a4f667c8ddb9ed1dcc82e1"
+  },
+  {
+    "name": "codex/mark-price-dislocation-1h",
+    "head": "eec6ddd12f582d2fdfafed6a0a1aabff5c8a4ecf"
+  },
+  {
+    "name": "codex/mass-index-c74",
+    "head": "8feb8bfb605859483170d338e47a03f426aada76"
+  },
+  {
+    "name": "codex/mat-hold-c230",
+    "head": "8fbdb2d43c1cef1137e16fa0e9684fc79fa57fe2"
+  },
+  {
+    "name": "codex/matching-high-c204",
+    "head": "995c24b9590bbc89382927e572d294e2960db35d"
+  },
+  {
+    "name": "codex/matching-low-c203",
+    "head": "0f5ac2e3e69cac393fca9cc63a9543d2a9dfc51e"
+  },
+  {
+    "name": "codex/mcginley-c123",
+    "head": "b6e9714c74361df8c1c4cc1c083482a248aae245"
+  },
+  {
+    "name": "codex/median-ma-c167",
+    "head": "82c9e49769de1fc1b8dab7828fa323e88c488756"
+  },
+  {
+    "name": "codex/mfi-recovery-c36",
+    "head": "bd45566b15d5a2548e72ac1090ef1ceda6751cd6"
+  },
+  {
+    "name": "codex/morning-doji-star-c244",
+    "head": "65e94b94eca75181a75650ffff7962264dcaf8f8"
+  },
+  {
+    "name": "codex/morning-star-c212",
+    "head": "303916d88a0ad984089c91db2214847293ba3a51"
+  },
+  {
+    "name": "codex/mtf-breakout-pullback-1h",
+    "head": "b8c0353bc320a35a40446779f0a46a2b1e20f977"
+  },
+  {
+    "name": "codex/multiscale-roughness-c63",
+    "head": "3fd6a2bf0f105f115756d08f4f412c7b1f944716"
+  },
+  {
+    "name": "codex/n6-independent-a3095360",
+    "head": "8cd1f954beec6fe95fc9b0de4e414a4bb0f8acd0"
+  },
+  {
+    "name": "codex/native-runtime-harness-integration",
+    "head": "ac576fade91e7341fdffec1dea7ca6432d338721"
+  },
+  {
+    "name": "codex/nc07-management",
+    "head": "019d920ff7a4176ae339032f6f4c2b160aedd144"
+  },
+  {
+    "name": "codex/nc08-contract",
+    "head": "69c67999463630e9367a424f010dcfcedb9ed7e3"
+  },
+  {
+    "name": "codex/nc09-contract",
+    "head": "97bd39e2d369eabf46063694f8c63fb62a0aa5c0"
+  },
+  {
+    "name": "codex/negative-volume-index-c103",
+    "head": "fa9e40dc4f482524bf7588a90edd3d08658b8d67"
+  },
+  {
+    "name": "codex/newcore-golden-adapters",
+    "head": "9021192eff0adc1c098a2c42c73bf635d571bbe1"
+  },
+  {
+    "name": "codex/nr7-c176",
+    "head": "64b73840e7b4b6567a7ecfc32511d368ba875e7e"
+  },
+  {
+    "name": "codex/obv-lead-breakout-c35",
+    "head": "252e19764752dd888bd1347e973e0d3ae44160a0"
+  },
+  {
+    "name": "codex/oi-divergence-stagea-readiness",
+    "head": "7be919046a7ac33524795ef268073012f839e7e0"
+  },
+  {
+    "name": "codex/oi-reclaim-01",
+    "head": "56535f6d9c54a6b3a267fce29f14f7f46d08edab"
+  },
+  {
+    "name": "codex/omega-payoff-c78",
+    "head": "18ef67661528ee0f54a7e2c0d752b498b72d97f0"
+  },
+  {
+    "name": "codex/on-neck-c219",
+    "head": "5d6c86553be260446f6202eb2373ace0ab2238d0"
+  },
+  {
+    "name": "codex/opening-range-hold-15m",
+    "head": "8b75a948d4c07aa40fd50bef2799436838346d91"
+  },
+  {
+    "name": "codex/ou-half-life-c65",
+    "head": "f2350d6a54ad723f67a4556d80400fb776ce51cd"
+  },
+  {
+    "name": "codex/outside-bar-breakdown-c48",
+    "head": "7de762eb9ca6d4b7bd408a9dea67fd12614e4734"
+  },
+  {
+    "name": "codex/outside-bar-expansion-c47",
+    "head": "b8c732598730a434d621010a29fe03339691dccd"
+  },
+  {
+    "name": "codex/parabolic-sar-c96",
+    "head": "788443f5792cfb26751b9d139de009d9c188e24b"
+  },
+  {
+    "name": "codex/pfe-c171",
+    "head": "f66639c819bd9e6610a978d6f9ee7ee3ee2df1e8"
+  },
+  {
+    "name": "codex/pgo-c139",
+    "head": "b609d66e65546df095a6b0a0ff65c1af662d5f46"
+  },
+  {
+    "name": "codex/piercing-line-c184",
+    "head": "94cc3a20cf8beef62192d22d90018a34fd44e916"
+  },
+  {
+    "name": "codex/price-recurrence-c69",
+    "head": "356bf5e7a2ef2a9e05fbb7b1d604c945bf611c05"
+  },
+  {
+    "name": "codex/projection-oscillator-c122",
+    "head": "337c8fa8e0111455a6b9ecd7c89e13aac6810756"
+  },
+  {
+    "name": "codex/psych-line-c140",
+    "head": "004e19f5be807e84c8d93e909f8d831b0128ed64"
+  },
+  {
+    "name": "codex/pullback-rsi-short-h1",
+    "head": "c33569c0dd3fbefd44a35e09f9cd46986719ad76"
+  },
+  {
+    "name": "codex/pvi-c145",
+    "head": "5213dfa23fc7a1bcdb28a9cd1b50c77e3a87b0b3"
+  },
+  {
+    "name": "codex/pvo-c146",
+    "head": "7c4919c4b358a5dd5eac045054015843719a3647"
+  },
+  {
+    "name": "codex/pvt-c136",
+    "head": "1537209a00687d91a4d2562a1d3d39f1e9bb93b9"
+  },
+  {
+    "name": "codex/qbank-followup",
+    "head": "525a5894291861230b12a79909581929a2abb75c"
+  },
+  {
+    "name": "codex/raff-channel-c163",
+    "head": "a79aa08a016eb22a89f079e0436547e0901697f8"
+  },
+  {
+    "name": "codex/random-walk-index-c115",
+    "head": "c2d14a4b6cbb98d80c79aaf42783acba2a6db174"
+  },
+  {
+    "name": "codex/range-flatness-187",
+    "head": "62292db725a35267234e0702424d0ab5f7bc06eb"
+  },
+  {
+    "name": "codex/range-overlap-acceptance-c43",
+    "head": "84ebb9fa31494230fd343c72307024be0392cd78"
+  },
+  {
+    "name": "codex/rank-breadth-reversal-4h",
+    "head": "7fb60488ebe94694f300924153b1da3de5a229e5"
+  },
+  {
+    "name": "codex/rank-shift-c95",
+    "head": "ef27484b79236c2738f770e2229c6ef9e679428b"
+  },
+  {
+    "name": "codex/ravi-c137",
+    "head": "bbe5e1a5cb1231c918833220ef953c54f394c3ea"
+  },
+  {
+    "name": "codex/ravi-c170",
+    "head": "66cebb4788691e5bfa934e98c2930c22419b8c63"
+  },
+  {
+    "name": "codex/rbr-causal-contract",
+    "head": "bc316c5ba1169b2204c90068e586e175348cca3c"
+  },
+  {
+    "name": "codex/rbr-causal-runner",
+    "head": "f4d4f3af1f460af4609c6d24689549cfb9d15e33"
+  },
+  {
+    "name": "codex/realized-kurtosis-c51",
+    "head": "f18ba7a3f78f098856273cfa97dc44726908ad72"
+  },
+  {
+    "name": "codex/realized-skew-valuation-1h",
+    "head": "e140b352958c674c72ce8e71a916ac75682414b4"
+  },
+  {
+    "name": "codex/rec02-reconciliation",
+    "head": "47b8dc57cd6a1468f361128f736a94839ed54224"
+  },
+  {
+    "name": "codex/record-intensity-c94",
+    "head": "8535609fdd01b9fad4ca7a05a8749fa66e9263df"
+  },
+  {
+    "name": "codex/regime-adaptive-switch-1h",
+    "head": "d3f5c0402939e71f54456c19216ddf1c77afaae0"
+  },
+  {
+    "name": "codex/regression-trend-c56",
+    "head": "e2611f7d538c302d7d15a0b4e63cdd87a8e72b29"
+  },
+  {
+    "name": "codex/relative-vigor-c98",
+    "head": "ad3dd3a5ef86ab57914af9aa08d655afa113cb80"
+  },
+  {
+    "name": "codex/relative-volatility-c113",
+    "head": "174e4a84fa5e6d26a0708901f9cb9e94932069db"
+  },
+  {
+    "name": "codex/relay-contract-v1",
+    "head": "8066949e60ae506181394e0c66eb64906768e204"
+  },
+  {
+    "name": "codex/return-autocorr-persistence-c40",
+    "head": "8cd7dd22f89c2d7a07bc408758ddc31ffdc2899d"
+  },
+  {
+    "name": "codex/return-concentration-c81",
+    "head": "55dc082f4e447f8a847615dadcd6f55e2f24e974"
+  },
+  {
+    "name": "codex/rip-sell-dca-c28",
+    "head": "7c9abb88422ff1e66801fa41527de7359d5843e6"
+  },
+  {
+    "name": "codex/rising-three-methods-c195",
+    "head": "52c63325b2ef6cfb1a2a11e7ede76516d83e61d7"
+  },
+  {
+    "name": "codex/rmi-c141",
+    "head": "b90607c90d38ab2b364ece4cd8316e9255bd6d97"
+  },
+  {
+    "name": "codex/robust-location-c92",
+    "head": "f9afd5d80a2f19e41e7fe74550e648800b355506"
+  },
+  {
+    "name": "codex/rotation-long-h2",
+    "head": "a0a708fe3b20d4a4df9454424c63dc733e2f81fa"
+  },
+  {
+    "name": "codex/round-number-breakout-c68",
+    "head": "f76c35bab72a6f43e9f1e974650c31ca1d666393"
+  },
+  {
+    "name": "codex/rsi-divergence-c33",
+    "head": "3131aa4b2f97005bc48a9630585b60f684a61907"
+  },
+  {
+    "name": "codex/sample-entropy-c90",
+    "head": "2e0cf27a1c75e4a0bff895801fa886547d2c60d3"
+  },
+  {
+    "name": "codex/schaff-cycle-c108",
+    "head": "63f82b6ff1cbf0035183c6ed42eba6d912d6cec0"
+  },
+  {
+    "name": "codex/scout-delta-contracts",
+    "head": "e60fbcfb266fcff4b93a9b191545edf06ca5148b"
+  },
+  {
+    "name": "codex/se-bands-c162",
+    "head": "f549601ed970891f20084d429d572096a9715bd5"
+  },
+  {
+    "name": "codex/session-inventory-unwind-1h",
+    "head": "809a9d0ddcaf57a0cb8c96d9f59140f761e2bab3"
+  },
+  {
+    "name": "codex/shadow-strategy-correlation-cap",
+    "head": "37b586e627e32ce97e04f0f43f94a97e4361f4cd"
+  },
+  {
+    "name": "codex/shooting-star-c190",
+    "head": "677df7de5df0a221cb05199cc7e5abba459e4be8"
+  },
+  {
+    "name": "codex/sine-wma-c166",
+    "head": "75de31c3dca4d3e5671de2ecdde13d04d955ca28"
+  },
+  {
+    "name": "codex/sma-c156",
+    "head": "cdf03118cac70c8cd41fbf17fd1b5b35afe742c9"
+  },
+  {
+    "name": "codex/smi-c121",
+    "head": "8cf05692cd0761388bf30319e7f7eb43e9cbe84f"
+  },
+  {
+    "name": "codex/smma-c155",
+    "head": "1f6bedfc35f3336d3f53ed2bdce517cacf9db949"
+  },
+  {
+    "name": "codex/spectral-power-c70",
+    "head": "b7644e2f9222347538f4dfc099cc94163b1d5b11"
+  },
+  {
+    "name": "codex/ssl-channel-c173",
+    "head": "554cc4fdbfcb786ba3e46a244e34822d07119dfd"
+  },
+  {
+    "name": "codex/starc-bands-c164",
+    "head": "188d055c263b005cd2c71b49ceabffbd643d33fd"
+  },
+  {
+    "name": "codex/state-persistence-c44",
+    "head": "d4dd1ad36cb5b2cc87065845e39eff95830503a0"
+  },
+  {
+    "name": "codex/stick-sandwich-c207",
+    "head": "c7d474de9ec012721cbfb22c36315a56d867bf7b"
+  },
+  {
+    "name": "codex/stoch-rsi-c142",
+    "head": "9ae59a2cefea826011cff66b500a0e649a5a4ab2"
+  },
+  {
+    "name": "codex/strat00-register",
+    "head": "7c6e2269cfc868563ae5b2bf9b8dd4707cee8b8f"
+  },
+  {
+    "name": "codex/stratpack-causal-contract",
+    "head": "b16ed98edd2c756d5d90b5ab6209f1b92d031adb"
+  },
+  {
+    "name": "codex/stratpack-causal-runner-v2",
+    "head": "0ceb8af72afee895c179403e1e88525adc898874"
+  },
+  {
+    "name": "codex/tema-c152",
+    "head": "7ba196d2f58f783aa9b6e57532e3f834f477820b"
+  },
+  {
+    "name": "codex/three-bar-exhaustion-c34",
+    "head": "3e0867daf6763352a36f3a900fad99eb754d5a07"
+  },
+  {
+    "name": "codex/three-black-crows-c214",
+    "head": "4ba3f37c32981d4e75013f4d4c44a833047b8f63"
+  },
+  {
+    "name": "codex/three-inside-down-c209",
+    "head": "5c9e7679b4d60c63eaa792fcff3b3c210e52b9bb"
+  },
+  {
+    "name": "codex/three-inside-up-c208",
+    "head": "1a282e3708de854bcef2415f6a3fa527ccd31546"
+  },
+  {
+    "name": "codex/three-line-break-c179",
+    "head": "508f7e27b8c4d04b34784f0f9f36cb163e51f3e8"
+  },
+  {
+    "name": "codex/three-outside-down-c211",
+    "head": "27b540aad2ea37afdb8842826d5dc8e34aca08b1"
+  },
+  {
+    "name": "codex/three-outside-up-c210",
+    "head": "fe3bbc555e81c475fab8dba8dfb448a013a18a46"
+  },
+  {
+    "name": "codex/three-stars-south-c227",
+    "head": "a13ca8807b3540f652c8e9207b95366c89e690ca"
+  },
+  {
+    "name": "codex/three-white-soldiers-c180",
+    "head": "1a4d2703934b8036dbf4e56410e54a4b60a70a58"
+  },
+  {
+    "name": "codex/thrusting-line-c220",
+    "head": "c2c80b188d7052a1ee670114eeba4341a2cec0ff"
+  },
+  {
+    "name": "codex/time-irreversibility-c89",
+    "head": "41082fcc967585f76faa69027fc0f840d6adf8c9"
+  },
+  {
+    "name": "codex/tma-c157",
+    "head": "c002927b930e9a94eb70155b3b945b6e4d254554"
+  },
+  {
+    "name": "codex/tnet02-real-adapter",
+    "head": "8e7879676af5b3d39dd1eda36e0df6b28b06f7cf"
+  },
+  {
+    "name": "codex/transient-jump-dislocation-1h",
+    "head": "c18c16bc2c8de5501593b71e2cb3770f1bb3cd9a"
+  },
+  {
+    "name": "codex/trend-intensity-c118",
+    "head": "912a594d7662c18b0c0d2b4eac9cf065f67e0d81"
+  },
+  {
+    "name": "codex/trend-liquidity-pullback-15m",
+    "head": "1058fcd64c8b880ff71b249f0d2a0c83352ca7e1"
+  },
+  {
+    "name": "codex/trimmed-return-c73",
+    "head": "9f2a9c4274651ede544672f2642a44151a30ba3d"
+  },
+  {
+    "name": "codex/trix-c104",
+    "head": "b660e68a39a9c967e15a47f54893ca513072307d"
+  },
+  {
+    "name": "codex/tsi-c126",
+    "head": "57f1d91aa9ec4efc8fc28888fa4aca30a2cba343"
+  },
+  {
+    "name": "codex/turning-point-c75",
+    "head": "2af5330c38b5dec2450f2f0e553a15c5818525a8"
+  },
+  {
+    "name": "codex/tweezer-bottom-c188",
+    "head": "befb7437e841bdda7df939851dff5fee8a88efbe"
+  },
+  {
+    "name": "codex/tweezer-top-c189",
+    "head": "7844cb26e124aa5209f354e7f2952db887fae12b"
+  },
+  {
+    "name": "codex/two-account-isolation-proof",
+    "head": "42837f151f8dc3e674e8595eff9ed1bb71ce79ac"
+  },
+  {
+    "name": "codex/two-crows-c234",
+    "head": "7105a5f4a4431e38427aa5bd2d7df6a51edaf4d3"
+  },
+  {
+    "name": "codex/ulcer-resilience-c83",
+    "head": "9877134ba2b4218ad84265896bdd3d731685a192"
+  },
+  {
+    "name": "codex/ultimate-oscillator-c99",
+    "head": "1abea92b671b198b6b14c97ecf6780bf5ef536c8"
+  },
+  {
+    "name": "codex/unique-three-river-c228",
+    "head": "809c6219c15bc564a3e485b693ac11b76aa15db7"
+  },
+  {
+    "name": "codex/upside-gap-side-by-side-c252",
+    "head": "b487813ee4e1c30a6025d4c751f99737bd9bd6b0"
+  },
+  {
+    "name": "codex/upside-gap-two-crows-c233",
+    "head": "fd3f33aeae948c3f89e3c3fe66c553a59352fd30"
+  },
+  {
+    "name": "codex/upside-tasuki-gap-c250",
+    "head": "60e678a5276f260376a8ddd919038c922c079294"
+  },
+  {
+    "name": "codex/usdc-pair-runner-review-ff4445a",
+    "head": "ff4445a96f659c5d8cc462be778da2b973342db2"
+  },
+  {
+    "name": "codex/v6-unicode-funding-review",
+    "head": "cd8633f225cd4af5494b86e5b6dc8e708b12115e"
+  },
+  {
+    "name": "codex/vhf-c111",
+    "head": "3dce0b73c33cc3c8e36680064c7204e5d121d244"
+  },
+  {
+    "name": "codex/vidya-c149",
+    "head": "cd4cde70d2ef9ea8804bcd18173e029d233cdc74"
+  },
+  {
+    "name": "codex/vol-clustering-c60",
+    "head": "ea2e952c9d846e3c465f1ab7e13da603cfde1daf"
+  },
+  {
+    "name": "codex/vol-retest-15m-stagea",
+    "head": "6201659c293d2af4e19ddcbbc422415461f923c6"
+  },
+  {
+    "name": "codex/vol-stability-c86",
+    "head": "66df753bde99b9ff695001af6a82467dbcc3e04a"
+  },
+  {
+    "name": "codex/volatility-acceleration-c41",
+    "head": "8fa0ee3fbcd3b69526e5c98be9cdfa0072964a84"
+  },
+  {
+    "name": "codex/volume-concentration-c71",
+    "head": "fa324d5a3d87f3bcb90f56eefa04e0ae8f91b037"
+  },
+  {
+    "name": "codex/volume-pressure-inventory-1h",
+    "head": "b4198a9043d52413cb9bfcbbbfd0c814d7c03bd4"
+  },
+  {
+    "name": "codex/volume-return-leadlag-c52",
+    "head": "e4384e3b6d1a4299047a92c56f92de8a86fbe440"
+  },
+  {
+    "name": "codex/vortex-movement-c77",
+    "head": "a611d4f5e12c63af7b8fede59eff20e466e8cd6e"
+  },
+  {
+    "name": "codex/vwap-reclaim-15m-stagea",
+    "head": "2fddd5c0424467961d80528c096a26c7338ad050"
+  },
+  {
+    "name": "codex/vwma-c159",
+    "head": "c17c264d0823e822d4a49485c637bb1ded4b4ade"
+  },
+  {
+    "name": "codex/vzo-c144",
+    "head": "b6bd7f827c785157471ef4f57a7986e457e2aae3"
+  },
+  {
+    "name": "codex/weekend-liquidity-premium-1h",
+    "head": "68c42f22fa953c8dd954d844bcdef62d4f5bdbbd"
+  },
+  {
+    "name": "codex/wick-pressure-c55",
+    "head": "5be3ebe1f2783a0f9c38772491f468caace0e0bc"
+  },
+  {
+    "name": "codex/williams-recovery-c38",
+    "head": "2f8f0162ebe307ecb84a3c192b596c3bf5835df8"
+  },
+  {
+    "name": "codex/wma-c154",
+    "head": "5f041b343706f703ee86181422e61026b1419e45"
+  },
+  {
+    "name": "codex/xaccel-volume-1h",
+    "head": "6c86f0d8a9aa0cc685015e7386ff362a109a4063"
+  },
+  {
+    "name": "codex/zlema-c153",
+    "head": "b9d85411a5db2f49dafa2c863a65884178e58d7c"
+  }
+]

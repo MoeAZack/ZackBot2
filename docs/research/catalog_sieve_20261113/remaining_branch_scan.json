@@ -1,0 +1,3888 @@
+[
+  {
+    "branch": "codex/aggressor-flow-absorption-1h",
+    "head": "725337e449838131fb21e7db130fb142de7a7fd6",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 19,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_aggressor_flow_absorption_candidate.py",
+      "tools/research/run_atr_shock_snapback_candidate.py",
+      "tools/research/run_mark_price_dislocation_candidate.py",
+      "tools/research/run_rank_breadth_reversal_candidate.py",
+      "tools/research/run_realized_skew_valuation_candidate.py",
+      "tools/research/run_session_inventory_unwind_candidate.py",
+      "tools/research/run_transient_jump_dislocation_candidate.py",
+      "tools/research/run_volume_pressure_inventory_candidate.py",
+      "tools/research/run_weekend_liquidity_premium_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "rank_breadth_reversal_4h",
+        "function": "sig_rank_breadth_reversal_4h",
+        "function_sha256": "4d79122a7bf71fe4b66569a93d62146fe04cb3b8907eb6c873627b69e5a43729",
+        "management_config_ast_sha256": "1eef7c6c64f81cd8a77547c1defd905adb7b6d75275024f0d1d8ce6d119a4c89",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "atr_shock_snapback_4h",
+        "function": "sig_atr_shock_snapback_4h",
+        "function_sha256": "256e33bc73f950ac0ceaeb0715d418504ce44a9f56de1593ab6d51b39596f411",
+        "management_config_ast_sha256": "bd01e8fc122462b051a9c869fb3889dcd3ca30bc9d5ecbd119ea6f4b62639f23",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "session_inventory_unwind_1h",
+        "function": "sig_session_inventory_unwind_1h",
+        "function_sha256": "c9ffa03605b5f1a22ea80ea3d3f4863cebaee312673ab2c8f03c4bba4d03f37b",
+        "management_config_ast_sha256": "5bcdfac2a325f983b27d3969a8de556d1f5d8963236d974807028dc9322d3da7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "volume_pressure_inventory_1h",
+        "function": "sig_volume_pressure_inventory_1h",
+        "function_sha256": "c56259b30042719ed4caa08a230e6d547b56e333576aad3de0f75801781e12d0",
+        "management_config_ast_sha256": "5f8953a00c7a2f0f9330adfce195d8c4fe4a706ed58c000cf13dd760febd1ccc",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "realized_skew_valuation_1h",
+        "function": "sig_realized_skew_valuation_1h",
+        "function_sha256": "91291d1c323e1bd822253f1cd294a382bae3426822b29859ed7dad9fc1e63eb4",
+        "management_config_ast_sha256": "e13c67e9dac23a92c24db288bbb88ad955cb4fa38d004fb9937f2145b010663e",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "mark_price_dislocation_1h",
+        "function": "sig_mark_price_dislocation_1h",
+        "function_sha256": "c0d645eba0f3798822e3121fe6438d008afd59c18ddfe430f7165faf56fec96a",
+        "management_config_ast_sha256": "0a47023383ff0421e0bf394d1d57cd322510e9ff04fc64eb8efc0ff732dc18c5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "weekend_liquidity_premium_1h",
+        "function": "sig_weekend_liquidity_premium_1h",
+        "function_sha256": "7791a368a1106511176dec0a0a435ee15fdca6d2ab1debeec8bf2307b5743f37",
+        "management_config_ast_sha256": "50726626d4ae78f95d623d81c3f44de376c6dea6d19480459761aedd59c939a9",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "transient_jump_dislocation_1h",
+        "function": "sig_transient_jump_dislocation_1h",
+        "function_sha256": "81b15dd46fa1ef4ca6560031d1818f3690a2e645cc7926fe4e1f2dcb97a664e5",
+        "management_config_ast_sha256": "b9348bfd8832f24ac303331d367508d6d08f960e48a80c61f29861c1cb9773a5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "aggressor_flow_absorption_1h",
+        "function": "sig_aggressor_flow_absorption_1h",
+        "function_sha256": "4e29b1aea266fdea096253ce2204f6819084d7689c5e49884324d7501c9a34fd",
+        "management_config_ast_sha256": "dd477da6a9043b7990cadd1a48c7ae5de62dece8cafb644ea109ed92d7711062",
+        "tf": "1h",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_aggressor_flow_absorption_candidate.py",
+        "sha256": "aeb5d3799a116deaa105db7cba70b4ba8f7e27fc2bea1cb196b2fe874fabbe79",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_atr_shock_snapback_candidate.py",
+        "sha256": "2dba8fa8f1a5a5952ede18bf95cf900abe513ef23cc304244442338934a0e9b3",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_mark_price_dislocation_candidate.py",
+        "sha256": "e2e09cf4810f7cde99e6fbd31338cd209532734d6f08957a19377492f6dd5b7f",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rank_breadth_reversal_candidate.py",
+        "sha256": "4efc74b26f1c315866b271cb929729a1c4cf0d898802eb660e13f0582eb00cb5",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_realized_skew_valuation_candidate.py",
+        "sha256": "305e13af787610f9a899c8981a24e370f1631b00783acf8f185c521df1300440",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_session_inventory_unwind_candidate.py",
+        "sha256": "5d39defdc80d6393b2395b2e8d019cacf755aa6dc896cc0e3522da97892bb8c9",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_transient_jump_dislocation_candidate.py",
+        "sha256": "4ed8f470b5ad8cf606bd1063608159d6d668d1fdfaa230e5f5424e5f2e77ed6a",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_volume_pressure_inventory_candidate.py",
+        "sha256": "2ab08c97580a0baf51edd8065f76b8dd20a2c3170d702751b48ea2bec7028bd4",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_weekend_liquidity_premium_candidate.py",
+        "sha256": "f5dd5f6fd37ace0117ec75d3bbaae00dffc602cfd85d8696181b6cca0131d7bb",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/analog-stress-contract",
+    "head": "0925850742bdc707ec5bfca12a0a04079170128a",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 1,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/atr-shock-snapback-4h",
+    "head": "b517edc68d7a9d2069d4d7cb99be175038ff8651",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 5,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_atr_shock_snapback_candidate.py",
+      "tools/research/run_rank_breadth_reversal_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "rank_breadth_reversal_4h",
+        "function": "sig_rank_breadth_reversal_4h",
+        "function_sha256": "4d79122a7bf71fe4b66569a93d62146fe04cb3b8907eb6c873627b69e5a43729",
+        "management_config_ast_sha256": "1eef7c6c64f81cd8a77547c1defd905adb7b6d75275024f0d1d8ce6d119a4c89",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "atr_shock_snapback_4h",
+        "function": "sig_atr_shock_snapback_4h",
+        "function_sha256": "256e33bc73f950ac0ceaeb0715d418504ce44a9f56de1593ab6d51b39596f411",
+        "management_config_ast_sha256": "bd01e8fc122462b051a9c869fb3889dcd3ca30bc9d5ecbd119ea6f4b62639f23",
+        "tf": "4h",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_atr_shock_snapback_candidate.py",
+        "sha256": "2dba8fa8f1a5a5952ede18bf95cf900abe513ef23cc304244442338934a0e9b3",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rank_breadth_reversal_candidate.py",
+        "sha256": "4efc74b26f1c315866b271cb929729a1c4cf0d898802eb660e13f0582eb00cb5",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/atr-v4-assembly-identity-fix",
+    "head": "ced177c6a1a4f3e2bcfcfa5d0eaf2c4f638eb2b0",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "64adf3a41d7a521d2af480adc7b2f23a8fa6a0c3",
+    "changed_python_count": 2,
+    "changed_research_python": [
+      "tools/research/causal_v4_execution_adapter.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/authority-v6-acquisition-impl",
+    "head": "86d094fa5ec9c34da5256a7559744e1485b34e31",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "a02c33f3cc343ee2af09bffcf35adb5a26fc0fd8",
+    "changed_python_count": 2,
+    "changed_research_python": [
+      "tools/research/authority_v6.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/authority-v6-metadata-contract",
+    "head": "8f63b5e8affd2d23a8c69d6d0185c502951aff78",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "6754a336652496952aaab82e42fbe9bd6171430a",
+    "changed_python_count": 1,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/authority-v6-runner-prep",
+    "head": "e2bc5796914b48b3bdf8d98699568550d0931ee3",
+    "status": "RESEARCH_CODE_MANUAL_CLASSIFICATION",
+    "merge_base": "d08862c81176fe5a54be8237c58d6882628f4cb8",
+    "changed_python_count": 2,
+    "changed_research_python": [
+      "tools/research/authority_v6_runner.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [
+      {
+        "path": "tools/research/authority_v6_runner.py",
+        "sha256": "3138664af602468f2bd223602747cb31e1278d03f70ff90a84a256e38814a44e",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "candidate-like research code requires identity and purpose review"
+  },
+  {
+    "branch": "codex/authority-v6-unicode-checksum",
+    "head": "cb7759265e09ff932cf294c988826ef6ee33ee1c",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "36f6becfe0eaa0ac8804c39219e3b4761ab0d9f7",
+    "changed_python_count": 2,
+    "changed_research_python": [
+      "tools/research/authority_v6.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/base-clean-gate",
+    "head": "bab155a5510990cfd363bfacf3e8a90649c760af",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "b30914c0a97a05828ccdb664f0ac003ce45f843c",
+    "changed_python_count": 4,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/bpyr-eval-auth-02",
+    "head": "771feb9f81308dff2349531de84f43daa2507524",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "dbadeaca46b2d1a18985192615f82786281976dc",
+    "changed_python_count": 1,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/btc-orderflow-leadlag-1h",
+    "head": "a9f60164429aa591e36d4f7a600fea837226e3c1",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 21,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_aggressor_flow_absorption_candidate.py",
+      "tools/research/run_atr_shock_snapback_candidate.py",
+      "tools/research/run_btc_orderflow_leadlag_candidate.py",
+      "tools/research/run_mark_price_dislocation_candidate.py",
+      "tools/research/run_rank_breadth_reversal_candidate.py",
+      "tools/research/run_realized_skew_valuation_candidate.py",
+      "tools/research/run_session_inventory_unwind_candidate.py",
+      "tools/research/run_transient_jump_dislocation_candidate.py",
+      "tools/research/run_volume_pressure_inventory_candidate.py",
+      "tools/research/run_weekend_liquidity_premium_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "rank_breadth_reversal_4h",
+        "function": "sig_rank_breadth_reversal_4h",
+        "function_sha256": "4d79122a7bf71fe4b66569a93d62146fe04cb3b8907eb6c873627b69e5a43729",
+        "management_config_ast_sha256": "1eef7c6c64f81cd8a77547c1defd905adb7b6d75275024f0d1d8ce6d119a4c89",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "atr_shock_snapback_4h",
+        "function": "sig_atr_shock_snapback_4h",
+        "function_sha256": "256e33bc73f950ac0ceaeb0715d418504ce44a9f56de1593ab6d51b39596f411",
+        "management_config_ast_sha256": "bd01e8fc122462b051a9c869fb3889dcd3ca30bc9d5ecbd119ea6f4b62639f23",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "session_inventory_unwind_1h",
+        "function": "sig_session_inventory_unwind_1h",
+        "function_sha256": "c9ffa03605b5f1a22ea80ea3d3f4863cebaee312673ab2c8f03c4bba4d03f37b",
+        "management_config_ast_sha256": "5bcdfac2a325f983b27d3969a8de556d1f5d8963236d974807028dc9322d3da7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "volume_pressure_inventory_1h",
+        "function": "sig_volume_pressure_inventory_1h",
+        "function_sha256": "c56259b30042719ed4caa08a230e6d547b56e333576aad3de0f75801781e12d0",
+        "management_config_ast_sha256": "5f8953a00c7a2f0f9330adfce195d8c4fe4a706ed58c000cf13dd760febd1ccc",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "realized_skew_valuation_1h",
+        "function": "sig_realized_skew_valuation_1h",
+        "function_sha256": "91291d1c323e1bd822253f1cd294a382bae3426822b29859ed7dad9fc1e63eb4",
+        "management_config_ast_sha256": "e13c67e9dac23a92c24db288bbb88ad955cb4fa38d004fb9937f2145b010663e",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "mark_price_dislocation_1h",
+        "function": "sig_mark_price_dislocation_1h",
+        "function_sha256": "c0d645eba0f3798822e3121fe6438d008afd59c18ddfe430f7165faf56fec96a",
+        "management_config_ast_sha256": "0a47023383ff0421e0bf394d1d57cd322510e9ff04fc64eb8efc0ff732dc18c5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "weekend_liquidity_premium_1h",
+        "function": "sig_weekend_liquidity_premium_1h",
+        "function_sha256": "7791a368a1106511176dec0a0a435ee15fdca6d2ab1debeec8bf2307b5743f37",
+        "management_config_ast_sha256": "50726626d4ae78f95d623d81c3f44de376c6dea6d19480459761aedd59c939a9",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "transient_jump_dislocation_1h",
+        "function": "sig_transient_jump_dislocation_1h",
+        "function_sha256": "81b15dd46fa1ef4ca6560031d1818f3690a2e645cc7926fe4e1f2dcb97a664e5",
+        "management_config_ast_sha256": "b9348bfd8832f24ac303331d367508d6d08f960e48a80c61f29861c1cb9773a5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "aggressor_flow_absorption_1h",
+        "function": "sig_aggressor_flow_absorption_1h",
+        "function_sha256": "4e29b1aea266fdea096253ce2204f6819084d7689c5e49884324d7501c9a34fd",
+        "management_config_ast_sha256": "dd477da6a9043b7990cadd1a48c7ae5de62dece8cafb644ea109ed92d7711062",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "btc_orderflow_leadlag_1h",
+        "function": "sig_btc_orderflow_leadlag_1h",
+        "function_sha256": "aa31508cc64019507c8cd7e887c4225758307a7975062058100d5320c2a46096",
+        "management_config_ast_sha256": "f176877d50a1c24f1a54ef8e2c69be04f25029fcd9670529ca28f1e87cb8a2c7",
+        "tf": "1h",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_aggressor_flow_absorption_candidate.py",
+        "sha256": "aeb5d3799a116deaa105db7cba70b4ba8f7e27fc2bea1cb196b2fe874fabbe79",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_atr_shock_snapback_candidate.py",
+        "sha256": "2dba8fa8f1a5a5952ede18bf95cf900abe513ef23cc304244442338934a0e9b3",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_btc_orderflow_leadlag_candidate.py",
+        "sha256": "d7075c6a4d041293c102e2d73da3874c1ff25c525edf9fa62bc49d53f80ce484",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_mark_price_dislocation_candidate.py",
+        "sha256": "e2e09cf4810f7cde99e6fbd31338cd209532734d6f08957a19377492f6dd5b7f",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rank_breadth_reversal_candidate.py",
+        "sha256": "4efc74b26f1c315866b271cb929729a1c4cf0d898802eb660e13f0582eb00cb5",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_realized_skew_valuation_candidate.py",
+        "sha256": "305e13af787610f9a899c8981a24e370f1631b00783acf8f185c521df1300440",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_session_inventory_unwind_candidate.py",
+        "sha256": "5d39defdc80d6393b2395b2e8d019cacf755aa6dc896cc0e3522da97892bb8c9",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_transient_jump_dislocation_candidate.py",
+        "sha256": "4ed8f470b5ad8cf606bd1063608159d6d668d1fdfaa230e5f5424e5f2e77ed6a",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_volume_pressure_inventory_candidate.py",
+        "sha256": "2ab08c97580a0baf51edd8065f76b8dd20a2c3170d702751b48ea2bec7028bd4",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_weekend_liquidity_premium_candidate.py",
+        "sha256": "f5dd5f6fd37ace0117ec75d3bbaae00dffc602cfd85d8696181b6cca0131d7bb",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/c1h-six-hourly-20261112",
+    "head": "0547b96f49788d49d562f1c599b96d6ab2e536f8",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "7b5beecb3a964d4ce36aa7187a734093ffe6818a",
+    "changed_python_count": 69,
+    "changed_research_python": [
+      "docs/research/codex_rbr_review_20261112/signal_check.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/c24-c41-wf-validation",
+    "head": "9e33263ef4e8e2f3dcb2b50b5a1664a229a01808",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "236583380faa5187a1df4e56d598e1eda3d89424",
+    "changed_python_count": 70,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/evaluate_c24_c41_wf.py",
+      "tools/research/run_aggressor_flow_absorption_candidate.py",
+      "tools/research/run_atr_shock_snapback_candidate.py",
+      "tools/research/run_btc_orderflow_leadlag_candidate.py",
+      "tools/research/run_daily_range_participation_c30.py",
+      "tools/research/run_directional_sign_entropy_c42.py",
+      "tools/research/run_ema_mom_long_h4_candidate.py",
+      "tools/research/run_ema_spread_expansion_c39.py",
+      "tools/research/run_ema_st_short_c29_candidate.py",
+      "tools/research/run_exp_mom_short_c27_candidate.py",
+      "tools/research/run_exp_trend_long_h3_candidate.py",
+      "tools/research/run_illiquidity_impact_reversion_c31.py",
+      "tools/research/run_inside_bar_breakout_c32.py",
+      "tools/research/run_keltner_lower_reclaim_c37.py",
+      "tools/research/run_large_trade_impulse_candidate.py",
+      "tools/research/run_mark_price_dislocation_candidate.py",
+      "tools/research/run_mfi_oversold_recovery_c36.py",
+      "tools/research/run_obv_lead_breakout_c35.py",
+      "tools/research/run_pullback_rsi_short_h1_candidate.py",
+      "tools/research/run_range_overlap_acceptance_c43.py",
+      "tools/research/run_rank_breadth_reversal_candidate.py",
+      "tools/research/run_realized_skew_valuation_candidate.py",
+      "tools/research/run_return_autocorr_persistence_c40.py",
+      "tools/research/run_rip_sell_dca_c28_candidate.py",
+      "tools/research/run_rotation_long_h2_candidate.py",
+      "tools/research/run_rsi_lower_low_divergence_c33.py",
+      "tools/research/run_session_inventory_unwind_candidate.py",
+      "tools/research/run_state_persistence_c44.py",
+      "tools/research/run_three_bar_exhaustion_reversal_c34.py",
+      "tools/research/run_transient_jump_dislocation_candidate.py",
+      "tools/research/run_volatility_acceleration_c41.py",
+      "tools/research/run_volume_pressure_inventory_candidate.py",
+      "tools/research/run_weekend_liquidity_premium_candidate.py",
+      "tools/research/run_williams_r_recovery_c38.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "rank_breadth_reversal_4h",
+        "function": "sig_rank_breadth_reversal_4h",
+        "function_sha256": "4d79122a7bf71fe4b66569a93d62146fe04cb3b8907eb6c873627b69e5a43729",
+        "management_config_ast_sha256": "1eef7c6c64f81cd8a77547c1defd905adb7b6d75275024f0d1d8ce6d119a4c89",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "atr_shock_snapback_4h",
+        "function": "sig_atr_shock_snapback_4h",
+        "function_sha256": "256e33bc73f950ac0ceaeb0715d418504ce44a9f56de1593ab6d51b39596f411",
+        "management_config_ast_sha256": "bd01e8fc122462b051a9c869fb3889dcd3ca30bc9d5ecbd119ea6f4b62639f23",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "session_inventory_unwind_1h",
+        "function": "sig_session_inventory_unwind_1h",
+        "function_sha256": "c9ffa03605b5f1a22ea80ea3d3f4863cebaee312673ab2c8f03c4bba4d03f37b",
+        "management_config_ast_sha256": "5bcdfac2a325f983b27d3969a8de556d1f5d8963236d974807028dc9322d3da7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "volume_pressure_inventory_1h",
+        "function": "sig_volume_pressure_inventory_1h",
+        "function_sha256": "c56259b30042719ed4caa08a230e6d547b56e333576aad3de0f75801781e12d0",
+        "management_config_ast_sha256": "5f8953a00c7a2f0f9330adfce195d8c4fe4a706ed58c000cf13dd760febd1ccc",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "realized_skew_valuation_1h",
+        "function": "sig_realized_skew_valuation_1h",
+        "function_sha256": "91291d1c323e1bd822253f1cd294a382bae3426822b29859ed7dad9fc1e63eb4",
+        "management_config_ast_sha256": "e13c67e9dac23a92c24db288bbb88ad955cb4fa38d004fb9937f2145b010663e",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "mark_price_dislocation_1h",
+        "function": "sig_mark_price_dislocation_1h",
+        "function_sha256": "c0d645eba0f3798822e3121fe6438d008afd59c18ddfe430f7165faf56fec96a",
+        "management_config_ast_sha256": "0a47023383ff0421e0bf394d1d57cd322510e9ff04fc64eb8efc0ff732dc18c5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "weekend_liquidity_premium_1h",
+        "function": "sig_weekend_liquidity_premium_1h",
+        "function_sha256": "7791a368a1106511176dec0a0a435ee15fdca6d2ab1debeec8bf2307b5743f37",
+        "management_config_ast_sha256": "50726626d4ae78f95d623d81c3f44de376c6dea6d19480459761aedd59c939a9",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "transient_jump_dislocation_1h",
+        "function": "sig_transient_jump_dislocation_1h",
+        "function_sha256": "81b15dd46fa1ef4ca6560031d1818f3690a2e645cc7926fe4e1f2dcb97a664e5",
+        "management_config_ast_sha256": "b9348bfd8832f24ac303331d367508d6d08f960e48a80c61f29861c1cb9773a5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "aggressor_flow_absorption_1h",
+        "function": "sig_aggressor_flow_absorption_1h",
+        "function_sha256": "4e29b1aea266fdea096253ce2204f6819084d7689c5e49884324d7501c9a34fd",
+        "management_config_ast_sha256": "dd477da6a9043b7990cadd1a48c7ae5de62dece8cafb644ea109ed92d7711062",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "btc_orderflow_leadlag_1h",
+        "function": "sig_btc_orderflow_leadlag_1h",
+        "function_sha256": "aa31508cc64019507c8cd7e887c4225758307a7975062058100d5320c2a46096",
+        "management_config_ast_sha256": "f176877d50a1c24f1a54ef8e2c69be04f25029fcd9670529ca28f1e87cb8a2c7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "large_trade_impulse_1h",
+        "function": "sig_large_trade_impulse_1h",
+        "function_sha256": "257045c2091b312fd8eb0ce3ec83b5b3f5f9e3c71fdb59f7f63b3d137abf3db5",
+        "management_config_ast_sha256": "23067f04991028cccd2c06d31792180c374121cf2c17cb52332cf25ecc2ccf56",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "pullback_rsi_short_h1",
+        "function": "sig_trend_pullback_rsi",
+        "function_sha256": "2675842369fe438098c85aa3f942ae266f1d8ed435bbe2fc6c43744f46c5a5c4",
+        "management_config_ast_sha256": "4d869b62b3bf87f51bec5bd764c389bc83a7dfe0a078f19ceb432e9f3998a256",
+        "tf": "4h",
+        "sides": "short"
+      },
+      {
+        "id": "rotation_long_h2",
+        "function": "sig_rotation",
+        "function_sha256": "fee3be3c898bcd08b5eaa95aca9709447af09dc078f4048628f318aa32ff8677",
+        "management_config_ast_sha256": "03f36305813e88944bfab0946caeba76ab07ac6488fd597a1ace7f6c417cc9d9",
+        "tf": "4h",
+        "sides": "long"
+      },
+      {
+        "id": "exp_trend_long_h3",
+        "function": "sig_exp_trend",
+        "function_sha256": "251eb8c17e9373dd562eabb61dc347d12d65abcd2f0e6cd0805846fbe7115f80",
+        "management_config_ast_sha256": "45e98307900aabeb33f2d15a8b2d57954bf2334a410cd32e24450e38fe40eb66",
+        "tf": "4h",
+        "sides": "long"
+      },
+      {
+        "id": "ema_mom_long_h4",
+        "function": "sig_ema_mom",
+        "function_sha256": "377f0c5f1cb09cbd3c1267d6cbc334a8a2c490aeaa7a420e90b09ef09f1352a9",
+        "management_config_ast_sha256": "010ea8956c46b37b1a843fea77c42211c280c1ff5523db2ee92c9446d8c59765",
+        "tf": "4h",
+        "sides": "long"
+      },
+      {
+        "id": "exp_mom_short_c27",
+        "function": "sig_exp_mom_short",
+        "function_sha256": "68bf97a9621729dfce4788d6335066934bf1f4879667cd81819193e76e615b11",
+        "management_config_ast_sha256": "dd389ec19c2645b0dd1f098f149485faeae4bccf3ff87dc3d19ae0686d341e96",
+        "tf": "4h",
+        "sides": "short"
+      },
+      {
+        "id": "rip_sell_dca_c28",
+        "function": "sig_exp_rip_sell_dca",
+        "function_sha256": "38488ba1aa23229ab56f59bf650d98c696b8480ae0bb88c815def50f69c336ae",
+        "management_config_ast_sha256": "b64555569cd6675b961bdcda52939ba1f943c9b8c568e1533b01d3354e6a23f6",
+        "tf": "4h",
+        "sides": "short"
+      },
+      {
+        "id": "ema_st_short_c29",
+        "function": "sig_ema_st",
+        "function_sha256": "c4ba30f854b86656208ee3f7dcac9f0f74e9edc3070c98deb340369d4c6c194f",
+        "management_config_ast_sha256": "2702314884b84c54711d6e2ad007cb3f5f206cb1c10cd5539724d6fd9ab15010",
+        "tf": "4h",
+        "sides": "short"
+      },
+      {
+        "id": "daily_range_participation_long_1h",
+        "function": "sig_daily_range_participation_long_1h",
+        "function_sha256": "ded46cadf141efc3e8e178bef0c0756372e3578a591d0e0258db74c103deecbe",
+        "management_config_ast_sha256": "bb9d05c94d371cffdc24c722cbd89ec68c023b22cfc745e69dbdf77deea47fc3",
+        "tf": "1h",
+        "sides": "long"
+      },
+      {
+        "id": "illiquidity_impact_reversion_long_1h",
+        "function": "sig_illiquidity_impact_reversion_long_1h",
+        "function_sha256": "6e49109a244bda53427dc97f50c2e6ccc4ec88595dd8fc414949213fb930b6db",
+        "management_config_ast_sha256": "4da711e4eb882cee4ccf5c339093e2d35e21aa00ab45cbf40f04f9d36b342e48",
+        "tf": "1h",
+        "sides": "long"
+      },
+      {
+        "id": "inside_bar_breakout_long_1h",
+        "function": "sig_inside_bar_breakout_long_1h",
+        "function_sha256": "d0ca15e20c549960764897cb0f3edf20b8f234efc6a57adfa9643ed046445a84",
+        "management_config_ast_sha256": "632b83944ab3a81c03e66e3ac2895d8b9f1882b16bd6109a136bdb9a4d9e80eb",
+        "tf": "1h",
+        "sides": "long"
+      },
+      {
+        "id": "rsi_lower_low_divergence_long_1h",
+        "function": "sig_rsi_lower_low_divergence_long_1h",
+        "function_sha256": "abdc271ba4f3b8b043bd8edf809dd6c8f8ef302469b0c3989e4fa9d07b631f15",
+        "management_config_ast_sha256": "fefec99f4fd57e7d16a58201a98dd0033c9f7c6311eb74ed47268cd3ee1f8a8c",
+        "tf": "1h",
+        "sides": "long"
+      },
+      {
+        "id": "three_bar_exhaustion_reversal_long_1h",
+        "function": "sig_three_bar_exhaustion_reversal_long_1h",
+        "function_sha256": "d8c9808a3ce34c74a21224f5fc26ce53ab5d7288e830329fddf9c6efde64a43b",
+        "management_config_ast_sha256": "8be802ab4e81aa6c41bce135291fc1914916d348f0a386c46970c7964c1b8c7c",
+        "tf": "1h",
+        "sides": "long"
+      },
+      {
+        "id": "obv_lead_breakout_long_1h",
+        "function": "sig_obv_lead_breakout_long_1h",
+        "function_sha256": "39e2823abdb4c0b6bb4bb264d671c5d1d5d638ce2e08440da30541cba8e279df",
+        "management_config_ast_sha256": "cca38424dda56e31a385478ac467f4218991958aa9d0e05b79946108cc4a987c",
+        "tf": "1h",
+        "sides": "long"
+      },
+      {
+        "id": "mfi_oversold_recovery_long_1h",
+        "function": "sig_mfi_oversold_recovery_long_1h",
+        "function_sha256": "5940e92da242b8db492d18817c721ca1178e44b3228a6c3f0e62537cc402663c",
+        "management_config_ast_sha256": "829559745632fd7db43662b049d335f6035466ae0df7d1d40de74fe2b4428e91",
+        "tf": "1h",
+        "sides": "long"
+      },
+      {
+        "id": "keltner_lower_reclaim_long_1h",
+        "function": "sig_keltner_lower_reclaim_long_1h",
+        "function_sha256": "7762fd4ae2953fc71ec2682ee4ada463b47aaca328b1555a06e39416c600814c",
+        "management_config_ast_sha256": "2d4897cb9711b735860103778eafd0760ae70796857d27c8c6fbf3052144a80a",
+        "tf": "1h",
+        "sides": "long"
+      },
+      {
+        "id": "williams_r_recovery_long_1h",
+        "function": "sig_williams_r_recovery_long_1h",
+        "function_sha256": "a69dc9b1d1a3191b7c950ce4dfd51acc1e53c401bfa36788942cdf6b1ea12206",
+        "management_config_ast_sha256": "38de8ba74010eaae701392d5c56e467dc770f3ecf14cedddc500d5669d0eb3b6",
+        "tf": "1h",
+        "sides": "long"
+      },
+      {
+        "id": "ema_spread_expansion_long_1h",
+        "function": "sig_ema_spread_expansion_long_1h",
+        "function_sha256": "75ab185b8b62780d89fccacc53a0702d9d0f24b9a9393b0e5ab1dd6f5e3f4a48",
+        "management_config_ast_sha256": "6e5d02af5a778b34f6eab9557db2b0bafefe67c96c89be256106abe2678c24e5",
+        "tf": "1h",
+        "sides": "long"
+      },
+      {
+        "id": "return_autocorr_persistence_long_1h",
+        "function": "sig_return_autocorr_persistence_long_1h",
+        "function_sha256": "cf733223fc005dad248541e3badfa22cca79146fab13288e52905b110466602a",
+        "management_config_ast_sha256": "0295216f600e373c7a63236de03c86464a96c79e16d0437745a3aa86811e3168",
+        "tf": "1h",
+        "sides": "long"
+      },
+      {
+        "id": "volatility_acceleration_long_1h",
+        "function": "sig_volatility_acceleration_long_1h",
+        "function_sha256": "1a225ab8bac7e40d1adbcb49cbfb763e17921a9c165744155183e43905b102f5",
+        "management_config_ast_sha256": "26c448656c729e96ab13066a0f4702d263296152e8d6a8ffed80130e0402ce43",
+        "tf": "1h",
+        "sides": "long"
+      },
+      {
+        "id": "directional_sign_entropy_long_1h",
+        "function": "sig_directional_sign_entropy_long_1h",
+        "function_sha256": "eadb782adffa6b6815d8102d27efaf11e2d43ca8af073653ab63050c123df14d",
+        "management_config_ast_sha256": "c2c76ae981adabdda177f71be94e7d52d5c2b1ecc66b2d44bd7a56cdd67085f4",
+        "tf": "1h",
+        "sides": "long"
+      },
+      {
+        "id": "range_overlap_acceptance_long_1h",
+        "function": "sig_range_overlap_acceptance_long_1h",
+        "function_sha256": "a9715c71ad986858ec17108fea48437740f814fee949ce061027a953b7a2602c",
+        "management_config_ast_sha256": "7ac3d26cedc8ac4b1cde60a76146b043b55add48945cae6e010758cc58107db6",
+        "tf": "1h",
+        "sides": "long"
+      },
+      {
+        "id": "state_persistence_long_1h",
+        "function": "sig_state_persistence_long_1h",
+        "function_sha256": "4e4848cf55d5140395fbd8743713f6b7b0d42ff5a4c3078f5e39ab6d47aba9ad",
+        "management_config_ast_sha256": "9096dede4be8cac7ac6520278565fc4e4f7bab05a8c6d2e63f7c20ed0620c22f",
+        "tf": "1h",
+        "sides": "long"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_aggressor_flow_absorption_candidate.py",
+        "sha256": "aeb5d3799a116deaa105db7cba70b4ba8f7e27fc2bea1cb196b2fe874fabbe79",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_atr_shock_snapback_candidate.py",
+        "sha256": "2dba8fa8f1a5a5952ede18bf95cf900abe513ef23cc304244442338934a0e9b3",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_btc_orderflow_leadlag_candidate.py",
+        "sha256": "d7075c6a4d041293c102e2d73da3874c1ff25c525edf9fa62bc49d53f80ce484",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_daily_range_participation_c30.py",
+        "sha256": "85e2c39b6969d3e502df11c65470c5425f927ddcc7f7ac6c6376dc605534168b",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_directional_sign_entropy_c42.py",
+        "sha256": "b905d0df7e2bb224af30b1e96e882c5a708765ad8984e1962e701531bdcc556a",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_ema_mom_long_h4_candidate.py",
+        "sha256": "c8ba075d03295625c22c61b9ef43a527e1dbc0159df519f8fe5e43a88dfac656",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_ema_spread_expansion_c39.py",
+        "sha256": "257649df1f49ac662ea0de78788b8d6a44cd453c58cbeca04887fa936c100875",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_ema_st_short_c29_candidate.py",
+        "sha256": "2aa41d7d450056b8da0ff1f942b9b2656ab650dd2f20d4ae5625ba91ff8a89a3",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_exp_mom_short_c27_candidate.py",
+        "sha256": "52bd9697634a3269fc04e103214ca89d4ee983423c59fb6d1b49b5eed061b5c8",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_exp_trend_long_h3_candidate.py",
+        "sha256": "ae544bd242e53dc605de839564b31d05ad47e1e4d4485b542912497ab22faa5e",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_illiquidity_impact_reversion_c31.py",
+        "sha256": "8bce771df3b1e82e7a1e3c1ab1b78cdf98cc4e21c174e90af98609408885c726",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_inside_bar_breakout_c32.py",
+        "sha256": "cc39cc160452b8b3161ba8d8d1aa12c4872677bd420352e1d3e444d34fa971e2",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_keltner_lower_reclaim_c37.py",
+        "sha256": "612baa31ceaec5fdf44b25e04199e20c5e615859c1a4ac748edcfed6a494f2a0",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_large_trade_impulse_candidate.py",
+        "sha256": "20e099d4ccc18d27be382098831a39b12f101d9f71480f3628b7a4861dfed879",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_mark_price_dislocation_candidate.py",
+        "sha256": "e2e09cf4810f7cde99e6fbd31338cd209532734d6f08957a19377492f6dd5b7f",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_mfi_oversold_recovery_c36.py",
+        "sha256": "de770169dd68ef6cda93add98324c20a6ab2f3ac91283e37298ab3400fbb6655",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_obv_lead_breakout_c35.py",
+        "sha256": "79d42b6c6fa97d851234cfc7d82345a0552be2ea3eebdfa3f84afd945f209129",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_pullback_rsi_short_h1_candidate.py",
+        "sha256": "0e07f4a8d0bc8d05b33b61125c17e5b9b5467c831cc2ea4ed5f913c8fcebc3be",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_range_overlap_acceptance_c43.py",
+        "sha256": "836a486ff8e58003604b30d4af936720f0dda5ea80058dac949301af8cabd916",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rank_breadth_reversal_candidate.py",
+        "sha256": "4efc74b26f1c315866b271cb929729a1c4cf0d898802eb660e13f0582eb00cb5",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_realized_skew_valuation_candidate.py",
+        "sha256": "305e13af787610f9a899c8981a24e370f1631b00783acf8f185c521df1300440",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_return_autocorr_persistence_c40.py",
+        "sha256": "920ef9a2632a5e08a9dc7b24b626c08fe164b4cb907a236d32e50d22b0f67eb9",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rip_sell_dca_c28_candidate.py",
+        "sha256": "22e51e34bd7db164ddb402f757d1878193dfa7f56ff893a790635c228c8f6de5",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rotation_long_h2_candidate.py",
+        "sha256": "5529e186ecfac0caaf1c588502cd2140266b43c40aec1b9fa8c91d32d3b3b6c2",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rsi_lower_low_divergence_c33.py",
+        "sha256": "8bcc66b0ddd2b03fcc5cb8717e174c9e7845e5f1280c62afe67d18264eeb9a10",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_session_inventory_unwind_candidate.py",
+        "sha256": "5d39defdc80d6393b2395b2e8d019cacf755aa6dc896cc0e3522da97892bb8c9",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_state_persistence_c44.py",
+        "sha256": "62d34743e634bce3f99fbc9ca25ca24e854dab52ce7be5206f75441803988428",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_three_bar_exhaustion_reversal_c34.py",
+        "sha256": "8c017ddf857143135e8b626d039378622c1e1c6fdad30e7402ae0cc688cd0313",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_transient_jump_dislocation_candidate.py",
+        "sha256": "4ed8f470b5ad8cf606bd1063608159d6d668d1fdfaa230e5f5424e5f2e77ed6a",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_volatility_acceleration_c41.py",
+        "sha256": "ff0fe51fb6d94fc61feddc6ce9903d5c0ec7f1e3fbb90312a62fafb30ffea1a7",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_volume_pressure_inventory_candidate.py",
+        "sha256": "2ab08c97580a0baf51edd8065f76b8dd20a2c3170d702751b48ea2bec7028bd4",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_weekend_liquidity_premium_candidate.py",
+        "sha256": "f5dd5f6fd37ace0117ec75d3bbaae00dffc602cfd85d8696181b6cca0131d7bb",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_williams_r_recovery_c38.py",
+        "sha256": "2f16142cf2af1d759d04a84e7514fb0365d5ff6b6f02c329846a5f184e269e70",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/c257-c259-contracts-integration",
+    "head": "f5b955bd39bbb9556fd4ed04d69bbdce71e6d858",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "298267f2bb8a50def7cd4cdd4a24a722f93484b6",
+    "changed_python_count": 5,
+    "changed_research_python": [
+      "tools/research/c257_successor_guard.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/c257-c259-evaluators-integration",
+    "head": "d1cbd00afea92dbcec998c8b2d43e825cfbc2f26",
+    "status": "RESEARCH_CODE_MANUAL_CLASSIFICATION",
+    "merge_base": "298267f2bb8a50def7cd4cdd4a24a722f93484b6",
+    "changed_python_count": 32,
+    "changed_research_python": [
+      "tools/research/btc_residual_leadlag_continuation_c259_stagea.py",
+      "tools/research/c257_archive_loader.py",
+      "tools/research/c257_reporting.py",
+      "tools/research/c257_successor_guard.py",
+      "tools/research/c258_archive_source.py",
+      "tools/research/c258_executable.py",
+      "tools/research/c258_production_authority.py",
+      "tools/research/c259_reporting.py",
+      "tools/research/c259_runner.py",
+      "tools/research/cross_sectional_relative_strength_continuation_c258_stagea.py",
+      "tools/research/funding_shock_reversal_xsec_c257_evaluator.py",
+      "tools/research/funding_shock_reversal_xsec_c257_protected_adapter.py",
+      "tools/research/funding_shock_reversal_xsec_c257_stagea.py",
+      "tools/research/run_btc_residual_leadlag_continuation_c259_stagea.py",
+      "tools/research/run_cross_sectional_relative_strength_continuation_c258_stagea.py",
+      "tools/research/run_funding_shock_reversal_xsec_c257_protected.py",
+      "tools/research/run_funding_shock_reversal_xsec_c257_stagea.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [
+      {
+        "path": "tools/research/btc_residual_leadlag_continuation_c259_stagea.py",
+        "sha256": "77a9c3bbe58917f206f1a21796c459ecf207f41cb9f9328a1cf9f2b451166df4",
+        "functions": [
+          "fit_signal",
+          "select_candidates"
+        ]
+      }
+    ],
+    "reason": "candidate-like research code requires identity and purpose review"
+  },
+  {
+    "branch": "codex/c257-c259-hourly-source-review",
+    "head": "fd70eed2e02a2723c4724b63109fee8afb650620",
+    "status": "RESEARCH_CODE_MANUAL_CLASSIFICATION",
+    "merge_base": "d8856da0b0b5e334d45e1aa3c39f87721f36a87a",
+    "changed_python_count": 13,
+    "changed_research_python": [
+      "tools/research/btc_residual_leadlag_continuation_c259_stagea.py",
+      "tools/research/c257_archive_loader.py",
+      "tools/research/c258_archive_source.py",
+      "tools/research/c258_production_authority.py",
+      "tools/research/c259_runner.py",
+      "tools/research/funding_shock_reversal_xsec_c257_protected_adapter.py",
+      "tools/research/logical_trade_hours.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [
+      {
+        "path": "tools/research/btc_residual_leadlag_continuation_c259_stagea.py",
+        "sha256": "c713fd2b0f4311060d0f8800198d8903af851d650f0b8cc36740177cbee8ff71",
+        "functions": [
+          "fit_signal",
+          "select_candidates"
+        ]
+      }
+    ],
+    "reason": "candidate-like research code requires identity and purpose review"
+  },
+  {
+    "branch": "codex/capital-shadow-ladder",
+    "head": "7e64c0d6cdf7b7b4f6b8b62665c4d603b1276b86",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 4,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/causal-v4-cli-argv-fix",
+    "head": "bfef52e98ed5e54741cabb2be70bab680d7dee1d",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "5b9318c8f6734478a324357a28e800f56e9d112a",
+    "changed_python_count": 2,
+    "changed_research_python": [
+      "tools/research/causal_v4_runner_rebind.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/causal-v4-filter-authority-v3-staged",
+    "head": "efcb5596e8d1e3f46c74be06b3b7626597314348",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "11db5a45036a9cf831f7d46773b6e621d7c9dc92",
+    "changed_python_count": 3,
+    "changed_research_python": [
+      "tools/research/strategy_causal_pack_01_archive.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/causal-v4-final-runner-staged",
+    "head": "44802b0a7c177d1e229d15078454652434421dab",
+    "status": "RESEARCH_CODE_MANUAL_CLASSIFICATION",
+    "merge_base": "51b38065482df908ee39cf6394a3c4ad5fb97138",
+    "changed_python_count": 9,
+    "changed_research_python": [
+      "tools/research/atr_shock_snapback_4h_causal_v3_runner.py",
+      "tools/research/atr_shock_snapback_4h_causal_v4_runner.py",
+      "tools/research/causal_v4_execution_adapter.py",
+      "tools/research/causal_v4_runner_rebind.py",
+      "tools/research/rank_breadth_reversal_4h_short_causal_v4_runner.py",
+      "tools/research/strategy_causal_pack_01_causal_v4_runner.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [
+      {
+        "path": "tools/research/atr_shock_snapback_4h_causal_v3_runner.py",
+        "sha256": "9843582b04d42ccafe1adc79ef1cbd702cf6bd11b9916ec38cc129bded8bca59",
+        "functions": [
+          "build_signal_tape",
+          "candidate_report",
+          "run"
+        ]
+      }
+    ],
+    "reason": "candidate-like research code requires identity and purpose review"
+  },
+  {
+    "branch": "codex/causal-v4-pack-management-rebind-fix",
+    "head": "6bb65ef27f904383456813bfeeaa44502feaa8d3",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "80892fb1337a954720ab16e00e0608f72ae9f894",
+    "changed_python_count": 2,
+    "changed_research_python": [
+      "tools/research/causal_v4_execution_adapter.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/causal-v4-protected-overlays",
+    "head": "ee23d39ee8d608b32d86ee873a0f44d94678295e",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "577b0cdaab10ba0c81d0d31950632ee0dd52d2c6",
+    "changed_python_count": 1,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/causal-v4-rbr-atr-runtime-fix",
+    "head": "e659cc852465f043f522d25bc2b648521ee8099e",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "1437dc48e70cb108abe10df74750d29961f01ad7",
+    "changed_python_count": 2,
+    "changed_research_python": [
+      "tools/research/causal_v4_execution_adapter.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/dispersion-reversion-1h",
+    "head": "adc70ea4134eb34ef4ae418501594f759eac3c2d",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 3,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_dispersion_reversion_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "dispersion_reversion_1h",
+        "function": "sig_dispersion_reversion_1h",
+        "function_sha256": "b688e09d6729cdb6ae8382e268b1d59a397424d118c107511e1ab0e894a39cb7",
+        "management_config_ast_sha256": "a11e4988a93cfd7cb9222e1a31e5266890577a8393e0f1811d75bc1c63b7d773",
+        "tf": "1h",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_dispersion_reversion_candidate.py",
+        "sha256": "bca50b188de035050c5e7a83804a2ce1a769745d128454f2755bc4be9884b1f5",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/duplicate-policy-review-20261112",
+    "head": "5121e791a41b60c24d375de4028130c1dea93983",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "7b5beecb3a964d4ce36aa7187a734093ffe6818a",
+    "changed_python_count": 10,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/edge02-replacement-scout",
+    "head": "e4419d7c7de29a1fd95fa5cd1faebda63a78b967",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "07cbc8172de4d05b01532f1797d217000eed0fa9",
+    "changed_python_count": 0,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/edge02-residual-runner",
+    "head": "e060b96b2e4ad49902d4f8451e49e98fead8e4e9",
+    "status": "RESEARCH_CODE_MANUAL_CLASSIFICATION",
+    "merge_base": "07cbc8172de4d05b01532f1797d217000eed0fa9",
+    "changed_python_count": 5,
+    "changed_research_python": [
+      "backtest.py",
+      "tools/research/edge02_signals.py",
+      "tools/research/run_breadth_candidate.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [
+      {
+        "path": "backtest.py",
+        "sha256": "c6f72bce2c237ef021584a328658b4cf0a8c515504609dfab62f176d094693df",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/edge02_signals.py",
+        "sha256": "f8744959df4f3c542c1467d4a888c78475c395707e6222f0c783eb38505c9a5a",
+        "functions": [
+          "signals"
+        ]
+      },
+      {
+        "path": "tools/research/run_breadth_candidate.py",
+        "sha256": "b8c9941c97b1a7b24fac2194faff92516d8ac003398bd7cdcd670ee3afc5c53e",
+        "functions": [
+          "runner_digest",
+          "run"
+        ]
+      }
+    ],
+    "reason": "candidate-like research code requires identity and purpose review"
+  },
+  {
+    "branch": "codex/edge02-stagea-runner",
+    "head": "5954550c522898ba180dc0a86e3c960171fa03b2",
+    "status": "RESEARCH_CODE_MANUAL_CLASSIFICATION",
+    "merge_base": "07cbc8172de4d05b01532f1797d217000eed0fa9",
+    "changed_python_count": 5,
+    "changed_research_python": [
+      "backtest.py",
+      "tools/research/edge02_signals.py",
+      "tools/research/run_breadth_candidate.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [
+      {
+        "path": "backtest.py",
+        "sha256": "db9972058c7f5830fdb4bed66dc367286af3cf0d5afd2ac0ad790d4c1f7528e6",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/edge02_signals.py",
+        "sha256": "9188aced48a4a4211b15e12e19027668b925f156c23804b9346603a7d13d13ad",
+        "functions": [
+          "signals"
+        ]
+      },
+      {
+        "path": "tools/research/run_breadth_candidate.py",
+        "sha256": "fed2bb5acb427cb45b4bd3c2b91aad3787869cc4925ce31e5d7af41c5dd76b07",
+        "functions": [
+          "runner_digest",
+          "run"
+        ]
+      }
+    ],
+    "reason": "candidate-like research code requires identity and purpose review"
+  },
+  {
+    "branch": "codex/edge03-prereg-contract",
+    "head": "0db5bd45f791dd1a8e87caa443af42bc443d6573",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "07cbc8172de4d05b01532f1797d217000eed0fa9",
+    "changed_python_count": 0,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/edge03-xsec",
+    "head": "280ab9c1416aa891939dc7256b19380e79b24de2",
+    "status": "RESEARCH_CODE_MANUAL_CLASSIFICATION",
+    "merge_base": "07cbc8172de4d05b01532f1797d217000eed0fa9",
+    "changed_python_count": 6,
+    "changed_research_python": [
+      "tools/research/edge03_xsec.py",
+      "tools/research/prepare_edge03_inputs.py",
+      "tools/research/run_edge03_xsec.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_edge03_xsec.py",
+        "sha256": "e5358f6e4a8f491ad93f7c44be514eba2d2b3de2f5a3381b15de5cf81cdf8b2c",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "candidate-like research code requires identity and purpose review"
+  },
+  {
+    "branch": "codex/edge04-legacy-reeval",
+    "head": "b5957d58f82e0247717e2111ab5b2b41dac9a24e",
+    "status": "RESEARCH_CODE_MANUAL_CLASSIFICATION",
+    "merge_base": "07cbc8172de4d05b01532f1797d217000eed0fa9",
+    "changed_python_count": 14,
+    "changed_research_python": [
+      "tools/research/edge04_1m_acquire.py",
+      "tools/research/edge04_account.py",
+      "tools/research/edge04_eval.py",
+      "tools/research/edge04_orchestrate.py",
+      "tools/research/edge04_pit.py",
+      "tools/research/edge04_stage_a.py",
+      "tools/research/pit_run.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [
+      {
+        "path": "tools/research/edge04_eval.py",
+        "sha256": "46408c4f6a8692ef5dfc53d3425ade35a9288c998168488cf702f669a79bd2ad",
+        "functions": [
+          "_signals"
+        ]
+      },
+      {
+        "path": "tools/research/edge04_orchestrate.py",
+        "sha256": "bf9f2dedb90c3eaed20ca0e8017fb02eb7ed8970a1d8c0aa19bd73d372cb801f",
+        "functions": [
+          "candidates_from_tape"
+        ]
+      },
+      {
+        "path": "tools/research/pit_run.py",
+        "sha256": "2b3fe99e1395cd519f4d55b030d09e0236b245477966e2202650036e20262ffb",
+        "functions": [
+          "_signal"
+        ]
+      }
+    ],
+    "reason": "candidate-like research code requires identity and purpose review"
+  },
+  {
+    "branch": "codex/ema-mom-long-h4",
+    "head": "1add5323c87288dc081f3dc78eb91439f75ca007",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 31,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_aggressor_flow_absorption_candidate.py",
+      "tools/research/run_atr_shock_snapback_candidate.py",
+      "tools/research/run_btc_orderflow_leadlag_candidate.py",
+      "tools/research/run_ema_mom_long_h4_candidate.py",
+      "tools/research/run_exp_trend_long_h3_candidate.py",
+      "tools/research/run_large_trade_impulse_candidate.py",
+      "tools/research/run_mark_price_dislocation_candidate.py",
+      "tools/research/run_pullback_rsi_short_h1_candidate.py",
+      "tools/research/run_rank_breadth_reversal_candidate.py",
+      "tools/research/run_realized_skew_valuation_candidate.py",
+      "tools/research/run_rotation_long_h2_candidate.py",
+      "tools/research/run_session_inventory_unwind_candidate.py",
+      "tools/research/run_transient_jump_dislocation_candidate.py",
+      "tools/research/run_volume_pressure_inventory_candidate.py",
+      "tools/research/run_weekend_liquidity_premium_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "rank_breadth_reversal_4h",
+        "function": "sig_rank_breadth_reversal_4h",
+        "function_sha256": "4d79122a7bf71fe4b66569a93d62146fe04cb3b8907eb6c873627b69e5a43729",
+        "management_config_ast_sha256": "1eef7c6c64f81cd8a77547c1defd905adb7b6d75275024f0d1d8ce6d119a4c89",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "atr_shock_snapback_4h",
+        "function": "sig_atr_shock_snapback_4h",
+        "function_sha256": "256e33bc73f950ac0ceaeb0715d418504ce44a9f56de1593ab6d51b39596f411",
+        "management_config_ast_sha256": "bd01e8fc122462b051a9c869fb3889dcd3ca30bc9d5ecbd119ea6f4b62639f23",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "session_inventory_unwind_1h",
+        "function": "sig_session_inventory_unwind_1h",
+        "function_sha256": "c9ffa03605b5f1a22ea80ea3d3f4863cebaee312673ab2c8f03c4bba4d03f37b",
+        "management_config_ast_sha256": "5bcdfac2a325f983b27d3969a8de556d1f5d8963236d974807028dc9322d3da7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "volume_pressure_inventory_1h",
+        "function": "sig_volume_pressure_inventory_1h",
+        "function_sha256": "c56259b30042719ed4caa08a230e6d547b56e333576aad3de0f75801781e12d0",
+        "management_config_ast_sha256": "5f8953a00c7a2f0f9330adfce195d8c4fe4a706ed58c000cf13dd760febd1ccc",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "realized_skew_valuation_1h",
+        "function": "sig_realized_skew_valuation_1h",
+        "function_sha256": "91291d1c323e1bd822253f1cd294a382bae3426822b29859ed7dad9fc1e63eb4",
+        "management_config_ast_sha256": "e13c67e9dac23a92c24db288bbb88ad955cb4fa38d004fb9937f2145b010663e",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "mark_price_dislocation_1h",
+        "function": "sig_mark_price_dislocation_1h",
+        "function_sha256": "c0d645eba0f3798822e3121fe6438d008afd59c18ddfe430f7165faf56fec96a",
+        "management_config_ast_sha256": "0a47023383ff0421e0bf394d1d57cd322510e9ff04fc64eb8efc0ff732dc18c5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "weekend_liquidity_premium_1h",
+        "function": "sig_weekend_liquidity_premium_1h",
+        "function_sha256": "7791a368a1106511176dec0a0a435ee15fdca6d2ab1debeec8bf2307b5743f37",
+        "management_config_ast_sha256": "50726626d4ae78f95d623d81c3f44de376c6dea6d19480459761aedd59c939a9",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "transient_jump_dislocation_1h",
+        "function": "sig_transient_jump_dislocation_1h",
+        "function_sha256": "81b15dd46fa1ef4ca6560031d1818f3690a2e645cc7926fe4e1f2dcb97a664e5",
+        "management_config_ast_sha256": "b9348bfd8832f24ac303331d367508d6d08f960e48a80c61f29861c1cb9773a5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "aggressor_flow_absorption_1h",
+        "function": "sig_aggressor_flow_absorption_1h",
+        "function_sha256": "4e29b1aea266fdea096253ce2204f6819084d7689c5e49884324d7501c9a34fd",
+        "management_config_ast_sha256": "dd477da6a9043b7990cadd1a48c7ae5de62dece8cafb644ea109ed92d7711062",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "btc_orderflow_leadlag_1h",
+        "function": "sig_btc_orderflow_leadlag_1h",
+        "function_sha256": "aa31508cc64019507c8cd7e887c4225758307a7975062058100d5320c2a46096",
+        "management_config_ast_sha256": "f176877d50a1c24f1a54ef8e2c69be04f25029fcd9670529ca28f1e87cb8a2c7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "large_trade_impulse_1h",
+        "function": "sig_large_trade_impulse_1h",
+        "function_sha256": "257045c2091b312fd8eb0ce3ec83b5b3f5f9e3c71fdb59f7f63b3d137abf3db5",
+        "management_config_ast_sha256": "23067f04991028cccd2c06d31792180c374121cf2c17cb52332cf25ecc2ccf56",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "pullback_rsi_short_h1",
+        "function": "sig_trend_pullback_rsi",
+        "function_sha256": "2675842369fe438098c85aa3f942ae266f1d8ed435bbe2fc6c43744f46c5a5c4",
+        "management_config_ast_sha256": "4d869b62b3bf87f51bec5bd764c389bc83a7dfe0a078f19ceb432e9f3998a256",
+        "tf": "4h",
+        "sides": "short"
+      },
+      {
+        "id": "rotation_long_h2",
+        "function": "sig_rotation",
+        "function_sha256": "fee3be3c898bcd08b5eaa95aca9709447af09dc078f4048628f318aa32ff8677",
+        "management_config_ast_sha256": "03f36305813e88944bfab0946caeba76ab07ac6488fd597a1ace7f6c417cc9d9",
+        "tf": "4h",
+        "sides": "long"
+      },
+      {
+        "id": "exp_trend_long_h3",
+        "function": "sig_exp_trend",
+        "function_sha256": "251eb8c17e9373dd562eabb61dc347d12d65abcd2f0e6cd0805846fbe7115f80",
+        "management_config_ast_sha256": "45e98307900aabeb33f2d15a8b2d57954bf2334a410cd32e24450e38fe40eb66",
+        "tf": "4h",
+        "sides": "long"
+      },
+      {
+        "id": "ema_mom_long_h4",
+        "function": "sig_ema_mom",
+        "function_sha256": "377f0c5f1cb09cbd3c1267d6cbc334a8a2c490aeaa7a420e90b09ef09f1352a9",
+        "management_config_ast_sha256": "010ea8956c46b37b1a843fea77c42211c280c1ff5523db2ee92c9446d8c59765",
+        "tf": "4h",
+        "sides": "long"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_aggressor_flow_absorption_candidate.py",
+        "sha256": "aeb5d3799a116deaa105db7cba70b4ba8f7e27fc2bea1cb196b2fe874fabbe79",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_atr_shock_snapback_candidate.py",
+        "sha256": "2dba8fa8f1a5a5952ede18bf95cf900abe513ef23cc304244442338934a0e9b3",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_btc_orderflow_leadlag_candidate.py",
+        "sha256": "d7075c6a4d041293c102e2d73da3874c1ff25c525edf9fa62bc49d53f80ce484",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_ema_mom_long_h4_candidate.py",
+        "sha256": "c8ba075d03295625c22c61b9ef43a527e1dbc0159df519f8fe5e43a88dfac656",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_exp_trend_long_h3_candidate.py",
+        "sha256": "ae544bd242e53dc605de839564b31d05ad47e1e4d4485b542912497ab22faa5e",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_large_trade_impulse_candidate.py",
+        "sha256": "20e099d4ccc18d27be382098831a39b12f101d9f71480f3628b7a4861dfed879",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_mark_price_dislocation_candidate.py",
+        "sha256": "e2e09cf4810f7cde99e6fbd31338cd209532734d6f08957a19377492f6dd5b7f",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_pullback_rsi_short_h1_candidate.py",
+        "sha256": "0e07f4a8d0bc8d05b33b61125c17e5b9b5467c831cc2ea4ed5f913c8fcebc3be",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rank_breadth_reversal_candidate.py",
+        "sha256": "4efc74b26f1c315866b271cb929729a1c4cf0d898802eb660e13f0582eb00cb5",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_realized_skew_valuation_candidate.py",
+        "sha256": "305e13af787610f9a899c8981a24e370f1631b00783acf8f185c521df1300440",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rotation_long_h2_candidate.py",
+        "sha256": "5529e186ecfac0caaf1c588502cd2140266b43c40aec1b9fa8c91d32d3b3b6c2",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_session_inventory_unwind_candidate.py",
+        "sha256": "5d39defdc80d6393b2395b2e8d019cacf755aa6dc896cc0e3522da97892bb8c9",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_transient_jump_dislocation_candidate.py",
+        "sha256": "4ed8f470b5ad8cf606bd1063608159d6d668d1fdfaa230e5f5424e5f2e77ed6a",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_volume_pressure_inventory_candidate.py",
+        "sha256": "2ab08c97580a0baf51edd8065f76b8dd20a2c3170d702751b48ea2bec7028bd4",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_weekend_liquidity_premium_candidate.py",
+        "sha256": "f5dd5f6fd37ace0117ec75d3bbaae00dffc602cfd85d8696181b6cca0131d7bb",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/exp-trend-long-h3",
+    "head": "6beb6fcebcbe8ad8b2ec9cb71d366176f4521982",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 29,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_aggressor_flow_absorption_candidate.py",
+      "tools/research/run_atr_shock_snapback_candidate.py",
+      "tools/research/run_btc_orderflow_leadlag_candidate.py",
+      "tools/research/run_exp_trend_long_h3_candidate.py",
+      "tools/research/run_large_trade_impulse_candidate.py",
+      "tools/research/run_mark_price_dislocation_candidate.py",
+      "tools/research/run_pullback_rsi_short_h1_candidate.py",
+      "tools/research/run_rank_breadth_reversal_candidate.py",
+      "tools/research/run_realized_skew_valuation_candidate.py",
+      "tools/research/run_rotation_long_h2_candidate.py",
+      "tools/research/run_session_inventory_unwind_candidate.py",
+      "tools/research/run_transient_jump_dislocation_candidate.py",
+      "tools/research/run_volume_pressure_inventory_candidate.py",
+      "tools/research/run_weekend_liquidity_premium_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "rank_breadth_reversal_4h",
+        "function": "sig_rank_breadth_reversal_4h",
+        "function_sha256": "4d79122a7bf71fe4b66569a93d62146fe04cb3b8907eb6c873627b69e5a43729",
+        "management_config_ast_sha256": "1eef7c6c64f81cd8a77547c1defd905adb7b6d75275024f0d1d8ce6d119a4c89",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "atr_shock_snapback_4h",
+        "function": "sig_atr_shock_snapback_4h",
+        "function_sha256": "256e33bc73f950ac0ceaeb0715d418504ce44a9f56de1593ab6d51b39596f411",
+        "management_config_ast_sha256": "bd01e8fc122462b051a9c869fb3889dcd3ca30bc9d5ecbd119ea6f4b62639f23",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "session_inventory_unwind_1h",
+        "function": "sig_session_inventory_unwind_1h",
+        "function_sha256": "c9ffa03605b5f1a22ea80ea3d3f4863cebaee312673ab2c8f03c4bba4d03f37b",
+        "management_config_ast_sha256": "5bcdfac2a325f983b27d3969a8de556d1f5d8963236d974807028dc9322d3da7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "volume_pressure_inventory_1h",
+        "function": "sig_volume_pressure_inventory_1h",
+        "function_sha256": "c56259b30042719ed4caa08a230e6d547b56e333576aad3de0f75801781e12d0",
+        "management_config_ast_sha256": "5f8953a00c7a2f0f9330adfce195d8c4fe4a706ed58c000cf13dd760febd1ccc",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "realized_skew_valuation_1h",
+        "function": "sig_realized_skew_valuation_1h",
+        "function_sha256": "91291d1c323e1bd822253f1cd294a382bae3426822b29859ed7dad9fc1e63eb4",
+        "management_config_ast_sha256": "e13c67e9dac23a92c24db288bbb88ad955cb4fa38d004fb9937f2145b010663e",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "mark_price_dislocation_1h",
+        "function": "sig_mark_price_dislocation_1h",
+        "function_sha256": "c0d645eba0f3798822e3121fe6438d008afd59c18ddfe430f7165faf56fec96a",
+        "management_config_ast_sha256": "0a47023383ff0421e0bf394d1d57cd322510e9ff04fc64eb8efc0ff732dc18c5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "weekend_liquidity_premium_1h",
+        "function": "sig_weekend_liquidity_premium_1h",
+        "function_sha256": "7791a368a1106511176dec0a0a435ee15fdca6d2ab1debeec8bf2307b5743f37",
+        "management_config_ast_sha256": "50726626d4ae78f95d623d81c3f44de376c6dea6d19480459761aedd59c939a9",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "transient_jump_dislocation_1h",
+        "function": "sig_transient_jump_dislocation_1h",
+        "function_sha256": "81b15dd46fa1ef4ca6560031d1818f3690a2e645cc7926fe4e1f2dcb97a664e5",
+        "management_config_ast_sha256": "b9348bfd8832f24ac303331d367508d6d08f960e48a80c61f29861c1cb9773a5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "aggressor_flow_absorption_1h",
+        "function": "sig_aggressor_flow_absorption_1h",
+        "function_sha256": "4e29b1aea266fdea096253ce2204f6819084d7689c5e49884324d7501c9a34fd",
+        "management_config_ast_sha256": "dd477da6a9043b7990cadd1a48c7ae5de62dece8cafb644ea109ed92d7711062",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "btc_orderflow_leadlag_1h",
+        "function": "sig_btc_orderflow_leadlag_1h",
+        "function_sha256": "aa31508cc64019507c8cd7e887c4225758307a7975062058100d5320c2a46096",
+        "management_config_ast_sha256": "f176877d50a1c24f1a54ef8e2c69be04f25029fcd9670529ca28f1e87cb8a2c7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "large_trade_impulse_1h",
+        "function": "sig_large_trade_impulse_1h",
+        "function_sha256": "257045c2091b312fd8eb0ce3ec83b5b3f5f9e3c71fdb59f7f63b3d137abf3db5",
+        "management_config_ast_sha256": "23067f04991028cccd2c06d31792180c374121cf2c17cb52332cf25ecc2ccf56",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "pullback_rsi_short_h1",
+        "function": "sig_trend_pullback_rsi",
+        "function_sha256": "2675842369fe438098c85aa3f942ae266f1d8ed435bbe2fc6c43744f46c5a5c4",
+        "management_config_ast_sha256": "4d869b62b3bf87f51bec5bd764c389bc83a7dfe0a078f19ceb432e9f3998a256",
+        "tf": "4h",
+        "sides": "short"
+      },
+      {
+        "id": "rotation_long_h2",
+        "function": "sig_rotation",
+        "function_sha256": "fee3be3c898bcd08b5eaa95aca9709447af09dc078f4048628f318aa32ff8677",
+        "management_config_ast_sha256": "03f36305813e88944bfab0946caeba76ab07ac6488fd597a1ace7f6c417cc9d9",
+        "tf": "4h",
+        "sides": "long"
+      },
+      {
+        "id": "exp_trend_long_h3",
+        "function": "sig_exp_trend",
+        "function_sha256": "251eb8c17e9373dd562eabb61dc347d12d65abcd2f0e6cd0805846fbe7115f80",
+        "management_config_ast_sha256": "45e98307900aabeb33f2d15a8b2d57954bf2334a410cd32e24450e38fe40eb66",
+        "tf": "4h",
+        "sides": "long"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_aggressor_flow_absorption_candidate.py",
+        "sha256": "aeb5d3799a116deaa105db7cba70b4ba8f7e27fc2bea1cb196b2fe874fabbe79",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_atr_shock_snapback_candidate.py",
+        "sha256": "2dba8fa8f1a5a5952ede18bf95cf900abe513ef23cc304244442338934a0e9b3",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_btc_orderflow_leadlag_candidate.py",
+        "sha256": "d7075c6a4d041293c102e2d73da3874c1ff25c525edf9fa62bc49d53f80ce484",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_exp_trend_long_h3_candidate.py",
+        "sha256": "ae544bd242e53dc605de839564b31d05ad47e1e4d4485b542912497ab22faa5e",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_large_trade_impulse_candidate.py",
+        "sha256": "20e099d4ccc18d27be382098831a39b12f101d9f71480f3628b7a4861dfed879",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_mark_price_dislocation_candidate.py",
+        "sha256": "e2e09cf4810f7cde99e6fbd31338cd209532734d6f08957a19377492f6dd5b7f",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_pullback_rsi_short_h1_candidate.py",
+        "sha256": "0e07f4a8d0bc8d05b33b61125c17e5b9b5467c831cc2ea4ed5f913c8fcebc3be",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rank_breadth_reversal_candidate.py",
+        "sha256": "4efc74b26f1c315866b271cb929729a1c4cf0d898802eb660e13f0582eb00cb5",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_realized_skew_valuation_candidate.py",
+        "sha256": "305e13af787610f9a899c8981a24e370f1631b00783acf8f185c521df1300440",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rotation_long_h2_candidate.py",
+        "sha256": "5529e186ecfac0caaf1c588502cd2140266b43c40aec1b9fa8c91d32d3b3b6c2",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_session_inventory_unwind_candidate.py",
+        "sha256": "5d39defdc80d6393b2395b2e8d019cacf755aa6dc896cc0e3522da97892bb8c9",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_transient_jump_dislocation_candidate.py",
+        "sha256": "4ed8f470b5ad8cf606bd1063608159d6d668d1fdfaa230e5f5424e5f2e77ed6a",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_volume_pressure_inventory_candidate.py",
+        "sha256": "2ab08c97580a0baf51edd8065f76b8dd20a2c3170d702751b48ea2bec7028bd4",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_weekend_liquidity_premium_candidate.py",
+        "sha256": "f5dd5f6fd37ace0117ec75d3bbaae00dffc602cfd85d8696181b6cca0131d7bb",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/f02-eval-01",
+    "head": "a608a460d41633d07dbda493c700846f849b3dcf",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "797867424b02d7e6766841193706183ce0cd1a30",
+    "changed_python_count": 1,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/finance-skill-intake",
+    "head": "0e0445bf269fcfe06a7d90321e11963a0b8779f3",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "07cbc8172de4d05b01532f1797d217000eed0fa9",
+    "changed_python_count": 0,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/funding-dislocation-1h",
+    "head": "a54a2fae7ced8870dc08835f9e255ca28771cdca",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 3,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_funding_dislocation_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "funding_dislocation_mr_1h",
+        "function": "sig_funding_dislocation_mr_1h",
+        "function_sha256": "b44c6e244635a7acaf1bb131e437fdf19c40489ad232e5d3f1fe21a4a81e4ceb",
+        "management_config_ast_sha256": "e79aaf79386ee299c45c563a2ba322e5f9b50a9b07cfd4feae5af08e6bd67d7e",
+        "tf": "1h",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_funding_dislocation_candidate.py",
+        "sha256": "2ddf5794def239e83c9e1d1b35ebb9d2e68445d16f1da78b2ded388c4888af09",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/funding-jitter-tolerance",
+    "head": "7bbb8084f83421552da689bbc9afec6db62d7278",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "e9a764144140e34ec2e218bd174adc8f88919f1f",
+    "changed_python_count": 2,
+    "changed_research_python": [
+      "tools/research/strategy_causal_pack_01_archive.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/gpu-parity-contract",
+    "head": "7161bdf2a2c99b24e304928b67e321ed992ad278",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 1,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/h5-hourly-long-canary-20261112",
+    "head": "5c95508fbc1765705da8698aa1824f5cdf0c3a29",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "7b5beecb3a964d4ce36aa7187a734093ffe6818a",
+    "changed_python_count": 2,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/large-trade-impulse-1h",
+    "head": "f1bc379ad9fcb4f0dbd08e369c81e33031ffe81e",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 23,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_aggressor_flow_absorption_candidate.py",
+      "tools/research/run_atr_shock_snapback_candidate.py",
+      "tools/research/run_btc_orderflow_leadlag_candidate.py",
+      "tools/research/run_large_trade_impulse_candidate.py",
+      "tools/research/run_mark_price_dislocation_candidate.py",
+      "tools/research/run_rank_breadth_reversal_candidate.py",
+      "tools/research/run_realized_skew_valuation_candidate.py",
+      "tools/research/run_session_inventory_unwind_candidate.py",
+      "tools/research/run_transient_jump_dislocation_candidate.py",
+      "tools/research/run_volume_pressure_inventory_candidate.py",
+      "tools/research/run_weekend_liquidity_premium_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "rank_breadth_reversal_4h",
+        "function": "sig_rank_breadth_reversal_4h",
+        "function_sha256": "4d79122a7bf71fe4b66569a93d62146fe04cb3b8907eb6c873627b69e5a43729",
+        "management_config_ast_sha256": "1eef7c6c64f81cd8a77547c1defd905adb7b6d75275024f0d1d8ce6d119a4c89",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "atr_shock_snapback_4h",
+        "function": "sig_atr_shock_snapback_4h",
+        "function_sha256": "256e33bc73f950ac0ceaeb0715d418504ce44a9f56de1593ab6d51b39596f411",
+        "management_config_ast_sha256": "bd01e8fc122462b051a9c869fb3889dcd3ca30bc9d5ecbd119ea6f4b62639f23",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "session_inventory_unwind_1h",
+        "function": "sig_session_inventory_unwind_1h",
+        "function_sha256": "c9ffa03605b5f1a22ea80ea3d3f4863cebaee312673ab2c8f03c4bba4d03f37b",
+        "management_config_ast_sha256": "5bcdfac2a325f983b27d3969a8de556d1f5d8963236d974807028dc9322d3da7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "volume_pressure_inventory_1h",
+        "function": "sig_volume_pressure_inventory_1h",
+        "function_sha256": "c56259b30042719ed4caa08a230e6d547b56e333576aad3de0f75801781e12d0",
+        "management_config_ast_sha256": "5f8953a00c7a2f0f9330adfce195d8c4fe4a706ed58c000cf13dd760febd1ccc",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "realized_skew_valuation_1h",
+        "function": "sig_realized_skew_valuation_1h",
+        "function_sha256": "91291d1c323e1bd822253f1cd294a382bae3426822b29859ed7dad9fc1e63eb4",
+        "management_config_ast_sha256": "e13c67e9dac23a92c24db288bbb88ad955cb4fa38d004fb9937f2145b010663e",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "mark_price_dislocation_1h",
+        "function": "sig_mark_price_dislocation_1h",
+        "function_sha256": "c0d645eba0f3798822e3121fe6438d008afd59c18ddfe430f7165faf56fec96a",
+        "management_config_ast_sha256": "0a47023383ff0421e0bf394d1d57cd322510e9ff04fc64eb8efc0ff732dc18c5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "weekend_liquidity_premium_1h",
+        "function": "sig_weekend_liquidity_premium_1h",
+        "function_sha256": "7791a368a1106511176dec0a0a435ee15fdca6d2ab1debeec8bf2307b5743f37",
+        "management_config_ast_sha256": "50726626d4ae78f95d623d81c3f44de376c6dea6d19480459761aedd59c939a9",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "transient_jump_dislocation_1h",
+        "function": "sig_transient_jump_dislocation_1h",
+        "function_sha256": "81b15dd46fa1ef4ca6560031d1818f3690a2e645cc7926fe4e1f2dcb97a664e5",
+        "management_config_ast_sha256": "b9348bfd8832f24ac303331d367508d6d08f960e48a80c61f29861c1cb9773a5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "aggressor_flow_absorption_1h",
+        "function": "sig_aggressor_flow_absorption_1h",
+        "function_sha256": "4e29b1aea266fdea096253ce2204f6819084d7689c5e49884324d7501c9a34fd",
+        "management_config_ast_sha256": "dd477da6a9043b7990cadd1a48c7ae5de62dece8cafb644ea109ed92d7711062",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "btc_orderflow_leadlag_1h",
+        "function": "sig_btc_orderflow_leadlag_1h",
+        "function_sha256": "aa31508cc64019507c8cd7e887c4225758307a7975062058100d5320c2a46096",
+        "management_config_ast_sha256": "f176877d50a1c24f1a54ef8e2c69be04f25029fcd9670529ca28f1e87cb8a2c7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "large_trade_impulse_1h",
+        "function": "sig_large_trade_impulse_1h",
+        "function_sha256": "257045c2091b312fd8eb0ce3ec83b5b3f5f9e3c71fdb59f7f63b3d137abf3db5",
+        "management_config_ast_sha256": "23067f04991028cccd2c06d31792180c374121cf2c17cb52332cf25ecc2ccf56",
+        "tf": "1h",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_aggressor_flow_absorption_candidate.py",
+        "sha256": "aeb5d3799a116deaa105db7cba70b4ba8f7e27fc2bea1cb196b2fe874fabbe79",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_atr_shock_snapback_candidate.py",
+        "sha256": "2dba8fa8f1a5a5952ede18bf95cf900abe513ef23cc304244442338934a0e9b3",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_btc_orderflow_leadlag_candidate.py",
+        "sha256": "d7075c6a4d041293c102e2d73da3874c1ff25c525edf9fa62bc49d53f80ce484",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_large_trade_impulse_candidate.py",
+        "sha256": "20e099d4ccc18d27be382098831a39b12f101d9f71480f3628b7a4861dfed879",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_mark_price_dislocation_candidate.py",
+        "sha256": "e2e09cf4810f7cde99e6fbd31338cd209532734d6f08957a19377492f6dd5b7f",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rank_breadth_reversal_candidate.py",
+        "sha256": "4efc74b26f1c315866b271cb929729a1c4cf0d898802eb660e13f0582eb00cb5",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_realized_skew_valuation_candidate.py",
+        "sha256": "305e13af787610f9a899c8981a24e370f1631b00783acf8f185c521df1300440",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_session_inventory_unwind_candidate.py",
+        "sha256": "5d39defdc80d6393b2395b2e8d019cacf755aa6dc896cc0e3522da97892bb8c9",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_transient_jump_dislocation_candidate.py",
+        "sha256": "4ed8f470b5ad8cf606bd1063608159d6d668d1fdfaa230e5f5424e5f2e77ed6a",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_volume_pressure_inventory_candidate.py",
+        "sha256": "2ab08c97580a0baf51edd8065f76b8dd20a2c3170d702751b48ea2bec7028bd4",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_weekend_liquidity_premium_candidate.py",
+        "sha256": "f5dd5f6fd37ace0117ec75d3bbaae00dffc602cfd85d8696181b6cca0131d7bb",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/liquidity-sweep-rejection-15m",
+    "head": "8ddaaac0e26788b3e4e52263a575bbe6cdbfd4fb",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 2,
+    "changed_research_python": [
+      "strategies.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "liquidity_sweep_rejection_15m",
+        "function": "sig_liquidity_sweep_rejection_15m",
+        "function_sha256": "36cd2c171961612c02a623d8ed15b704500a5449afd97fbdb58011e80f7b05c9",
+        "management_config_ast_sha256": "361142cce7548a80429181b48832ce97b647cd942e3cb01e570b03f2f6dfadef",
+        "tf": "15m",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/llm-leak-contract",
+    "head": "13f99b086bf58c967f9fbbf5b60133795f8b437f",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 1,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/mark-price-dislocation-1h",
+    "head": "eec6ddd12f582d2fdfafed6a0a1aabff5c8a4ecf",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 13,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_atr_shock_snapback_candidate.py",
+      "tools/research/run_mark_price_dislocation_candidate.py",
+      "tools/research/run_rank_breadth_reversal_candidate.py",
+      "tools/research/run_realized_skew_valuation_candidate.py",
+      "tools/research/run_session_inventory_unwind_candidate.py",
+      "tools/research/run_volume_pressure_inventory_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "rank_breadth_reversal_4h",
+        "function": "sig_rank_breadth_reversal_4h",
+        "function_sha256": "4d79122a7bf71fe4b66569a93d62146fe04cb3b8907eb6c873627b69e5a43729",
+        "management_config_ast_sha256": "1eef7c6c64f81cd8a77547c1defd905adb7b6d75275024f0d1d8ce6d119a4c89",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "atr_shock_snapback_4h",
+        "function": "sig_atr_shock_snapback_4h",
+        "function_sha256": "256e33bc73f950ac0ceaeb0715d418504ce44a9f56de1593ab6d51b39596f411",
+        "management_config_ast_sha256": "bd01e8fc122462b051a9c869fb3889dcd3ca30bc9d5ecbd119ea6f4b62639f23",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "session_inventory_unwind_1h",
+        "function": "sig_session_inventory_unwind_1h",
+        "function_sha256": "c9ffa03605b5f1a22ea80ea3d3f4863cebaee312673ab2c8f03c4bba4d03f37b",
+        "management_config_ast_sha256": "5bcdfac2a325f983b27d3969a8de556d1f5d8963236d974807028dc9322d3da7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "volume_pressure_inventory_1h",
+        "function": "sig_volume_pressure_inventory_1h",
+        "function_sha256": "c56259b30042719ed4caa08a230e6d547b56e333576aad3de0f75801781e12d0",
+        "management_config_ast_sha256": "5f8953a00c7a2f0f9330adfce195d8c4fe4a706ed58c000cf13dd760febd1ccc",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "realized_skew_valuation_1h",
+        "function": "sig_realized_skew_valuation_1h",
+        "function_sha256": "91291d1c323e1bd822253f1cd294a382bae3426822b29859ed7dad9fc1e63eb4",
+        "management_config_ast_sha256": "e13c67e9dac23a92c24db288bbb88ad955cb4fa38d004fb9937f2145b010663e",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "mark_price_dislocation_1h",
+        "function": "sig_mark_price_dislocation_1h",
+        "function_sha256": "c0d645eba0f3798822e3121fe6438d008afd59c18ddfe430f7165faf56fec96a",
+        "management_config_ast_sha256": "0a47023383ff0421e0bf394d1d57cd322510e9ff04fc64eb8efc0ff732dc18c5",
+        "tf": "1h",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_atr_shock_snapback_candidate.py",
+        "sha256": "2dba8fa8f1a5a5952ede18bf95cf900abe513ef23cc304244442338934a0e9b3",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_mark_price_dislocation_candidate.py",
+        "sha256": "e2e09cf4810f7cde99e6fbd31338cd209532734d6f08957a19377492f6dd5b7f",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rank_breadth_reversal_candidate.py",
+        "sha256": "4efc74b26f1c315866b271cb929729a1c4cf0d898802eb660e13f0582eb00cb5",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_realized_skew_valuation_candidate.py",
+        "sha256": "305e13af787610f9a899c8981a24e370f1631b00783acf8f185c521df1300440",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_session_inventory_unwind_candidate.py",
+        "sha256": "5d39defdc80d6393b2395b2e8d019cacf755aa6dc896cc0e3522da97892bb8c9",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_volume_pressure_inventory_candidate.py",
+        "sha256": "2ab08c97580a0baf51edd8065f76b8dd20a2c3170d702751b48ea2bec7028bd4",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/mtf-breakout-pullback-1h",
+    "head": "b8c0353bc320a35a40446779f0a46a2b1e20f977",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 3,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_mtf_pullback_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "mtf_breakout_pullback_1h",
+        "function": "sig_mtf_breakout_pullback_1h",
+        "function_sha256": "c4bf7471e6ba8707d6097b69d76a3bf61f4bf8d5b3ce67730d113ce83f79836f",
+        "management_config_ast_sha256": "1824b4bc638349ef9a31722e26302cf6522333e20d1f53a95d9ec001d658672c",
+        "tf": "1h",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_mtf_pullback_candidate.py",
+        "sha256": "8c1d77018b0a8639a371537a2518a186b567cc0ec2204d5573d7cdc402f231ef",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/n6-independent-a3095360",
+    "head": "8cd1f954beec6fe95fc9b0de4e414a4bb0f8acd0",
+    "status": "RESEARCH_CODE_MANUAL_CLASSIFICATION",
+    "merge_base": "640292a20527ab42d523f359462b30042d3066fe",
+    "changed_python_count": 12,
+    "changed_research_python": [
+      "research/newstrat_cp.py",
+      "research/newstrat_cp2.py",
+      "research/newstrat_cp_evidence.py",
+      "research/newstrat_cp_handoff.py",
+      "research/newstrat_cp_run.py",
+      "tools/research/codex_explain_raw_extras.py",
+      "tools/research/codex_independent_n6.py",
+      "tools/research/codex_test_independent_n6.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [
+      {
+        "path": "research/newstrat_cp_handoff.py",
+        "sha256": "723b39a530ae6f28f446e93cb987f1182c429edf09b08c79e1650d53e7f07925",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/codex_independent_n6.py",
+        "sha256": "325e07d810e70b67aafc3285da6e26550271bc8c2877e59db5ea3db527a1efbc",
+        "functions": [
+          "signal_sets"
+        ]
+      }
+    ],
+    "reason": "candidate-like research code requires identity and purpose review"
+  },
+  {
+    "branch": "codex/native-runtime-harness-integration",
+    "head": "ac576fade91e7341fdffec1dea7ca6432d338721",
+    "status": "RESEARCH_CODE_MANUAL_CLASSIFICATION",
+    "merge_base": "298267f2bb8a50def7cd4cdd4a24a722f93484b6",
+    "changed_python_count": 107,
+    "changed_research_python": [
+      "tools/research/btc_residual_leadlag_continuation_c259_stagea.py",
+      "tools/research/c257_archive_loader.py",
+      "tools/research/c257_reporting.py",
+      "tools/research/c257_successor_guard.py",
+      "tools/research/c258_archive_source.py",
+      "tools/research/c258_executable.py",
+      "tools/research/c258_production_authority.py",
+      "tools/research/c259_paper_adapter.py",
+      "tools/research/c259_reporting.py",
+      "tools/research/c259_runner.py",
+      "tools/research/cross_sectional_relative_strength_continuation_c258_stagea.py",
+      "tools/research/funding_shock_reversal_xsec_c257_evaluator.py",
+      "tools/research/funding_shock_reversal_xsec_c257_protected_adapter.py",
+      "tools/research/funding_shock_reversal_xsec_c257_stagea.py",
+      "tools/research/run_btc_residual_leadlag_continuation_c259_stagea.py",
+      "tools/research/run_cross_sectional_relative_strength_continuation_c258_stagea.py",
+      "tools/research/run_funding_shock_reversal_xsec_c257_protected.py",
+      "tools/research/run_funding_shock_reversal_xsec_c257_stagea.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [
+      {
+        "path": "tools/research/btc_residual_leadlag_continuation_c259_stagea.py",
+        "sha256": "77a9c3bbe58917f206f1a21796c459ecf207f41cb9f9328a1cf9f2b451166df4",
+        "functions": [
+          "fit_signal",
+          "select_candidates"
+        ]
+      },
+      {
+        "path": "tools/research/c259_paper_adapter.py",
+        "sha256": "d2bbe619db0080c634db011d18e9cc0078ee56c5d945eeaf5fda4cae91079d20",
+        "functions": [
+          "_candidate_capacity"
+        ]
+      }
+    ],
+    "reason": "candidate-like research code requires identity and purpose review"
+  },
+  {
+    "branch": "codex/nc07-management",
+    "head": "019d920ff7a4176ae339032f6f4c2b160aedd144",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "d35665b19823cf411a7af04f853eb9dc68ee245e",
+    "changed_python_count": 4,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/nc08-contract",
+    "head": "69c67999463630e9367a424f010dcfcedb9ed7e3",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "4a38e5a7ad5a83d105aee01e21ce1174ea3da6e5",
+    "changed_python_count": 4,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/nc09-contract",
+    "head": "97bd39e2d369eabf46063694f8c63fb62a0aa5c0",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "663f3462dba142be81bc16f8825e3a309e11444e",
+    "changed_python_count": 4,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/newcore-golden-adapters",
+    "head": "9021192eff0adc1c098a2c42c73bf635d571bbe1",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "54c41dc6fe60c432bd0ce70dabb99dd3f06ee1d8",
+    "changed_python_count": 4,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/oi-divergence-stagea-readiness",
+    "head": "7be919046a7ac33524795ef268073012f839e7e0",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 8,
+    "changed_research_python": [
+      "tools/research/oi_divergence_stagea_readiness.py",
+      "tools/research/oi_manifest_admission.py",
+      "tools/research/oi_metrics_loader.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/oi-reclaim-01",
+    "head": "56535f6d9c54a6b3a267fce29f14f7f46d08edab",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 6,
+    "changed_research_python": [
+      "tools/research/oi_manifest_admission.py",
+      "tools/research/oi_metrics_loader.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/opening-range-hold-15m",
+    "head": "8b75a948d4c07aa40fd50bef2799436838346d91",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 2,
+    "changed_research_python": [
+      "strategies.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "utc_opening_range_hold_15m",
+        "function": "sig_utc_opening_range_hold_15m",
+        "function_sha256": "7ee451ba696ca19bd6ce09fa1829e39ba2d2c5feab3868b40ce34a1cf187acd2",
+        "management_config_ast_sha256": "1092842689151c31031c030dfa79139858eae8aa10af08537d5688fb2a893722",
+        "tf": "15m",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/pullback-rsi-short-h1",
+    "head": "c33569c0dd3fbefd44a35e09f9cd46986719ad76",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 25,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_aggressor_flow_absorption_candidate.py",
+      "tools/research/run_atr_shock_snapback_candidate.py",
+      "tools/research/run_btc_orderflow_leadlag_candidate.py",
+      "tools/research/run_large_trade_impulse_candidate.py",
+      "tools/research/run_mark_price_dislocation_candidate.py",
+      "tools/research/run_pullback_rsi_short_h1_candidate.py",
+      "tools/research/run_rank_breadth_reversal_candidate.py",
+      "tools/research/run_realized_skew_valuation_candidate.py",
+      "tools/research/run_session_inventory_unwind_candidate.py",
+      "tools/research/run_transient_jump_dislocation_candidate.py",
+      "tools/research/run_volume_pressure_inventory_candidate.py",
+      "tools/research/run_weekend_liquidity_premium_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "rank_breadth_reversal_4h",
+        "function": "sig_rank_breadth_reversal_4h",
+        "function_sha256": "4d79122a7bf71fe4b66569a93d62146fe04cb3b8907eb6c873627b69e5a43729",
+        "management_config_ast_sha256": "1eef7c6c64f81cd8a77547c1defd905adb7b6d75275024f0d1d8ce6d119a4c89",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "atr_shock_snapback_4h",
+        "function": "sig_atr_shock_snapback_4h",
+        "function_sha256": "256e33bc73f950ac0ceaeb0715d418504ce44a9f56de1593ab6d51b39596f411",
+        "management_config_ast_sha256": "bd01e8fc122462b051a9c869fb3889dcd3ca30bc9d5ecbd119ea6f4b62639f23",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "session_inventory_unwind_1h",
+        "function": "sig_session_inventory_unwind_1h",
+        "function_sha256": "c9ffa03605b5f1a22ea80ea3d3f4863cebaee312673ab2c8f03c4bba4d03f37b",
+        "management_config_ast_sha256": "5bcdfac2a325f983b27d3969a8de556d1f5d8963236d974807028dc9322d3da7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "volume_pressure_inventory_1h",
+        "function": "sig_volume_pressure_inventory_1h",
+        "function_sha256": "c56259b30042719ed4caa08a230e6d547b56e333576aad3de0f75801781e12d0",
+        "management_config_ast_sha256": "5f8953a00c7a2f0f9330adfce195d8c4fe4a706ed58c000cf13dd760febd1ccc",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "realized_skew_valuation_1h",
+        "function": "sig_realized_skew_valuation_1h",
+        "function_sha256": "91291d1c323e1bd822253f1cd294a382bae3426822b29859ed7dad9fc1e63eb4",
+        "management_config_ast_sha256": "e13c67e9dac23a92c24db288bbb88ad955cb4fa38d004fb9937f2145b010663e",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "mark_price_dislocation_1h",
+        "function": "sig_mark_price_dislocation_1h",
+        "function_sha256": "c0d645eba0f3798822e3121fe6438d008afd59c18ddfe430f7165faf56fec96a",
+        "management_config_ast_sha256": "0a47023383ff0421e0bf394d1d57cd322510e9ff04fc64eb8efc0ff732dc18c5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "weekend_liquidity_premium_1h",
+        "function": "sig_weekend_liquidity_premium_1h",
+        "function_sha256": "7791a368a1106511176dec0a0a435ee15fdca6d2ab1debeec8bf2307b5743f37",
+        "management_config_ast_sha256": "50726626d4ae78f95d623d81c3f44de376c6dea6d19480459761aedd59c939a9",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "transient_jump_dislocation_1h",
+        "function": "sig_transient_jump_dislocation_1h",
+        "function_sha256": "81b15dd46fa1ef4ca6560031d1818f3690a2e645cc7926fe4e1f2dcb97a664e5",
+        "management_config_ast_sha256": "b9348bfd8832f24ac303331d367508d6d08f960e48a80c61f29861c1cb9773a5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "aggressor_flow_absorption_1h",
+        "function": "sig_aggressor_flow_absorption_1h",
+        "function_sha256": "4e29b1aea266fdea096253ce2204f6819084d7689c5e49884324d7501c9a34fd",
+        "management_config_ast_sha256": "dd477da6a9043b7990cadd1a48c7ae5de62dece8cafb644ea109ed92d7711062",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "btc_orderflow_leadlag_1h",
+        "function": "sig_btc_orderflow_leadlag_1h",
+        "function_sha256": "aa31508cc64019507c8cd7e887c4225758307a7975062058100d5320c2a46096",
+        "management_config_ast_sha256": "f176877d50a1c24f1a54ef8e2c69be04f25029fcd9670529ca28f1e87cb8a2c7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "large_trade_impulse_1h",
+        "function": "sig_large_trade_impulse_1h",
+        "function_sha256": "257045c2091b312fd8eb0ce3ec83b5b3f5f9e3c71fdb59f7f63b3d137abf3db5",
+        "management_config_ast_sha256": "23067f04991028cccd2c06d31792180c374121cf2c17cb52332cf25ecc2ccf56",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "pullback_rsi_short_h1",
+        "function": "sig_trend_pullback_rsi",
+        "function_sha256": "2675842369fe438098c85aa3f942ae266f1d8ed435bbe2fc6c43744f46c5a5c4",
+        "management_config_ast_sha256": "4d869b62b3bf87f51bec5bd764c389bc83a7dfe0a078f19ceb432e9f3998a256",
+        "tf": "4h",
+        "sides": "short"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_aggressor_flow_absorption_candidate.py",
+        "sha256": "aeb5d3799a116deaa105db7cba70b4ba8f7e27fc2bea1cb196b2fe874fabbe79",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_atr_shock_snapback_candidate.py",
+        "sha256": "2dba8fa8f1a5a5952ede18bf95cf900abe513ef23cc304244442338934a0e9b3",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_btc_orderflow_leadlag_candidate.py",
+        "sha256": "d7075c6a4d041293c102e2d73da3874c1ff25c525edf9fa62bc49d53f80ce484",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_large_trade_impulse_candidate.py",
+        "sha256": "20e099d4ccc18d27be382098831a39b12f101d9f71480f3628b7a4861dfed879",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_mark_price_dislocation_candidate.py",
+        "sha256": "e2e09cf4810f7cde99e6fbd31338cd209532734d6f08957a19377492f6dd5b7f",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_pullback_rsi_short_h1_candidate.py",
+        "sha256": "0e07f4a8d0bc8d05b33b61125c17e5b9b5467c831cc2ea4ed5f913c8fcebc3be",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rank_breadth_reversal_candidate.py",
+        "sha256": "4efc74b26f1c315866b271cb929729a1c4cf0d898802eb660e13f0582eb00cb5",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_realized_skew_valuation_candidate.py",
+        "sha256": "305e13af787610f9a899c8981a24e370f1631b00783acf8f185c521df1300440",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_session_inventory_unwind_candidate.py",
+        "sha256": "5d39defdc80d6393b2395b2e8d019cacf755aa6dc896cc0e3522da97892bb8c9",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_transient_jump_dislocation_candidate.py",
+        "sha256": "4ed8f470b5ad8cf606bd1063608159d6d668d1fdfaa230e5f5424e5f2e77ed6a",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_volume_pressure_inventory_candidate.py",
+        "sha256": "2ab08c97580a0baf51edd8065f76b8dd20a2c3170d702751b48ea2bec7028bd4",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_weekend_liquidity_premium_candidate.py",
+        "sha256": "f5dd5f6fd37ace0117ec75d3bbaae00dffc602cfd85d8696181b6cca0131d7bb",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/qbank-followup",
+    "head": "525a5894291861230b12a79909581929a2abb75c",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "4d0db93be8c104d7e5475fc454c176c92ae3418c",
+    "changed_python_count": 4,
+    "changed_research_python": [
+      "tools/research/scalp_exec_15m.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/range-flatness-187",
+    "head": "62292db725a35267234e0702424d0ab5f7bc06eb",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "4d0db93be8c104d7e5475fc454c176c92ae3418c",
+    "changed_python_count": 4,
+    "changed_research_python": [
+      "tools/research/scalp_exec_15m.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/rank-breadth-reversal-4h",
+    "head": "7fb60488ebe94694f300924153b1da3de5a229e5",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 3,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_rank_breadth_reversal_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "rank_breadth_reversal_4h",
+        "function": "sig_rank_breadth_reversal_4h",
+        "function_sha256": "4d79122a7bf71fe4b66569a93d62146fe04cb3b8907eb6c873627b69e5a43729",
+        "management_config_ast_sha256": "1eef7c6c64f81cd8a77547c1defd905adb7b6d75275024f0d1d8ce6d119a4c89",
+        "tf": "4h",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_rank_breadth_reversal_candidate.py",
+        "sha256": "4efc74b26f1c315866b271cb929729a1c4cf0d898802eb660e13f0582eb00cb5",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/rbr-causal-contract",
+    "head": "bc316c5ba1169b2204c90068e586e175348cca3c",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "9049ff372aad3526c8daf6bf74bf21589cedd709",
+    "changed_python_count": 1,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/rbr-causal-runner",
+    "head": "f4d4f3af1f460af4609c6d24689549cfb9d15e33",
+    "status": "RESEARCH_CODE_MANUAL_CLASSIFICATION",
+    "merge_base": "c860552cc9b2c5655065fba0b0c8455561038302",
+    "changed_python_count": 3,
+    "changed_research_python": [
+      "tools/research/rank_breadth_reversal_4h_short_causal_v3_archive.py",
+      "tools/research/rank_breadth_reversal_4h_short_causal_v3_runner.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [
+      {
+        "path": "tools/research/rank_breadth_reversal_4h_short_causal_v3_runner.py",
+        "sha256": "ca9acbf0cc6a1283b83ccdda41e19dcc256a48a39c3c6f5e1e074c94b7ff3b91",
+        "functions": [
+          "candidate_spec",
+          "build_fold_source_signal_tape",
+          "_candidate_report",
+          "evaluate_raw_candidate",
+          "_run_raw_candidate"
+        ]
+      }
+    ],
+    "reason": "candidate-like research code requires identity and purpose review"
+  },
+  {
+    "branch": "codex/realized-skew-valuation-1h",
+    "head": "e140b352958c674c72ce8e71a916ac75682414b4",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 11,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_atr_shock_snapback_candidate.py",
+      "tools/research/run_rank_breadth_reversal_candidate.py",
+      "tools/research/run_realized_skew_valuation_candidate.py",
+      "tools/research/run_session_inventory_unwind_candidate.py",
+      "tools/research/run_volume_pressure_inventory_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "rank_breadth_reversal_4h",
+        "function": "sig_rank_breadth_reversal_4h",
+        "function_sha256": "4d79122a7bf71fe4b66569a93d62146fe04cb3b8907eb6c873627b69e5a43729",
+        "management_config_ast_sha256": "1eef7c6c64f81cd8a77547c1defd905adb7b6d75275024f0d1d8ce6d119a4c89",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "atr_shock_snapback_4h",
+        "function": "sig_atr_shock_snapback_4h",
+        "function_sha256": "256e33bc73f950ac0ceaeb0715d418504ce44a9f56de1593ab6d51b39596f411",
+        "management_config_ast_sha256": "bd01e8fc122462b051a9c869fb3889dcd3ca30bc9d5ecbd119ea6f4b62639f23",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "session_inventory_unwind_1h",
+        "function": "sig_session_inventory_unwind_1h",
+        "function_sha256": "c9ffa03605b5f1a22ea80ea3d3f4863cebaee312673ab2c8f03c4bba4d03f37b",
+        "management_config_ast_sha256": "5bcdfac2a325f983b27d3969a8de556d1f5d8963236d974807028dc9322d3da7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "volume_pressure_inventory_1h",
+        "function": "sig_volume_pressure_inventory_1h",
+        "function_sha256": "c56259b30042719ed4caa08a230e6d547b56e333576aad3de0f75801781e12d0",
+        "management_config_ast_sha256": "5f8953a00c7a2f0f9330adfce195d8c4fe4a706ed58c000cf13dd760febd1ccc",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "realized_skew_valuation_1h",
+        "function": "sig_realized_skew_valuation_1h",
+        "function_sha256": "91291d1c323e1bd822253f1cd294a382bae3426822b29859ed7dad9fc1e63eb4",
+        "management_config_ast_sha256": "e13c67e9dac23a92c24db288bbb88ad955cb4fa38d004fb9937f2145b010663e",
+        "tf": "1h",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_atr_shock_snapback_candidate.py",
+        "sha256": "2dba8fa8f1a5a5952ede18bf95cf900abe513ef23cc304244442338934a0e9b3",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rank_breadth_reversal_candidate.py",
+        "sha256": "4efc74b26f1c315866b271cb929729a1c4cf0d898802eb660e13f0582eb00cb5",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_realized_skew_valuation_candidate.py",
+        "sha256": "305e13af787610f9a899c8981a24e370f1631b00783acf8f185c521df1300440",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_session_inventory_unwind_candidate.py",
+        "sha256": "5d39defdc80d6393b2395b2e8d019cacf755aa6dc896cc0e3522da97892bb8c9",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_volume_pressure_inventory_candidate.py",
+        "sha256": "2ab08c97580a0baf51edd8065f76b8dd20a2c3170d702751b48ea2bec7028bd4",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/rec02-reconciliation",
+    "head": "47b8dc57cd6a1468f361128f736a94839ed54224",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "87b9b91aec48da37c454c98453095b3344e79f73",
+    "changed_python_count": 2,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/regime-adaptive-switch-1h",
+    "head": "d3f5c0402939e71f54456c19216ddf1c77afaae0",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 3,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_regime_adaptive_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "regime_adaptive_switch_1h",
+        "function": "sig_regime_adaptive_switch_1h",
+        "function_sha256": "2d13a0c5c84499b2f25a286d9519c577f49553a6c69b13a0bc11d2693a7ffe9e",
+        "management_config_ast_sha256": "209cba6ee740d9f0a481937b332ff28ec1d359327fc2abcb9cbe7e4d54c3350f",
+        "tf": "1h",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_regime_adaptive_candidate.py",
+        "sha256": "8cc1e344d5be7d9c8477db35b0c574df704e02997d888484b21f73e9094d8971",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/relay-contract-v1",
+    "head": "8066949e60ae506181394e0c66eb64906768e204",
+    "status": "RESEARCH_CODE_MANUAL_CLASSIFICATION",
+    "merge_base": "6cd6e4f78c92ad910070b0cce8ad55e94c884eed",
+    "changed_python_count": 5,
+    "changed_research_python": [
+      "newcore/contracts/signal_v1.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [
+      {
+        "path": "newcore/contracts/signal_v1.py",
+        "sha256": "1e4d0ee93c707e2d961102e55ba2e5117675f6b1978ea3a64aa20ff8c8090f6d",
+        "functions": [
+          "check_signal_shape",
+          "check_signal_intent",
+          "check_signal_result",
+          "check_candidate_shape",
+          "check_candidate_score",
+          "check_candidate_evaluation"
+        ]
+      }
+    ],
+    "reason": "candidate-like research code requires identity and purpose review"
+  },
+  {
+    "branch": "codex/rotation-long-h2",
+    "head": "a0a708fe3b20d4a4df9454424c63dc733e2f81fa",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 27,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_aggressor_flow_absorption_candidate.py",
+      "tools/research/run_atr_shock_snapback_candidate.py",
+      "tools/research/run_btc_orderflow_leadlag_candidate.py",
+      "tools/research/run_large_trade_impulse_candidate.py",
+      "tools/research/run_mark_price_dislocation_candidate.py",
+      "tools/research/run_pullback_rsi_short_h1_candidate.py",
+      "tools/research/run_rank_breadth_reversal_candidate.py",
+      "tools/research/run_realized_skew_valuation_candidate.py",
+      "tools/research/run_rotation_long_h2_candidate.py",
+      "tools/research/run_session_inventory_unwind_candidate.py",
+      "tools/research/run_transient_jump_dislocation_candidate.py",
+      "tools/research/run_volume_pressure_inventory_candidate.py",
+      "tools/research/run_weekend_liquidity_premium_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "rank_breadth_reversal_4h",
+        "function": "sig_rank_breadth_reversal_4h",
+        "function_sha256": "4d79122a7bf71fe4b66569a93d62146fe04cb3b8907eb6c873627b69e5a43729",
+        "management_config_ast_sha256": "1eef7c6c64f81cd8a77547c1defd905adb7b6d75275024f0d1d8ce6d119a4c89",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "atr_shock_snapback_4h",
+        "function": "sig_atr_shock_snapback_4h",
+        "function_sha256": "256e33bc73f950ac0ceaeb0715d418504ce44a9f56de1593ab6d51b39596f411",
+        "management_config_ast_sha256": "bd01e8fc122462b051a9c869fb3889dcd3ca30bc9d5ecbd119ea6f4b62639f23",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "session_inventory_unwind_1h",
+        "function": "sig_session_inventory_unwind_1h",
+        "function_sha256": "c9ffa03605b5f1a22ea80ea3d3f4863cebaee312673ab2c8f03c4bba4d03f37b",
+        "management_config_ast_sha256": "5bcdfac2a325f983b27d3969a8de556d1f5d8963236d974807028dc9322d3da7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "volume_pressure_inventory_1h",
+        "function": "sig_volume_pressure_inventory_1h",
+        "function_sha256": "c56259b30042719ed4caa08a230e6d547b56e333576aad3de0f75801781e12d0",
+        "management_config_ast_sha256": "5f8953a00c7a2f0f9330adfce195d8c4fe4a706ed58c000cf13dd760febd1ccc",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "realized_skew_valuation_1h",
+        "function": "sig_realized_skew_valuation_1h",
+        "function_sha256": "91291d1c323e1bd822253f1cd294a382bae3426822b29859ed7dad9fc1e63eb4",
+        "management_config_ast_sha256": "e13c67e9dac23a92c24db288bbb88ad955cb4fa38d004fb9937f2145b010663e",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "mark_price_dislocation_1h",
+        "function": "sig_mark_price_dislocation_1h",
+        "function_sha256": "c0d645eba0f3798822e3121fe6438d008afd59c18ddfe430f7165faf56fec96a",
+        "management_config_ast_sha256": "0a47023383ff0421e0bf394d1d57cd322510e9ff04fc64eb8efc0ff732dc18c5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "weekend_liquidity_premium_1h",
+        "function": "sig_weekend_liquidity_premium_1h",
+        "function_sha256": "7791a368a1106511176dec0a0a435ee15fdca6d2ab1debeec8bf2307b5743f37",
+        "management_config_ast_sha256": "50726626d4ae78f95d623d81c3f44de376c6dea6d19480459761aedd59c939a9",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "transient_jump_dislocation_1h",
+        "function": "sig_transient_jump_dislocation_1h",
+        "function_sha256": "81b15dd46fa1ef4ca6560031d1818f3690a2e645cc7926fe4e1f2dcb97a664e5",
+        "management_config_ast_sha256": "b9348bfd8832f24ac303331d367508d6d08f960e48a80c61f29861c1cb9773a5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "aggressor_flow_absorption_1h",
+        "function": "sig_aggressor_flow_absorption_1h",
+        "function_sha256": "4e29b1aea266fdea096253ce2204f6819084d7689c5e49884324d7501c9a34fd",
+        "management_config_ast_sha256": "dd477da6a9043b7990cadd1a48c7ae5de62dece8cafb644ea109ed92d7711062",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "btc_orderflow_leadlag_1h",
+        "function": "sig_btc_orderflow_leadlag_1h",
+        "function_sha256": "aa31508cc64019507c8cd7e887c4225758307a7975062058100d5320c2a46096",
+        "management_config_ast_sha256": "f176877d50a1c24f1a54ef8e2c69be04f25029fcd9670529ca28f1e87cb8a2c7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "large_trade_impulse_1h",
+        "function": "sig_large_trade_impulse_1h",
+        "function_sha256": "257045c2091b312fd8eb0ce3ec83b5b3f5f9e3c71fdb59f7f63b3d137abf3db5",
+        "management_config_ast_sha256": "23067f04991028cccd2c06d31792180c374121cf2c17cb52332cf25ecc2ccf56",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "pullback_rsi_short_h1",
+        "function": "sig_trend_pullback_rsi",
+        "function_sha256": "2675842369fe438098c85aa3f942ae266f1d8ed435bbe2fc6c43744f46c5a5c4",
+        "management_config_ast_sha256": "4d869b62b3bf87f51bec5bd764c389bc83a7dfe0a078f19ceb432e9f3998a256",
+        "tf": "4h",
+        "sides": "short"
+      },
+      {
+        "id": "rotation_long_h2",
+        "function": "sig_rotation",
+        "function_sha256": "fee3be3c898bcd08b5eaa95aca9709447af09dc078f4048628f318aa32ff8677",
+        "management_config_ast_sha256": "03f36305813e88944bfab0946caeba76ab07ac6488fd597a1ace7f6c417cc9d9",
+        "tf": "4h",
+        "sides": "long"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_aggressor_flow_absorption_candidate.py",
+        "sha256": "aeb5d3799a116deaa105db7cba70b4ba8f7e27fc2bea1cb196b2fe874fabbe79",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_atr_shock_snapback_candidate.py",
+        "sha256": "2dba8fa8f1a5a5952ede18bf95cf900abe513ef23cc304244442338934a0e9b3",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_btc_orderflow_leadlag_candidate.py",
+        "sha256": "d7075c6a4d041293c102e2d73da3874c1ff25c525edf9fa62bc49d53f80ce484",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_large_trade_impulse_candidate.py",
+        "sha256": "20e099d4ccc18d27be382098831a39b12f101d9f71480f3628b7a4861dfed879",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_mark_price_dislocation_candidate.py",
+        "sha256": "e2e09cf4810f7cde99e6fbd31338cd209532734d6f08957a19377492f6dd5b7f",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_pullback_rsi_short_h1_candidate.py",
+        "sha256": "0e07f4a8d0bc8d05b33b61125c17e5b9b5467c831cc2ea4ed5f913c8fcebc3be",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rank_breadth_reversal_candidate.py",
+        "sha256": "4efc74b26f1c315866b271cb929729a1c4cf0d898802eb660e13f0582eb00cb5",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_realized_skew_valuation_candidate.py",
+        "sha256": "305e13af787610f9a899c8981a24e370f1631b00783acf8f185c521df1300440",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rotation_long_h2_candidate.py",
+        "sha256": "5529e186ecfac0caaf1c588502cd2140266b43c40aec1b9fa8c91d32d3b3b6c2",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_session_inventory_unwind_candidate.py",
+        "sha256": "5d39defdc80d6393b2395b2e8d019cacf755aa6dc896cc0e3522da97892bb8c9",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_transient_jump_dislocation_candidate.py",
+        "sha256": "4ed8f470b5ad8cf606bd1063608159d6d668d1fdfaa230e5f5424e5f2e77ed6a",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_volume_pressure_inventory_candidate.py",
+        "sha256": "2ab08c97580a0baf51edd8065f76b8dd20a2c3170d702751b48ea2bec7028bd4",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_weekend_liquidity_premium_candidate.py",
+        "sha256": "f5dd5f6fd37ace0117ec75d3bbaae00dffc602cfd85d8696181b6cca0131d7bb",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/scout-delta-contracts",
+    "head": "e60fbcfb266fcff4b93a9b191545edf06ca5148b",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 1,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/session-inventory-unwind-1h",
+    "head": "809a9d0ddcaf57a0cb8c96d9f59140f761e2bab3",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 7,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_atr_shock_snapback_candidate.py",
+      "tools/research/run_rank_breadth_reversal_candidate.py",
+      "tools/research/run_session_inventory_unwind_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "rank_breadth_reversal_4h",
+        "function": "sig_rank_breadth_reversal_4h",
+        "function_sha256": "4d79122a7bf71fe4b66569a93d62146fe04cb3b8907eb6c873627b69e5a43729",
+        "management_config_ast_sha256": "1eef7c6c64f81cd8a77547c1defd905adb7b6d75275024f0d1d8ce6d119a4c89",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "atr_shock_snapback_4h",
+        "function": "sig_atr_shock_snapback_4h",
+        "function_sha256": "256e33bc73f950ac0ceaeb0715d418504ce44a9f56de1593ab6d51b39596f411",
+        "management_config_ast_sha256": "bd01e8fc122462b051a9c869fb3889dcd3ca30bc9d5ecbd119ea6f4b62639f23",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "session_inventory_unwind_1h",
+        "function": "sig_session_inventory_unwind_1h",
+        "function_sha256": "c9ffa03605b5f1a22ea80ea3d3f4863cebaee312673ab2c8f03c4bba4d03f37b",
+        "management_config_ast_sha256": "5bcdfac2a325f983b27d3969a8de556d1f5d8963236d974807028dc9322d3da7",
+        "tf": "1h",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_atr_shock_snapback_candidate.py",
+        "sha256": "2dba8fa8f1a5a5952ede18bf95cf900abe513ef23cc304244442338934a0e9b3",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rank_breadth_reversal_candidate.py",
+        "sha256": "4efc74b26f1c315866b271cb929729a1c4cf0d898802eb660e13f0582eb00cb5",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_session_inventory_unwind_candidate.py",
+        "sha256": "5d39defdc80d6393b2395b2e8d019cacf755aa6dc896cc0e3522da97892bb8c9",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/shadow-strategy-correlation-cap",
+    "head": "37b586e627e32ce97e04f0f43f94a97e4361f4cd",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "e43b67aa68baf86ea8e5e29d6c826aea1b18bb50",
+    "changed_python_count": 2,
+    "changed_research_python": [
+      "tools/research/strategy_correlation_cap.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/strat00-register",
+    "head": "7c6e2269cfc868563ae5b2bf9b8dd4707cee8b8f",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "d11734612627d65ca3a2c9a3b002e2a44e64d083",
+    "changed_python_count": 1,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/stratpack-causal-contract",
+    "head": "b16ed98edd2c756d5d90b5ab6209f1b92d031adb",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "9ba2cbaa3d11d861ec885acaf79fbcb7a91ea2cf",
+    "changed_python_count": 2,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/stratpack-causal-runner-v2",
+    "head": "0ceb8af72afee895c179403e1e88525adc898874",
+    "status": "RESEARCH_CODE_MANUAL_CLASSIFICATION",
+    "merge_base": "ad9eb9ab6378d41a150bc8addfad8406415c2aad",
+    "changed_python_count": 4,
+    "changed_research_python": [
+      "tools/research/strategy_causal_pack_01_archive.py",
+      "tools/research/strategy_causal_pack_01_runner.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [
+      {
+        "path": "tools/research/strategy_causal_pack_01_runner.py",
+        "sha256": "a0242ce5def9aa3c64b18f2554616e25d242c96d037d81f0362ae07505d4537f",
+        "functions": [
+          "candidate_spec",
+          "_verify_candidate_packet",
+          "build_fold_source_signal_tape",
+          "_candidate_report",
+          "evaluate_raw_candidate",
+          "_run_raw_candidate"
+        ]
+      }
+    ],
+    "reason": "candidate-like research code requires identity and purpose review"
+  },
+  {
+    "branch": "codex/tnet02-real-adapter",
+    "head": "8e7879676af5b3d39dd1eda36e0df6b28b06f7cf",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "dc7f2551d957679732611ca24545e3c6d313c0ba",
+    "changed_python_count": 3,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/transient-jump-dislocation-1h",
+    "head": "c18c16bc2c8de5501593b71e2cb3770f1bb3cd9a",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 17,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_atr_shock_snapback_candidate.py",
+      "tools/research/run_mark_price_dislocation_candidate.py",
+      "tools/research/run_rank_breadth_reversal_candidate.py",
+      "tools/research/run_realized_skew_valuation_candidate.py",
+      "tools/research/run_session_inventory_unwind_candidate.py",
+      "tools/research/run_transient_jump_dislocation_candidate.py",
+      "tools/research/run_volume_pressure_inventory_candidate.py",
+      "tools/research/run_weekend_liquidity_premium_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "rank_breadth_reversal_4h",
+        "function": "sig_rank_breadth_reversal_4h",
+        "function_sha256": "4d79122a7bf71fe4b66569a93d62146fe04cb3b8907eb6c873627b69e5a43729",
+        "management_config_ast_sha256": "1eef7c6c64f81cd8a77547c1defd905adb7b6d75275024f0d1d8ce6d119a4c89",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "atr_shock_snapback_4h",
+        "function": "sig_atr_shock_snapback_4h",
+        "function_sha256": "256e33bc73f950ac0ceaeb0715d418504ce44a9f56de1593ab6d51b39596f411",
+        "management_config_ast_sha256": "bd01e8fc122462b051a9c869fb3889dcd3ca30bc9d5ecbd119ea6f4b62639f23",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "session_inventory_unwind_1h",
+        "function": "sig_session_inventory_unwind_1h",
+        "function_sha256": "c9ffa03605b5f1a22ea80ea3d3f4863cebaee312673ab2c8f03c4bba4d03f37b",
+        "management_config_ast_sha256": "5bcdfac2a325f983b27d3969a8de556d1f5d8963236d974807028dc9322d3da7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "volume_pressure_inventory_1h",
+        "function": "sig_volume_pressure_inventory_1h",
+        "function_sha256": "c56259b30042719ed4caa08a230e6d547b56e333576aad3de0f75801781e12d0",
+        "management_config_ast_sha256": "5f8953a00c7a2f0f9330adfce195d8c4fe4a706ed58c000cf13dd760febd1ccc",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "realized_skew_valuation_1h",
+        "function": "sig_realized_skew_valuation_1h",
+        "function_sha256": "91291d1c323e1bd822253f1cd294a382bae3426822b29859ed7dad9fc1e63eb4",
+        "management_config_ast_sha256": "e13c67e9dac23a92c24db288bbb88ad955cb4fa38d004fb9937f2145b010663e",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "mark_price_dislocation_1h",
+        "function": "sig_mark_price_dislocation_1h",
+        "function_sha256": "c0d645eba0f3798822e3121fe6438d008afd59c18ddfe430f7165faf56fec96a",
+        "management_config_ast_sha256": "0a47023383ff0421e0bf394d1d57cd322510e9ff04fc64eb8efc0ff732dc18c5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "weekend_liquidity_premium_1h",
+        "function": "sig_weekend_liquidity_premium_1h",
+        "function_sha256": "7791a368a1106511176dec0a0a435ee15fdca6d2ab1debeec8bf2307b5743f37",
+        "management_config_ast_sha256": "50726626d4ae78f95d623d81c3f44de376c6dea6d19480459761aedd59c939a9",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "transient_jump_dislocation_1h",
+        "function": "sig_transient_jump_dislocation_1h",
+        "function_sha256": "81b15dd46fa1ef4ca6560031d1818f3690a2e645cc7926fe4e1f2dcb97a664e5",
+        "management_config_ast_sha256": "b9348bfd8832f24ac303331d367508d6d08f960e48a80c61f29861c1cb9773a5",
+        "tf": "1h",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_atr_shock_snapback_candidate.py",
+        "sha256": "2dba8fa8f1a5a5952ede18bf95cf900abe513ef23cc304244442338934a0e9b3",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_mark_price_dislocation_candidate.py",
+        "sha256": "e2e09cf4810f7cde99e6fbd31338cd209532734d6f08957a19377492f6dd5b7f",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rank_breadth_reversal_candidate.py",
+        "sha256": "4efc74b26f1c315866b271cb929729a1c4cf0d898802eb660e13f0582eb00cb5",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_realized_skew_valuation_candidate.py",
+        "sha256": "305e13af787610f9a899c8981a24e370f1631b00783acf8f185c521df1300440",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_session_inventory_unwind_candidate.py",
+        "sha256": "5d39defdc80d6393b2395b2e8d019cacf755aa6dc896cc0e3522da97892bb8c9",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_transient_jump_dislocation_candidate.py",
+        "sha256": "4ed8f470b5ad8cf606bd1063608159d6d668d1fdfaa230e5f5424e5f2e77ed6a",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_volume_pressure_inventory_candidate.py",
+        "sha256": "2ab08c97580a0baf51edd8065f76b8dd20a2c3170d702751b48ea2bec7028bd4",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_weekend_liquidity_premium_candidate.py",
+        "sha256": "f5dd5f6fd37ace0117ec75d3bbaae00dffc602cfd85d8696181b6cca0131d7bb",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/trend-liquidity-pullback-15m",
+    "head": "1058fcd64c8b880ff71b249f0d2a0c83352ca7e1",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 2,
+    "changed_research_python": [
+      "strategies.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "trend_liquidity_pullback_15m",
+        "function": "sig_trend_liquidity_pullback_15m",
+        "function_sha256": "73001f0c1d0e96f3b7fc1304b9292957916597dca8d3fd7000b752b333a05a25",
+        "management_config_ast_sha256": "bb48deb61850cfaff236e831548ff716ec00de7f998b985a5e84d1341a58c0a4",
+        "tf": "15m",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/two-account-isolation-proof",
+    "head": "42837f151f8dc3e674e8595eff9ed1bb71ce79ac",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "54c41dc6fe60c432bd0ce70dabb99dd3f06ee1d8",
+    "changed_python_count": 2,
+    "changed_research_python": [],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/usdc-pair-runner-review-ff4445a",
+    "head": "ff4445a96f659c5d8cc462be778da2b973342db2",
+    "status": "RESEARCH_CODE_MANUAL_CLASSIFICATION",
+    "merge_base": "2bfe892e6837d8f9b3ef9ffabca78e924950e365",
+    "changed_python_count": 6,
+    "changed_research_python": [
+      "backtest.py",
+      "tools/research/build_quote_pair_accounting.py",
+      "tools/research/run_quote_pair_usdc.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [
+      {
+        "path": "backtest.py",
+        "sha256": "8cd734f3f78863fd1b538b9004a1a5afe1b99fc2ad9e1007ac9b872480454846",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_quote_pair_usdc.py",
+        "sha256": "c6a55fb4c4358d612011fddcc53fa5594cdb262344920f015526f2f9510ab1bc",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "candidate-like research code requires identity and purpose review"
+  },
+  {
+    "branch": "codex/v6-unicode-funding-review",
+    "head": "cd8633f225cd4af5494b86e5b6dc8e708b12115e",
+    "status": "NO_STATIC_ALPHA_CHANGE_FOUND",
+    "merge_base": "4f27e13b228df7d71dcefcba64d9478eb6e045b9",
+    "changed_python_count": 4,
+    "changed_research_python": [
+      "tools/research/authority_v6.py",
+      "tools/research/manifest.py"
+    ],
+    "registry_deltas": [],
+    "research_code_matches": [],
+    "reason": "no registry change or candidate-like research function found in changed Python; may include operations/contracts/UI"
+  },
+  {
+    "branch": "codex/vol-retest-15m-stagea",
+    "head": "6201659c293d2af4e19ddcbbc422415461f923c6",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 2,
+    "changed_research_python": [
+      "strategies.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "vol_expansion_retest_15m",
+        "function": "sig_vol_expansion_retest_15m",
+        "function_sha256": "f961afca63e7e9cb01f66d894f485e6688464c53cf95f5579dee07b801e47c4f",
+        "management_config_ast_sha256": "354f51c2560aecb2f60345843f8f589e40ec0a68ca10fbb0d707f07c44a1fc6c",
+        "tf": "15m",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/volume-pressure-inventory-1h",
+    "head": "b4198a9043d52413cb9bfcbbbfd0c814d7c03bd4",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 9,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_atr_shock_snapback_candidate.py",
+      "tools/research/run_rank_breadth_reversal_candidate.py",
+      "tools/research/run_session_inventory_unwind_candidate.py",
+      "tools/research/run_volume_pressure_inventory_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "rank_breadth_reversal_4h",
+        "function": "sig_rank_breadth_reversal_4h",
+        "function_sha256": "4d79122a7bf71fe4b66569a93d62146fe04cb3b8907eb6c873627b69e5a43729",
+        "management_config_ast_sha256": "1eef7c6c64f81cd8a77547c1defd905adb7b6d75275024f0d1d8ce6d119a4c89",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "atr_shock_snapback_4h",
+        "function": "sig_atr_shock_snapback_4h",
+        "function_sha256": "256e33bc73f950ac0ceaeb0715d418504ce44a9f56de1593ab6d51b39596f411",
+        "management_config_ast_sha256": "bd01e8fc122462b051a9c869fb3889dcd3ca30bc9d5ecbd119ea6f4b62639f23",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "session_inventory_unwind_1h",
+        "function": "sig_session_inventory_unwind_1h",
+        "function_sha256": "c9ffa03605b5f1a22ea80ea3d3f4863cebaee312673ab2c8f03c4bba4d03f37b",
+        "management_config_ast_sha256": "5bcdfac2a325f983b27d3969a8de556d1f5d8963236d974807028dc9322d3da7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "volume_pressure_inventory_1h",
+        "function": "sig_volume_pressure_inventory_1h",
+        "function_sha256": "c56259b30042719ed4caa08a230e6d547b56e333576aad3de0f75801781e12d0",
+        "management_config_ast_sha256": "5f8953a00c7a2f0f9330adfce195d8c4fe4a706ed58c000cf13dd760febd1ccc",
+        "tf": "1h",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_atr_shock_snapback_candidate.py",
+        "sha256": "2dba8fa8f1a5a5952ede18bf95cf900abe513ef23cc304244442338934a0e9b3",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rank_breadth_reversal_candidate.py",
+        "sha256": "4efc74b26f1c315866b271cb929729a1c4cf0d898802eb660e13f0582eb00cb5",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_session_inventory_unwind_candidate.py",
+        "sha256": "5d39defdc80d6393b2395b2e8d019cacf755aa6dc896cc0e3522da97892bb8c9",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_volume_pressure_inventory_candidate.py",
+        "sha256": "2ab08c97580a0baf51edd8065f76b8dd20a2c3170d702751b48ea2bec7028bd4",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/vwap-reclaim-15m-stagea",
+    "head": "2fddd5c0424467961d80528c096a26c7338ad050",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 2,
+    "changed_research_python": [
+      "strategies.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "vwap_reclaim_15m",
+        "function": "sig_vwap_reclaim_15m",
+        "function_sha256": "ad2396fd226b62fb11e2221128b4f4a9cb37fd301d15e4ffcb8605b6c033627f",
+        "management_config_ast_sha256": "88bc9c1112e6bcdb314c66c7d11dd2744919aac47e47b8f73288b6c415694bc4",
+        "tf": "15m",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/weekend-liquidity-premium-1h",
+    "head": "68c42f22fa953c8dd954d844bcdef62d4f5bdbbd",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 15,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_atr_shock_snapback_candidate.py",
+      "tools/research/run_mark_price_dislocation_candidate.py",
+      "tools/research/run_rank_breadth_reversal_candidate.py",
+      "tools/research/run_realized_skew_valuation_candidate.py",
+      "tools/research/run_session_inventory_unwind_candidate.py",
+      "tools/research/run_volume_pressure_inventory_candidate.py",
+      "tools/research/run_weekend_liquidity_premium_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "rank_breadth_reversal_4h",
+        "function": "sig_rank_breadth_reversal_4h",
+        "function_sha256": "4d79122a7bf71fe4b66569a93d62146fe04cb3b8907eb6c873627b69e5a43729",
+        "management_config_ast_sha256": "1eef7c6c64f81cd8a77547c1defd905adb7b6d75275024f0d1d8ce6d119a4c89",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "atr_shock_snapback_4h",
+        "function": "sig_atr_shock_snapback_4h",
+        "function_sha256": "256e33bc73f950ac0ceaeb0715d418504ce44a9f56de1593ab6d51b39596f411",
+        "management_config_ast_sha256": "bd01e8fc122462b051a9c869fb3889dcd3ca30bc9d5ecbd119ea6f4b62639f23",
+        "tf": "4h",
+        "sides": "both"
+      },
+      {
+        "id": "session_inventory_unwind_1h",
+        "function": "sig_session_inventory_unwind_1h",
+        "function_sha256": "c9ffa03605b5f1a22ea80ea3d3f4863cebaee312673ab2c8f03c4bba4d03f37b",
+        "management_config_ast_sha256": "5bcdfac2a325f983b27d3969a8de556d1f5d8963236d974807028dc9322d3da7",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "volume_pressure_inventory_1h",
+        "function": "sig_volume_pressure_inventory_1h",
+        "function_sha256": "c56259b30042719ed4caa08a230e6d547b56e333576aad3de0f75801781e12d0",
+        "management_config_ast_sha256": "5f8953a00c7a2f0f9330adfce195d8c4fe4a706ed58c000cf13dd760febd1ccc",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "realized_skew_valuation_1h",
+        "function": "sig_realized_skew_valuation_1h",
+        "function_sha256": "91291d1c323e1bd822253f1cd294a382bae3426822b29859ed7dad9fc1e63eb4",
+        "management_config_ast_sha256": "e13c67e9dac23a92c24db288bbb88ad955cb4fa38d004fb9937f2145b010663e",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "mark_price_dislocation_1h",
+        "function": "sig_mark_price_dislocation_1h",
+        "function_sha256": "c0d645eba0f3798822e3121fe6438d008afd59c18ddfe430f7165faf56fec96a",
+        "management_config_ast_sha256": "0a47023383ff0421e0bf394d1d57cd322510e9ff04fc64eb8efc0ff732dc18c5",
+        "tf": "1h",
+        "sides": "both"
+      },
+      {
+        "id": "weekend_liquidity_premium_1h",
+        "function": "sig_weekend_liquidity_premium_1h",
+        "function_sha256": "7791a368a1106511176dec0a0a435ee15fdca6d2ab1debeec8bf2307b5743f37",
+        "management_config_ast_sha256": "50726626d4ae78f95d623d81c3f44de376c6dea6d19480459761aedd59c939a9",
+        "tf": "1h",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_atr_shock_snapback_candidate.py",
+        "sha256": "2dba8fa8f1a5a5952ede18bf95cf900abe513ef23cc304244442338934a0e9b3",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_mark_price_dislocation_candidate.py",
+        "sha256": "e2e09cf4810f7cde99e6fbd31338cd209532734d6f08957a19377492f6dd5b7f",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_rank_breadth_reversal_candidate.py",
+        "sha256": "4efc74b26f1c315866b271cb929729a1c4cf0d898802eb660e13f0582eb00cb5",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_realized_skew_valuation_candidate.py",
+        "sha256": "305e13af787610f9a899c8981a24e370f1631b00783acf8f185c521df1300440",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_session_inventory_unwind_candidate.py",
+        "sha256": "5d39defdc80d6393b2395b2e8d019cacf755aa6dc896cc0e3522da97892bb8c9",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_volume_pressure_inventory_candidate.py",
+        "sha256": "2ab08c97580a0baf51edd8065f76b8dd20a2c3170d702751b48ea2bec7028bd4",
+        "functions": [
+          "run"
+        ]
+      },
+      {
+        "path": "tools/research/run_weekend_liquidity_premium_candidate.py",
+        "sha256": "f5dd5f6fd37ace0117ec75d3bbaae00dffc602cfd85d8696181b6cca0131d7bb",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  },
+  {
+    "branch": "codex/xaccel-volume-1h",
+    "head": "6c86f0d8a9aa0cc685015e7386ff362a109a4063",
+    "status": "REGISTERED_SIGNAL_CHANGE",
+    "merge_base": "851b0cd8ff990f6ed5f66ddde84e650a7c22201f",
+    "changed_python_count": 3,
+    "changed_research_python": [
+      "strategies.py",
+      "tools/research/run_xaccel_candidate.py"
+    ],
+    "registry_deltas": [
+      {
+        "id": "xaccel_volume_1h",
+        "function": "sig_xaccel_volume_1h",
+        "function_sha256": "2326de3bffa9f58c378fa5a11edb9a0ab4787eaf8fe7ff600db961a43f8d5c79",
+        "management_config_ast_sha256": "0a31a79e69f4c5870cad9e294934a09c1ed936af090804f2f7a22ce9baca264d",
+        "tf": "1h",
+        "sides": "both"
+      }
+    ],
+    "research_code_matches": [
+      {
+        "path": "tools/research/run_xaccel_candidate.py",
+        "sha256": "0030dfd51dedbff07e6a6f90318942d5207449ae6f81ea1a51e14b3f5e52a05d",
+        "functions": [
+          "run"
+        ]
+      }
+    ],
+    "reason": "new or changed registry function/config relative to branch merge base"
+  }
+]

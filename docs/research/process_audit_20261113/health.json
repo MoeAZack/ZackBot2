@@ -1,0 +1,181 @@
+{
+  "captured_utc": "2026-11-13T08:23:37.432386+00:00",
+  "evidence": "Local bot state only; stop confirmation is cached bot evidence, not an authenticated exchange query. State can change during capture. Last cycle is a bar timestamp, not a process heartbeat.",
+  "accounts": [
+    {
+      "account": 1,
+      "state_mtime_utc": "2026-11-13T08:23:37.740783+00:00",
+      "last_cycle": {
+        "4h": "2026-11-13T08:00+00:00"
+      },
+      "lots": [
+        {
+          "symbol": "XRPUSDT",
+          "side": "SHORT",
+          "key_strategy": "exp_breakout",
+          "qty": 356.5,
+          "stop": 1.1567,
+          "stop_id": "a:1000000279710713",
+          "stop_confirmed_t": 1794558153.535431,
+          "stop_placed_t": 1794182430.184954,
+          "stop_miss": 0,
+          "stop_dirty": false,
+          "confirmation_age_seconds": 64
+        }
+      ],
+      "bot_log_categories": {
+        "protection": {
+          "count_in_last_3000_lines": 2,
+          "latest_timestamp": "2026-11-09 02:00:30,185"
+        },
+        "failure": {
+          "count_in_last_3000_lines": 3,
+          "latest_timestamp": "2026-11-13 10:00:34,355"
+        },
+        "cycle": {
+          "count_in_last_3000_lines": 30,
+          "latest_timestamp": "2026-11-13 10:00:20,306"
+        }
+      },
+      "bot_log_mtime_utc": "2026-11-13T08:00:34.355429+00:00"
+    },
+    {
+      "account": 2,
+      "state_mtime_utc": "2026-11-13T08:23:22.904382+00:00",
+      "last_cycle": {
+        "4h": "2026-11-13T08:00+00:00"
+      },
+      "lots": [],
+      "bot_log_categories": {
+        "protection": {
+          "count_in_last_3000_lines": 7,
+          "latest_timestamp": "2026-11-12 07:54:46,592"
+        },
+        "failure": {
+          "count_in_last_3000_lines": 15,
+          "latest_timestamp": "2026-11-13 10:00:59,114"
+        },
+        "cycle": {
+          "count_in_last_3000_lines": 8,
+          "latest_timestamp": "2026-11-13 10:00:21,610"
+        }
+      },
+      "bot_log_mtime_utc": "2026-11-13T08:00:59.114314+00:00"
+    },
+    {
+      "account": 3,
+      "state_mtime_utc": "2026-11-13T08:23:05.502440+00:00",
+      "last_cycle": {
+        "4h": "2026-11-13T08:00+00:00"
+      },
+      "lots": [
+        {
+          "symbol": "BNBUSDT",
+          "side": "SHORT",
+          "key_strategy": "exp_breakout",
+          "qty": 0.98,
+          "stop": 644.58,
+          "stop_id": "a:1000000285506397",
+          "stop_confirmed_t": 1794558140.5349972,
+          "stop_placed_t": 1794549381.159678,
+          "stop_miss": 0,
+          "stop_dirty": false,
+          "confirmation_age_seconds": 77
+        },
+        {
+          "symbol": "LINKUSDT",
+          "side": "SHORT",
+          "key_strategy": "exp_breakout",
+          "qty": 35.26,
+          "stop": 10.443,
+          "stop_id": "a:1000000284471844",
+          "stop_confirmed_t": 1794558150.006017,
+          "stop_placed_t": 1794484827.1674821,
+          "stop_miss": 0,
+          "stop_dirty": false,
+          "confirmation_age_seconds": 67
+        }
+      ],
+      "bot_log_categories": {
+        "protection": {
+          "count_in_last_3000_lines": 10,
+          "latest_timestamp": "2026-11-12 14:00:27,168"
+        },
+        "failure": {
+          "count_in_last_3000_lines": 8,
+          "latest_timestamp": "2026-11-13 10:00:58,597"
+        },
+        "cycle": {
+          "count_in_last_3000_lines": 10,
+          "latest_timestamp": "2026-11-13 10:00:20,796"
+        }
+      },
+      "bot_log_mtime_utc": "2026-11-13T08:00:58.597382+00:00"
+    },
+    {
+      "account": 4,
+      "state_mtime_utc": "2026-11-13T08:23:07.353118+00:00",
+      "last_cycle": {
+        "15m": "2026-11-13T08:15+00:00",
+        "1h": "2026-11-13T08:01+00:00",
+        "4h": "2026-11-13T08:04+00:00"
+      },
+      "lots": [
+        {
+          "symbol": "ADAUSDT",
+          "side": "LONG",
+          "key_strategy": "exp_vwaprev",
+          "qty": 1232.0,
+          "stop": 0.1637,
+          "stop_id": "a:1000000285627473",
+          "stop_confirmed_t": 1794558184.9539702,
+          "stop_placed_t": 1794557140.2465937,
+          "stop_miss": 0,
+          "stop_dirty": false,
+          "confirmation_age_seconds": 32
+        },
+        {
+          "symbol": "ADAUSDT",
+          "side": "LONG",
+          "key_strategy": "exp_range",
+          "qty": 1334.0,
+          "stop": 0.1642,
+          "stop_id": "a:1000000284739750",
+          "stop_confirmed_t": 1794558184.9539702,
+          "stop_placed_t": 1794499245.525059,
+          "stop_miss": 0,
+          "stop_dirty": false,
+          "confirmation_age_seconds": 32
+        },
+        {
+          "symbol": "XRPUSDT",
+          "side": "SHORT",
+          "key_strategy": "exp_mom_short",
+          "qty": 173.4,
+          "stop": 1.0549,
+          "stop_id": "a:1000000285383137",
+          "stop_confirmed_t": 1794558148.9234612,
+          "stop_placed_t": 1794541913.846996,
+          "stop_miss": 0,
+          "stop_dirty": false,
+          "confirmation_age_seconds": 69
+        }
+      ],
+      "bot_log_categories": {
+        "protection": {
+          "count_in_last_3000_lines": 38,
+          "latest_timestamp": "2026-11-13 10:05:40,246"
+        },
+        "failure": {
+          "count_in_last_3000_lines": 38,
+          "latest_timestamp": "2026-11-13 10:05:40,357"
+        },
+        "cycle": {
+          "count_in_last_3000_lines": 144,
+          "latest_timestamp": "2026-11-13 10:15:17,619"
+        }
+      },
+      "bot_log_mtime_utc": "2026-11-13T08:15:17.697627+00:00"
+    }
+  ]
+}
