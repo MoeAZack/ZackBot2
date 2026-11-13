@@ -2093,7 +2093,9 @@ class Engine:
                 requests.post(f"https://api.telegram.org/bot{tok}/sendMessage", timeout=10,
                               data=dict(chat_id=S_['TELEGRAM_CHAT'], text=f"[ZackBot {'LIVE' if self.live else 'paper'}] {text}"))
             except Exception as ex: log.warning('telegram send failed: ' + type(ex).__name__)
-        threading.Thread(target=_send, daemon=True).start()
+        try:                                     # CLOCK-1021 (Codex r1 F1): an alert that cannot start its thread is logged,
+            threading.Thread(target=_send, daemon=True).start()   # never raised into the trading path that sent it
+        except Exception as ex: log.warning('telegram send not started: ' + type(ex).__name__)
 
     # ------------------------------------------------------------ settings
     def load_settings(self):
@@ -4002,19 +4004,34 @@ class Engine:
         """CLOCK-1021: Binance refused a request's timestamp (-1021) even after the client's resync retries. Raised as ONE
         keyed incident ('clock-1021') with the client's clock facts (offset, round trip, sync age - no secrets), plus a phone
         alert at most every CLOCK_NOTIFY_S, so a PC clock / network-delay problem is named as such, not as a random stop
-        failure. Returns True when `e` was such a refusal."""
+        failure. Returns True when `e` was such a refusal. BEST EFFORT: it never raises (Codex r1 F1) - callers set their
+        safety state first, and an alert failure must never change a protective path or mask the original error."""
         if getattr(e, 'code', None) != -1021: return False
-        try: cs = self.trade.clock_status()
-        except Exception: cs = {}
-        facts = ', '.join(f'{k} {cs[k]}' for k in ('offset_ms', 'rtt_ms', 'sync_age_s', 'recv_window_ms') if cs.get(k) is not None)
-        self.err(f"Binance refused the request time (-1021) at {where} even after resyncing the clock"
-                 f"{' (' + facts + ')' if facts else ''} - check the PC clock (Windows time sync) and network delay",
-                 key='clock-1021')
-        now = time.time()
-        if now - getattr(self, '_clock_notified', 0.0) >= self.CLOCK_NOTIFY_S:
-            self._clock_notified = now
-            self.notify(f"⏱ Binance is refusing the bot's request time (-1021) at {where}. Check the PC clock / network delay.")
+        try:
+            try: cs = self.trade.clock_status()
+            except Exception: cs = {}
+            facts = ', '.join(f'{k} {cs[k]}' for k in ('offset_ms', 'rtt_ms', 'sync_age_s', 'recv_window_ms') if cs.get(k) is not None)
+            self.err(f"Binance refused the request time (-1021) at {where} even after resyncing the clock"
+                     f"{' (' + facts + ')' if facts else ''} - check the PC clock (Windows time sync) and network delay",
+                     key='clock-1021')
+        except Exception as ex:
+            log.warning(f'clock alert could not be recorded ({type(ex).__name__})')
+        try:
+            now = time.time()
+            if now - getattr(self, '_clock_notified', 0.0) >= self.CLOCK_NOTIFY_S:
+                self._clock_notified = now
+                self.notify(f"⏱ Binance is refusing the bot's request time (-1021) at {where}. Check the PC clock / network delay.")
+        except Exception as ex:
+            log.warning(f'clock phone alert could not be sent ({type(ex).__name__})')
         return True
+
+    def _clock_ok(self, what):
+        """CLOCK-1021: a protective order Binance accepted again closes the open clock incident (best effort, never raises)."""
+        try:
+            if (self.health.get('incidents', {}).get('clock-1021') or {}).get('open'):
+                self.resolve('clock-1021', f'Binance accepts the request time again ({what})')
+        except Exception as ex:
+            log.warning(f'clock incident could not be resolved ({type(ex).__name__})')
 
     def err(self, msg, key=None):
         """Recent Activity entry. T05b: a repeat of an OPEN incident (same key; default = the exact message) updates that
@@ -4132,8 +4149,8 @@ class Engine:
             if e.code == -2021:          # stop would trigger immediately: price is already through it -> close now
                 log.warning(f"{lot['symbol']} [{lot['sleeve']}] stop {new_stop} already crossed - closing at market")
                 lot['force_close'] = True
+            lot['stop_dirty'] = True     # safety state FIRST (Codex r1 F1); the alert below is best effort
             self._clock_alert(f"stop {lot['symbol']} [{lot['sleeve']}]", e)
-            lot['stop_dirty'] = True
             self.err(f"stop update {lot['symbol']} [{lot['sleeve']}] failed: {e} - previous stop kept")
             return False
         except Exception as e:
@@ -4143,8 +4160,7 @@ class Engine:
         old = lot.get('stop_id')
         lot['stop_id'], lot['stop'], lot['stop_dirty'], lot['last_order_t'] = new, new_stop, False, time.time()
         lot['stop_confirmed_t'] = lot['stop_placed_t'] = self.clock()      # AUD-04: Binance accepted it (id known) - re-verified
-        if (self.health.get('incidents', {}).get('clock-1021') or {}).get('open'):   # CLOCK-1021: a stop got through again
-            self.resolve('clock-1021', 'Binance accepts the request time again (a stop was placed)')
+        self._clock_ok('a stop was placed')                # CLOCK-1021: a stop got through again
         lot['stop_miss'] = 0; lot.pop('stop_miss_t', None); lot.pop('stop_miss_why', None)   # on the open-order list shortly,
         self._stopv_due(lot['symbol'], max(lot['stop_placed_t'] + STOP_SETTLE_S,               # floored so a stop trailing
                                            self._stopv_last.get(lot['symbol'], -1e18) + STOP_ACTION_MIN_S))  # every pass is
@@ -4439,6 +4455,7 @@ class Engine:
                 self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
             except BinanceError as e:                   # CLOCK-1021: a close refused on its timestamp is named as such
                 self._clock_alert(f"{why} close {sym}", e); raise
+            self._clock_ok('a close was accepted')        # CLOCK-1021 (Codex r1 F2): a close got through again
             got = self._exec_of(o, qty, r['step'])                        # AUD-03: book what Binance executed
             act = self._fill_px(o)                                        # avgPrice, else cumQuote / executedQty
             book = self._book_snapshot(probe, px, lot['side'] == 'SHORT', qty, urgent=why in self.BOOK_PROBE_URGENT)
@@ -7551,6 +7568,7 @@ class Engine:
             return
         except Exception as ex:
             u.pop('prov_pending', None)                       # refused by Binance: nothing was placed
+            self._clock_alert(f'provisional stop {sym}', ex)   # CLOCK-1021 (Codex r1 F3): named clock alert, best effort
             if old and qty < u.get('prov_qty', 0.0):          # Codex r2: a SHRINK failed - the old stop is now oversized and could
                 u['prov'], u['prov_qty'] = None, 0.0          # close a sibling's size: drop it at once (cancel, or park + retry),
                 self.save_state()                             # ownership cleared durably; the unresolved part is re-protected
@@ -7565,6 +7583,7 @@ class Engine:
             return
         u['prov'], u['prov_qty'], u['prov_stop'] = tag, qty, stop
         u.pop('prov_pending', None)
+        self._clock_ok('a provisional stop was placed')
         self.save_state()
         if old and old != tag: self._cancel_or_park(sym, old)
         log.info(f"ENTRY {sym} {side} unconfirmed: {qty} on Binance protected by a provisional stop at {stop}")

@@ -188,7 +188,9 @@ CLOCK_RETRIES = 3
 CLOCK_RW_STEPS = (10000, 20000, 30000)         # recvWindow for clock retry 1, 2, 3 (never below the client's own)
 CLOCK_AHEAD_BACK_MS = 1000                     # Binance refuses a timestamp more than 1000 ms ahead of its clock
 SYNC_EVERY_S, SYNC_RETRY_S = 300, 30           # periodic offset refresh before a signed request; retry gap after a failed one
-CLOCK_DEADLINE_S = 20                          # no further clock retry once this long has passed since the first -1021
+CLOCK_DEADLINE_S = 20                          # no clock retry is SENT once this long has passed since the first -1021
+#   (checked before and after each resync; a retry started in time still has its normal HTTP timeout, 15 s, so the worst
+#   case for one call is about CLOCK_DEADLINE_S + 15 s plus the first send)
 CLOCK_SYNC_TIMEOUT_S = 3                       # per /time sample during a clock retry (a slow network must not stall a stop)
 
 
@@ -389,6 +391,11 @@ class Futures:
                                                f'offset {self.offset} ms, recvWindow {rw or self.rw} ms)')
                 clock_try += 1
                 self._resync(2, CLOCK_SYNC_TIMEOUT_S)
+                if time.monotonic() - clock_t0 > CLOCK_DEADLINE_S:   # Codex r1 F4: re-checked AFTER the resync, before
+                    d['_n1021_fail'] = d.get('_n1021_fail', 0) + 1   # the send - no retry STARTS later than the deadline
+                    self.health.ok()
+                    raise ClockRejected(-1021, f'clock retry deadline {CLOCK_DEADLINE_S} s passed while resyncing '
+                                               f'(offset {self.offset} ms)')
                 if not adds_risk:
                     rw = max(int(self.rw), CLOCK_RW_STEPS[min(clock_try, len(CLOCK_RW_STEPS)) - 1])
                     if 'ahead' in str((data or {}).get('msg', '')).lower(): back_ms += CLOCK_AHEAD_BACK_MS

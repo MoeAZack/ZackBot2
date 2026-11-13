@@ -243,7 +243,7 @@ def test_clock_retries_stop_at_the_deadline(monkeypatch):
     """Review F2: a slow network must not stretch the clock retries of one protective call without bound."""
     t = [0.0]
     monkeypatch.setattr(BC.time, 'monotonic', lambda: t[0])
-    c, calls, _ = client([R1021_WINDOW] * 5)
+    c, calls, syncs = client([R1021_WINDOW] * 5)
     real_once = c._once
     def slow_once(*a, **k):
         t[0] += BC.CLOCK_DEADLINE_S / 2 + 1; return real_once(*a, **k)
@@ -251,6 +251,7 @@ def test_clock_retries_stop_at_the_deadline(monkeypatch):
     with pytest.raises(BC.ClockRejected):
         c.close('ADAUSDT', 'LONG', '1')
     assert len(calls) == 3 < 1 + BC.CLOCK_RETRIES                           # 3rd refusal is past the deadline
+    assert len(syncs) == 2 * 2                                              # no pointless resync once it is past
 
 
 def test_clock_retry_sync_uses_the_short_timeout():
@@ -277,3 +278,93 @@ def test_sync_with_only_backward_samples_keeps_the_offset(monkeypatch):
     with pytest.raises(ValueError):
         c.sync_time()
     assert c.offset == 42
+
+
+# ------------------------------------------------------------------ Codex r1 (PR #344 comment 6859574029)
+def _refuse(*a, **k): raise BC.ClockRejected(-1021, 'outside of the recvWindow')
+
+
+@pytest.mark.parametrize('broken', ['thread', 'notify', 'err'])
+def test_r1_f1_alert_failure_never_skips_the_safety_close(broken, monkeypatch):
+    """F1: a notify that cannot start its thread (or a failing notify / err) inside the clock alert must not make
+    _replace_stop raise: the stop stays owed (stop_dirty) and _create_lot still runs its immediate safety close."""
+    e, _ = mk_engine()
+    if broken == 'thread':                     # the REAL notify, telegram on, thread start refused by the OS
+        e.S.update(TELEGRAM_ON=True, TELEGRAM_TOKEN='t', TELEGRAM_CHAT='c')
+        real_thread = E.threading.Thread
+        class NoSendThread(real_thread):           # only the telegram sender is refused; engine threads are untouched
+            def start(self):
+                if getattr(self, '_target', None) is not None and self._target.__name__ == '_send':
+                    raise RuntimeError("can't start new thread")
+                return super().start()
+        monkeypatch.setattr(E.threading, 'Thread', NoSendThread)
+    elif broken == 'notify':
+        def boom(m):
+            if '-1021' in m: raise RuntimeError("can't start new thread")
+        e.notify = boom
+    else:
+        real_err = e.err
+        def err(msg, key=None):
+            if key == 'clock-1021': raise RuntimeError('incident store broken')
+            return real_err(msg, key)
+        e.err = err
+    e.trade.stop = _refuse
+    closes = []; real_close = e.trade.close
+    def close(*a, **k): closes.append(a); return real_close(*a, **k)
+    e.trade.close = close
+    assert not e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())    # stop failed -> trade closed again
+    assert closes and 'stop order failed' in e.last_skip and not e.state['lots']
+
+
+def test_r1_f1_replace_stop_marks_dirty_even_if_the_alert_fails():
+    e, _ = mk_engine(); k = opened(e); lot = e.state['lots'][k]
+    def boom(m): raise RuntimeError("can't start new thread")
+    e.notify = boom; e.trade.stop = _refuse
+    assert e._replace_stop(lot) is False and lot['stop_dirty'] is True
+
+
+def test_r1_f1_close_alert_failure_keeps_the_original_error():
+    e, _ = mk_engine(); k = opened(e)
+    def boom(m): raise RuntimeError("can't start new thread")
+    e.notify = boom; e.trade.close = _refuse
+    with pytest.raises(BC.ClockRejected):
+        e.close_lot(k, 'manual', 100.0)
+    assert k in e.state['lots']
+
+
+def test_r1_f2_a_close_that_gets_through_resolves_a_close_only_incident():
+    e, _ = mk_engine(); k = opened(e)
+    e.notify = lambda m: None
+    real_close = e.trade.close; e.trade.close = _refuse
+    with pytest.raises(BC.ClockRejected): e.close_lot(k, 'manual', 100.0)
+    assert e.health['incidents']['clock-1021']['open']
+    e.trade.close = real_close
+    e.close_lot(k, 'manual', 100.0)
+    assert k not in e.state['lots'] and not e.health['incidents']['clock-1021']['open']
+
+
+def test_r1_f3_provisional_stop_refused_on_time_raises_the_clock_alert():
+    from tests.test_aud04_stop_verify import mk as mk4, tick, _lost_entry_with_provisional
+    e, clk, _ = mk4(); e.notify = lambda m: None
+    real = e.trade.stop; e.trade.stop = _refuse
+    uk, u = _lost_entry_with_provisional(e, clk)
+    tick(e, clk, 8.0)
+    assert not u.get('prov') and 'prov_pending' not in u
+    assert e.health['incidents']['clock-1021']['open']
+    assert 'provisional stop BTCUSDT' in e.health['incidents']['clock-1021']['msg']
+    e.trade.stop = real; tick(e, clk, 8.0)
+    assert u.get('prov') and not e.health['incidents']['clock-1021']['open']   # placed -> incident closes
+
+
+def test_r1_f4_no_retry_is_sent_after_the_deadline_passed_during_the_resync(monkeypatch):
+    t = [0.0]
+    monkeypatch.setattr(BC.time, 'monotonic', lambda: t[0])
+    c, calls, _ = client([R1021_WINDOW] * 5)
+    real_resync = c._resync
+    def slow_resync(*a, **k):
+        t[0] += BC.CLOCK_DEADLINE_S + 1; return real_resync(*a, **k)    # the resync alone uses up the budget
+    c._resync = slow_resync
+    with pytest.raises(BC.ClockRejected) as ex:
+        c.stop('ADAUSDT', 'LONG', '1', '0.1')
+    assert len(calls) == 1 and 'deadline' in str(ex.value)
+    assert c.clock_status()['exhausted_1021'] == 1
