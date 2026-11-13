@@ -89,14 +89,8 @@
       "reason": "AUD-07 C13g: the engine journal books a gapped exchange stop at the stop price, not the fill"
     },
     "legacy_backtest": "required",
-    "newcore_sim": {
-      "status": "pending_adapter",
-      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
-    },
-    "newcore_live_sim": {
-      "status": "pending_adapter",
-      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
-    }
+    "newcore_sim": "required",
+    "newcore_live_sim": "required"
   },
   "known_divergences": [
     {

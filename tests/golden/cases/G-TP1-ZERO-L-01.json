@@ -106,14 +106,8 @@
       "status": "not_applicable",
       "reason": "NotExpressible: slot.tp1 is refused by the legacy mapping (P2-3b, a partial would be folded into the one-row trace) and instruments are not wired into the legacy adapters; cross-checked outside the pack (scratch xcheck_tp1.py: replay and backtester with these exchange rules both give TP_FULL 19.385932 / 1.9385932 R and one zero partial)"
     },
-    "newcore_sim": {
-      "status": "pending_adapter",
-      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
-    },
-    "newcore_live_sim": {
-      "status": "pending_adapter",
-      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
-    }
+    "newcore_sim": "required",
+    "newcore_live_sim": "required"
   },
   "known_divergences": [],
   "provenance": {

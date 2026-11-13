@@ -91,14 +91,8 @@
       "status": "known_divergence",
       "reason": "AUD-07: legacy behaviour differs from the corrected contract (gap at the open on the target side)"
     },
-    "newcore_sim": {
-      "status": "pending_adapter",
-      "reason": "NEWCORE NC-07/NC-08 adapter not built yet"
-    },
-    "newcore_live_sim": {
-      "status": "pending_adapter",
-      "reason": "NEWCORE NC-08 live-sim adapter not built yet"
-    }
+    "newcore_sim": "required",
+    "newcore_live_sim": "required"
   },
   "known_divergences": [
     {
