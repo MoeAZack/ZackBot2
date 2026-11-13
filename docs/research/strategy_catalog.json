@@ -14835,7 +14835,7 @@
         "start": "2024-10-14T00:00:00Z",
         "tf": "1h"
       },
-      "extra31_ever_run": "YES_PARTIAL: eight current extra31 symbols in recorded development; other execution history unresolved",
+      "extra31_ever_run": "YES: full31 first-pass screen; later23-coin rule-v1 failure. No longer unseen; original historical-coverage limits remain.",
       "extra31_evidence": {
         "packet_path": "C:\\Dev\\ZackBot_cowork_data\\kalman_innovation_c101\\kalman-innovation-long-dev.json",
         "file_sha256": "867996d0e7556b1441d947bff75d4936a557f762956e23f24964a739da231f0c",
@@ -14983,7 +14983,30 @@
       },
       "code_readiness": "STATIC_REGISTERED_SIGNAL",
       "universe_eligibility": "BLOCKED_OTHER_RUN_HISTORY_UNRESOLVED",
-      "is_independent_tested_hypothesis": "UNVERIFIED: resolve aliases and evidence before counting"
+      "is_independent_tested_hypothesis": "UNVERIFIED: resolve aliases and evidence before counting",
+      "related_studies": [
+        {
+          "id": "EXTRA31_SCREEN_AND_SIEVE_V1_20261113",
+          "result_head": "0ca354406a618a51751497a2aa8cb5cb2ea3405e",
+          "pr": 340,
+          "review_head": "1a5f5d1493d535688af80ecc17bcee773fc7ec8b",
+          "review_url": "https://github.com/MoeAZack/ZackBot2/pull/340#issuecomment-6849009884",
+          "first_pass_registered_records": 291,
+          "distinct_hypotheses": "UNVERIFIED; aliases and selections retained",
+          "selection": "First-pass outcomes precede pair/panel freezes; consumed-symbol diagnostics",
+          "independent_scope": "Source/history and submitted summary arithmetic; full C101 signal/cash not rebuilt",
+          "next": "Exact-fixed sizing companion and original9/current-cohort relevance; no account activation",
+          "case": "c101",
+          "disposition": "FAILED_PARKED unchanged 23-coin transfer",
+          "universe_scope": "23-coin complement confirmed relative to recorded 18-coin Stage-A packet, not universal historical non-use",
+          "signal_identity": "AST-identical original6e52bb61 vs c254f7a1265b including helper/params/mgmt",
+          "economics": {
+            "n_median": 304,
+            "meanR15_reported": -0.068,
+            "orders_passing_reported": 0
+          }
+        }
+      ]
     },
     {
       "id": "C117",
@@ -29669,7 +29692,22 @@
           "management_config_ast_sha256": "79efa9095605c8bd643a3bb86667cf825d631d13ed02b71a6c15b802e19964d9"
         }
       ],
-      "is_independent_tested_hypothesis": "UNVERIFIED: resolve aliases and evidence before counting"
+      "is_independent_tested_hypothesis": "UNVERIFIED: resolve aliases and evidence before counting",
+      "related_studies": [
+        {
+          "id": "EXTRA31_SCREEN_AND_SIEVE_V1_20261113",
+          "result_head": "0ca354406a618a51751497a2aa8cb5cb2ea3405e",
+          "pr": 340,
+          "review_head": "1a5f5d1493d535688af80ecc17bcee773fc7ec8b",
+          "review_url": "https://github.com/MoeAZack/ZackBot2/pull/340#issuecomment-6849009884",
+          "first_pass_registered_records": 291,
+          "distinct_hypotheses": "UNVERIFIED; aliases and selections retained",
+          "selection": "First-pass outcomes precede pair/panel freezes; consumed-symbol diagnostics",
+          "independent_scope": "exp_trend/bear_breakdown all raw/eligible signals, all order0 admissions and cash on primary/worst; arithmetic only for other orders",
+          "next": "Exact-fixed sizing companion and original9/current-cohort relevance; no account activation",
+          "relationship": "Historical transfer diagnostic of related registry rule; not this arm's frozen prospective result"
+        }
+      ]
     },
     {
       "id": "FWD-01:REG:breakout_pyramid",
@@ -30262,7 +30300,22 @@
       ],
       "code_readiness": "STATIC_SIGNAL_MATCH; prospective coverage preflight documented in FWD-01/freeze-post.md",
       "universe_eligibility": "CONSUMED_SYMBOL_TRANSFER_DIAGNOSTIC; untouched claim blocked pending full prior history",
-      "is_independent_tested_hypothesis": "UNVERIFIED: resolve aliases and evidence before counting"
+      "is_independent_tested_hypothesis": "UNVERIFIED: resolve aliases and evidence before counting",
+      "related_studies": [
+        {
+          "id": "EXTRA31_SCREEN_AND_SIEVE_V1_20261113",
+          "result_head": "0ca354406a618a51751497a2aa8cb5cb2ea3405e",
+          "pr": 340,
+          "review_head": "1a5f5d1493d535688af80ecc17bcee773fc7ec8b",
+          "review_url": "https://github.com/MoeAZack/ZackBot2/pull/340#issuecomment-6849009884",
+          "first_pass_registered_records": 291,
+          "distinct_hypotheses": "UNVERIFIED; aliases and selections retained",
+          "selection": "First-pass outcomes precede pair/panel freezes; consumed-symbol diagnostics",
+          "independent_scope": "exp_trend/bear_breakdown all raw/eligible signals, all order0 admissions and cash on primary/worst; arithmetic only for other orders",
+          "next": "Exact-fixed sizing companion and original9/current-cohort relevance; no account activation",
+          "relationship": "Historical transfer diagnostic of related registry rule; not this arm's frozen prospective result"
+        }
+      ]
     },
     {
       "id": "FWD-01:REG:ema_st_short_c29",
@@ -30777,7 +30830,22 @@
           "management_config_ast_sha256": "93f1f37ca8b2f738732cf7df45ef129f7110a9034b0267cc2a78f52bca3eb2a5"
         }
       ],
-      "is_independent_tested_hypothesis": "UNVERIFIED: resolve aliases and evidence before counting"
+      "is_independent_tested_hypothesis": "UNVERIFIED: resolve aliases and evidence before counting",
+      "related_studies": [
+        {
+          "id": "EXTRA31_SCREEN_AND_SIEVE_V1_20261113",
+          "result_head": "0ca354406a618a51751497a2aa8cb5cb2ea3405e",
+          "pr": 340,
+          "review_head": "1a5f5d1493d535688af80ecc17bcee773fc7ec8b",
+          "review_url": "https://github.com/MoeAZack/ZackBot2/pull/340#issuecomment-6849009884",
+          "first_pass_registered_records": 291,
+          "distinct_hypotheses": "UNVERIFIED; aliases and selections retained",
+          "selection": "First-pass outcomes precede pair/panel freezes; consumed-symbol diagnostics",
+          "independent_scope": "exp_trend/bear_breakdown all raw/eligible signals, all order0 admissions and cash on primary/worst; arithmetic only for other orders",
+          "next": "Exact-fixed sizing companion and original9/current-cohort relevance; no account activation",
+          "relationship": "Historical transfer diagnostic of related registry rule; not this arm's frozen prospective result"
+        }
+      ]
     },
     {
       "id": "FWD-01:REG:exp_trend_long_h3",
@@ -32159,7 +32227,22 @@
           "management_config_ast_sha256": "57b91f42450471ced0863090d7a121601e8fd599c87a1f9a357b1ee94f097677"
         }
       ],
-      "is_independent_tested_hypothesis": "UNVERIFIED: resolve aliases and evidence before counting"
+      "is_independent_tested_hypothesis": "UNVERIFIED: resolve aliases and evidence before counting",
+      "related_studies": [
+        {
+          "id": "EXTRA31_SCREEN_AND_SIEVE_V1_20261113",
+          "result_head": "0ca354406a618a51751497a2aa8cb5cb2ea3405e",
+          "pr": 340,
+          "review_head": "1a5f5d1493d535688af80ecc17bcee773fc7ec8b",
+          "review_url": "https://github.com/MoeAZack/ZackBot2/pull/340#issuecomment-6849009884",
+          "first_pass_registered_records": 291,
+          "distinct_hypotheses": "UNVERIFIED; aliases and selections retained",
+          "selection": "First-pass outcomes precede pair/panel freezes; consumed-symbol diagnostics",
+          "independent_scope": "exp_trend/bear_breakdown all raw/eligible signals, all order0 admissions and cash on primary/worst; arithmetic only for other orders",
+          "next": "Exact-fixed sizing companion and original9/current-cohort relevance; no account activation",
+          "relationship": "Historical transfer diagnostic of related registry rule; not this arm's frozen prospective result"
+        }
+      ]
     },
     {
       "id": "FWD-01:REG:rotation_long_h2",
@@ -42019,5 +42102,19 @@
     "remaining_branch_registry_signal": 43,
     "research_code_reference": 38,
     "separate_research_registry_signal": 6
-  }
+  },
+  "related_studies": [
+    {
+      "id": "EXTRA31_SCREEN_AND_SIEVE_V1_20261113",
+      "result_head": "0ca354406a618a51751497a2aa8cb5cb2ea3405e",
+      "pr": 340,
+      "review_head": "1a5f5d1493d535688af80ecc17bcee773fc7ec8b",
+      "review_url": "https://github.com/MoeAZack/ZackBot2/pull/340#issuecomment-6849009884",
+      "first_pass_registered_records": 291,
+      "distinct_hypotheses": "UNVERIFIED; aliases and selections retained",
+      "selection": "First-pass outcomes precede pair/panel freezes; consumed-symbol diagnostics",
+      "independent_scope": "exp_trend/bear_breakdown all raw/eligible signals, all order0 admissions and cash on primary/worst; arithmetic only for other orders",
+      "next": "Exact-fixed sizing companion and original9/current-cohort relevance; no account activation"
+    }
+  ]
 }
