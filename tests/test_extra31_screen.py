@@ -164,3 +164,22 @@ def test_sieve_liquidity_needs_30_complete_days_and_720_bars():
     assert not SV.liquidity_1h(d3).iloc[24 * 31:].any()
     d4 = d.copy(); d4['qv'] = 1e7 / 24 - 1.0
     assert not SV.liquidity_1h(d4).any()
+
+
+# ---------------------------------------------------------------- SIEVE-V1 panel form
+import sieve_v1_panel as SP
+
+
+def test_panel_cases_are_the_screen_survivors_with_pinned_management():
+    c = SP.CASES['cases']
+    assert set(c) == {'exp_trend', 'bear_breakdown', 'rotation', 'cp_n3_turtle_daily', 'cp_y2_breadth_thrust_1d', 'ema_st_panel'}
+    assert all(len(SP.case_coins(k)) == 31 and v['label'].startswith('CONSUMED_SYMBOL_TRANSFER_DIAGNOSTIC') for k, v in c.items())
+    assert c['rotation']['params'] == {'k': 5} and c['bear_breakdown']['management'] == {'stop_atr': 2.0, 'trail_atr': 3.0}
+    assert all(v['source'] in RS.CONTRACT['sources'] and RS.CONTRACT['sources'][v['source']]['commit'] == v['commit'] for v in c.values())
+
+
+def test_cut_ctx_keeps_scalars_and_cuts_aligned_fields():
+    ctx = dict(btc_down=np.array([True, False, True, False]), rank=pd.Series([1.0, 2.0, 3.0, 4.0]), n_symbols=7, other=np.array([1, 2]))
+    o = SP.cut_ctx(ctx, 2, 4)
+    assert list(o['btc_down']) == [True, False] and list(o['rank']) == [3.0, 4.0] and list(o['rank'].index) == [0, 1]
+    assert o['n_symbols'] == 7 and list(o['other']) == [1, 2]

@@ -1,0 +1,115 @@
+{
+ "id": "SIEVE-V1-PANEL-CASES",
+ "rule": "Codex catalog-and-sieve rule v1 (487843b3), exactly as implemented and frozen in sieve_v1.py / sieve_v1_cases.json; only the signal assembly differs (see sieve_v1_panel.py docstring)",
+ "status": "FROZEN before any rule-v1 outcome of these cases",
+ "why_these": "the five other distinct survivors of the EXTRA31-SCREEN first-pass filter (summary.csv sha256 2f58c9d955554194a34365994554bf6a68eb69598a8d61be4575799d895baba9), plus ema_st_panel as a cross-check of the pair-book form",
+ "disclosure_of_prior_outcomes": "every case here already has a first-pass screen outcome on all 31 coins (every-signal simulation, not rule v1): exp_trend PASS n=1539 meanR15 +0.1027; bear_breakdown PASS n=2519 +0.0447; rotation PASS n=3473 +0.0409 (rotation_long_h2 is the same rule and is not run twice); cp_n3_turtle_daily PASS n=1206 +0.0771; cp_y2_breadth_thrust_1d PASS n=1042 +0.1218; ema_st PASS n=927 +0.2057. The cases are selected on those outcomes, so a rule-v1 pass here is selection-dependent and stays a lead. No rule-v1 run of any of them existed at this freeze.",
+ "cross_section": "ranks / breadth / panels are computed over BTC + the case's 31 coins, each present only from its own first candle",
+ "cases": {
+  "exp_trend": {
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "key": "exp_trend",
+   "tf": "4h",
+   "side": "both",
+   "management": {
+    "stop_atr": 2.5,
+    "tp_r": 3.0,
+    "max_bars": 180
+   },
+   "params": {},
+   "eligible_coins": "extra31",
+   "prior_exposure": "testnet cohort / FWD-01 use on the original nine; broader history unresolved",
+   "label": "CONSUMED_SYMBOL_TRANSFER_DIAGNOSTIC (development history on these coins is not reconciled; does not count toward the fresh-coin goal)"
+  },
+  "bear_breakdown": {
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "key": "bear_breakdown",
+   "tf": "4h",
+   "side": "short",
+   "management": {
+    "stop_atr": 2.0,
+    "trail_atr": 3.0
+   },
+   "params": {},
+   "eligible_coins": "extra31",
+   "prior_exposure": "legacy 4h set; history unresolved",
+   "label": "CONSUMED_SYMBOL_TRANSFER_DIAGNOSTIC (development history on these coins is not reconciled; does not count toward the fresh-coin goal)"
+  },
+  "rotation": {
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "key": "rotation",
+   "tf": "4h",
+   "side": "long",
+   "management": {
+    "stop_atr": 3.0
+   },
+   "params": {
+    "k": 5
+   },
+   "eligible_coins": "extra31",
+   "prior_exposure": "legacy 4h set (repo data/ holds 40 4h coins); history unresolved, likely includes these coins",
+   "label": "CONSUMED_SYMBOL_TRANSFER_DIAGNOSTIC (development history on these coins is not reconciled; does not count toward the fresh-coin goal)"
+  },
+  "cp_n3_turtle_daily": {
+   "source": "cp12",
+   "commit": "2fba3ff06ac7c2e23823d91a963385c6c6f6010b",
+   "key": "cp_n3_turtle_daily",
+   "tf": "1d",
+   "side": "both",
+   "management": {
+    "stop_atr": 2.0,
+    "tp_r": 50.0,
+    "max_bars": 120,
+    "be_r": 0,
+    "trail_atr": 0
+   },
+   "params": {
+    "entry": 20,
+    "exit": 10
+   },
+   "eligible_coins": "extra31",
+   "prior_exposure": "developed on the 8 long-data original coins (PR #334); not known to have used extra31",
+   "label": "CONSUMED_SYMBOL_TRANSFER_DIAGNOSTIC (development history on these coins is not reconciled; does not count toward the fresh-coin goal)"
+  },
+  "cp_y2_breadth_thrust_1d": {
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "key": "cp_y2_breadth_thrust_1d",
+   "tf": "1d",
+   "side": "both",
+   "management": {
+    "stop_atr": 2.5,
+    "tp_r": 3.0,
+    "max_bars": 20,
+    "tp1_r": 1.0,
+    "tp1_frac": 0.5,
+    "be_r": 1.0
+   },
+   "params": {
+    "lo": 0.25,
+    "hi": 0.75,
+    "win": 5
+   },
+   "eligible_coins": "extra31",
+   "prior_exposure": "developed on the 8 long-data original coins (PR #337); not known to have used extra31",
+   "label": "CONSUMED_SYMBOL_TRANSFER_DIAGNOSTIC (development history on these coins is not reconciled; does not count toward the fresh-coin goal)"
+  },
+  "ema_st_panel": {
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "key": "ema_st",
+   "tf": "4h",
+   "side": "long",
+   "management": {
+    "stop_atr": 2.5
+   },
+   "params": {},
+   "eligible_coins": "extra31",
+   "prior_exposure": "same as ema_st in sieve_v1_cases.json; cross-check only, must reproduce that case's trades",
+   "label": "CONSUMED_SYMBOL_TRANSFER_DIAGNOSTIC (development history on these coins is not reconciled; does not count toward the fresh-coin goal)"
+  }
+ }
+}
