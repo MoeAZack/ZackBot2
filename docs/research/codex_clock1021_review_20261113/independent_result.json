@@ -1,0 +1,128 @@
+{
+  "head": "6dbb1db59dbedbced7eb599ad7183bdfc336d0cd",
+  "base": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+  "offline_only": true,
+  "checks": {
+    "stop": {
+      "requests": 4,
+      "windows": [
+        6000,
+        10000,
+        20000,
+        30000
+      ],
+      "same_client_id": true,
+      "sync_timeouts": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "definitive_success": true
+    },
+    "close": {
+      "requests": 4,
+      "windows": [
+        6000,
+        10000,
+        20000,
+        30000
+      ],
+      "same_client_id": true,
+      "sync_timeouts": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "definitive_success": true
+    },
+    "algo_stop": {
+      "requests": 4,
+      "windows": [
+        6000,
+        10000,
+        20000,
+        30000
+      ],
+      "same_client_id": true,
+      "sync_timeouts": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "definitive_success": true
+    },
+    "open": {
+      "requests": 2,
+      "windows": [
+        6000,
+        6000
+      ],
+      "same_client_id": true,
+      "exception": "ClockRejected",
+      "lookups": 0
+    },
+    "maker": {
+      "requests": 2,
+      "windows": [
+        6000,
+        6000
+      ],
+      "same_client_id": true,
+      "exception": "ClockRejected",
+      "lookups": 0
+    },
+    "actual_engine_maker": {
+      "post_attempts": 2,
+      "windows": [
+        6000,
+        6000
+      ],
+      "same_client_id": true,
+      "status": "between"
+    },
+    "alert_interrupts_stop_failure": {
+      "exception": "fixture thread start failed",
+      "stop_dirty": false,
+      "returned_false": false
+    },
+    "close_only_incident_remains_open": {
+      "closed_qty": 1,
+      "remaining_qty": 0.0,
+      "incident_open": true
+    },
+    "provisional_stop_has_no_clock_alert": {
+      "clock_incident": false,
+      "incident_keys": [
+        "prov|FIX-UNCONFIRMED"
+      ],
+      "protected": false
+    },
+    "retry_can_start_after_deadline": {
+      "retry_start_seconds_after_first_rejection": [
+        6.0,
+        15.0,
+        24.0
+      ],
+      "declared_deadline_seconds": 20,
+      "last_retry_started_after_deadline": true
+    },
+    "legacy_non1021_parity": {
+      "cases": 18648,
+      "differences": 0,
+      "scope": "Fresh offset; outcome, primary request fields except signature, retry count and sleeps. Periodic stale sync is an intentional new side effect."
+    },
+    "create_lot_identical": {
+      "sha256": "eb9ff2afca9194508438bd48ce6c723a4af0d5f661ada2b1a3b1c3e07ca9d5e5",
+      "identical": true
+    }
+  }
+}
