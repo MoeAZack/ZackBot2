@@ -4437,6 +4437,8 @@ class Engine:
             except AmbiguousOrder as e:
                 lot['pending'] = dict(kind='close', qty=qty, px=px, why=why, post=post or {}, t=time.time(), cid=_cid_of(e.tag) or cid)
                 self.save_state(); self.err(f'{sym} close unconfirmed ({e}) - waiting for Binance position to confirm'); raise
+            except BinanceError as e:                   # CLOCK-1021: a close refused on its timestamp is named as such
+                self._clock_alert(f"{why} close {sym}", e); raise
             got = self._exec_of(o, qty, r['step'])                        # AUD-03: book what Binance executed
             act = self._fill_px(o)                                        # avgPrice, else cumQuote / executedQty
             book = self._book_snapshot(probe, px, lot['side'] == 'SHORT', qty, urgent=why in self.BOOK_PROBE_URGENT)
@@ -7697,7 +7699,6 @@ class Engine:
                 self.close_lot(key, 'stop_failed', px)
                 self.last_skip = 'stop order failed - trade closed again'; return False
             except Exception as e:
-                self._clock_alert(f'safety close {sym}', e)
                 self.err(f'{sym}: stop AND safety close failed ({e}) - kept as unprotected, retrying every few seconds')
                 self.notify(f'🆘 {side} {sym} has NO stop on Binance (stop and close both failed). The bot keeps retrying - check it.')
                 return True
