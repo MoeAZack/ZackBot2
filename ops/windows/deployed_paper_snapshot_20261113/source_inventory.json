@@ -1,0 +1,80 @@
+[
+  {
+    "deployed_path": "F:\\ZackBot2_data\\ZackBot-PAPER-watchdog.ps1",
+    "repo_path": "ops\\windows\\deployed_paper_snapshot_20261113\\ZackBot-PAPER-watchdog.ps1",
+    "sha256": "7eb40c567597ceb2ddb3307c92b8b248b60577a344c5e21f53daf9d4eb5c3ea5",
+    "copied": true
+  },
+  {
+    "deployed_path": "F:\\ZackBot2_data\\OLD3-account2\\start_old3.py",
+    "repo_path": "ops\\windows\\deployed_paper_snapshot_20261113\\OLD3-account2\\start_old3.py",
+    "sha256": "909efb1e6e62b1d55aab8c7c2a15f8e8c2eaec28db00e8dc17b1d0a58c34a647",
+    "copied": true
+  },
+  {
+    "deployed_path": "F:\\ZackBot2_data\\ACCOUNT3-breakeven\\start_account3.py",
+    "repo_path": "ops\\windows\\deployed_paper_snapshot_20261113\\ACCOUNT3-breakeven\\start_account3.py",
+    "sha256": "b17920668644bc06df1b8b42f844b310072e32759efbabfad60e79a0cc8fac68",
+    "copied": true
+  },
+  {
+    "deployed_path": "F:\\ZackBot2_data\\ACCOUNT3-breakeven\\account3_activation.py",
+    "repo_path": "ops\\windows\\deployed_paper_snapshot_20261113\\ACCOUNT3-breakeven\\account3_activation.py",
+    "sha256": "fb7228f8a4118ef2f20773424ee8cdd941211f28a6562e8552d17e8205551ff8",
+    "copied": true
+  },
+  {
+    "deployed_path": "F:\\ZackBot2_data\\EXPLORATION-account4\\start_account4.py",
+    "repo_path": "ops\\windows\\deployed_paper_snapshot_20261113\\EXPLORATION-account4\\start_account4.py",
+    "sha256": "805a28f9e33ae0d0a87b6091ea3ec3dd6d978843028596118eb21db677f3acae",
+    "copied": true
+  },
+  {
+    "deployed_path": "F:\\ZackBot2_data\\EXPLORATION-account4\\stop_readonly_probe.py",
+    "repo_path": "ops\\windows\\deployed_paper_snapshot_20261113\\EXPLORATION-account4\\stop_readonly_probe.py",
+    "sha256": "41785c7064e114f5dada893f07d441b0ea0380c1e7676434516c5d839ff97e41",
+    "copied": true
+  },
+  {
+    "deployed_path": "F:\\ZackBot2_data\\EXPLORATION-account4\\h5_hourly_long.py",
+    "repo_path": "ops\\windows\\deployed_paper_snapshot_20261113\\EXPLORATION-account4\\h5_hourly_long.py",
+    "sha256": "d6b28a448d47412f892e60b41f40f8c19f4020c08a63a7c9a8d6cc51ff2a9948",
+    "copied": true
+  },
+  {
+    "deployed_path": "F:\\ZackBot2_data\\EXPLORATION-account4\\watchdog-account4-only.ps1",
+    "repo_path": "ops\\windows\\deployed_paper_snapshot_20261113\\EXPLORATION-account4\\watchdog-account4-only.ps1",
+    "sha256": "1a988e751dd011ad066441edaba6f1fa731d402e1939617762520538f4ab7b68",
+    "copied": true
+  },
+  {
+    "deployed_path": "F:\\ZackBot2_data\\dashboard-hub\\hub.py",
+    "repo_path": "ops\\windows\\deployed_paper_snapshot_20261113\\dashboard-hub\\hub.py",
+    "sha256": "7501d57847a67fc28642bcf2240b9b27bf3743696263449b4c676ec4f20fd51e",
+    "copied": true
+  },
+  {
+    "deployed_path": "F:\\ZackBot2_data\\dashboard-hub\\index.html",
+    "repo_path": "ops\\windows\\deployed_paper_snapshot_20261113\\dashboard-hub\\index.html",
+    "sha256": "64fc450ef91d165fc4ab9e183336db8cf2dd2f20e1dffd0944256ccf46219760",
+    "copied": true
+  },
+  {
+    "deployed_path": "F:\\ZackBot2_data\\dashboard-hub\\OWNER-BOUNDARIES.md",
+    "repo_path": "ops\\windows\\deployed_paper_snapshot_20261113\\dashboard-hub\\OWNER-BOUNDARIES.md",
+    "sha256": "c7b624337b11ab064ab855c39052820a7886b4d594b0e0363201afe77c72ef5d",
+    "copied": true
+  },
+  {
+    "deployed_path": "F:\\ZackBot2_data\\research-job-guard\\guard.py",
+    "repo_path": "ops\\windows\\deployed_paper_snapshot_20261113\\research-job-guard\\guard.py",
+    "sha256": "229246c782a3c2a5b37adf5cf5fb3f77bea1b2b5562879ad4a680f5ecaeb033d",
+    "copied": true
+  },
+  {
+    "deployed_path": "F:\\ZackBot2_data\\same-side-overlap\\overlap_collector.py",
+    "repo_path": "ops\\windows\\deployed_paper_snapshot_20261113\\same-side-overlap\\overlap_collector.py",
+    "sha256": "ec2989e712967d94f0a346fe9d4c688a772cc6cb42b164459d8496536dcee0c1",
+    "copied": true
+  }
+]
