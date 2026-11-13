@@ -1,0 +1,5 @@
+{"id": "IVS-ECON-D01", "contract": "0547b96f", "freeze_head": "e42b1ebf", "freeze_sha256": "2f026e579f5f486deee9fb78ce3a973a48ae84d90e70b31681bbe442af4e2e98",
+ "original_trial": "IVS-1H FREQUENCY_FAIL at 544a33d2 (1.4953 distinct fill times/calendar week < 3), unchanged",
+ "scope_choice": "post-signal-count / pre-P&L dependent 12-case diagnostic, not preregistered before counts",
+ "verdict": "NEGATIVE in all 12 cases (net and gross-before-slip below zero) -> IVS family PARKED", "not_computed": "40-order grid, p10, LEAD_PASS",
+ "no_rescue": "no side/coin/order/threshold selection; long-only subsets are descriptive only"}
