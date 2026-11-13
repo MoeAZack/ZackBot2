@@ -24,7 +24,8 @@
  },
  "data": {
   "dir": "C:/Dev/ZackBot_research_cache/h5_wide_d01_20261112/clean",
-  "manifest": "input_manifest.json (in the data folder or one level above it, as in the D01 layout); each CSV sha256 is recorded with the count found in the manifest",
+  "manifest": "input_manifest.json",
+  "manifest_location": "in the data folder or one level above it (D01 layout); each CSV sha256 is recorded with the count found in the manifest",
   "manifest_sha256": "99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95",
   "bars": "1h native; 4h and 1d are UTC bins built from 1h, a bin needs all of its 1h bars else it is dropped; 15m does not exist in this data",
   "late_listings": "no candle is invented: coins are grouped by listing date and each group is run in its own book that starts at that date and holds BTC plus every coin already listed (the cross-sectional context of that moment); a coin's own first max(warmup, 720h / bar hours) bars are never traded (warmup 220 bars, 60 for 1d)",
