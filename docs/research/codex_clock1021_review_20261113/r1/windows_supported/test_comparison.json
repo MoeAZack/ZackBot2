@@ -1,0 +1,531 @@
+{
+  "status": "COMPLETE",
+  "head": {
+    "receipt": {
+      "name": "head_r1",
+      "kind": "tests",
+      "head": "6e259ea5acf2379fe09bff933d7c5b05cfaa269e",
+      "started_cairo": "2026-11-14T00:53:09.130852+02:00",
+      "deadline_s": 14400,
+      "python": "C:\\Users\\princ\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "command": [
+        "C:\\Users\\princ\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "-rfE",
+        "-n",
+        "6",
+        "--junitxml=F:\\ZackBot2_data\\CLOCK-1021-REVIEW-20261113\\supported_window_20261114\\head_r1_tests.xml",
+        "tests"
+      ],
+      "localappdata": "F:\\ZackBot2_data\\CLOCK-1021-REVIEW-20261113\\supported_window_20261114\\head_r1_tests_appdata",
+      "no_install": true,
+      "dependencies": {
+        "pytest": "9.1.1",
+        "pytest-xdist": "3.8.0",
+        "pandas": "3.0.6",
+        "numpy": "2.5.3",
+        "requests": "2.34.2"
+      },
+      "pid": 24720,
+      "timed_out": false,
+      "exit_code": 1,
+      "finished_cairo": "2026-11-14T01:14:21.259963+02:00",
+      "seconds": 1272.06,
+      "clean_at_end": true
+    },
+    "counts": {
+      "passed": 11095,
+      "skipped": 41,
+      "xfailed": 32,
+      "failure": 22
+    },
+    "unique_test_ids": 11190,
+    "collected": 11190,
+    "complete": true,
+    "failures": [
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_amended_execute_binds_the_amendment_into_run_json_lines_and_result",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_cli_never_evaluates_without_an_integration_loader",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_disclosures_are_in_docstring_result_and_run_json",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_execute_binds_an_immutable_rules_identity",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_execute_binds_the_rss_cap_to_the_source_before_any_read",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_execute_is_authorized_rss_guarded_chained_and_resumable",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_pass2_refuses_a_source_mutated_between_passes_or_without_identity",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_pit_default_path_carries_no_prospective_label",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_prospective_execute_binds_identity_and_labels_every_packet",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_rss_guard_trips_inside_heavy_work_and_writes_nothing_past_the_checkpoint[b0_sample]",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_rss_guard_trips_inside_heavy_work_and_writes_nothing_past_the_checkpoint[bootstrap_lcb]",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_rss_guard_trips_inside_heavy_work_and_writes_nothing_past_the_checkpoint[unit_replays]",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_run_assembles_gate_inputs_and_never_decides",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_run_is_in_memory_without_verdict_and_writes_are_refused",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_run_json_binds_the_complete_authorization_and_resume_under_another_fails",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_fib_pullback_02",
+        "name": "test_f1_injected_failure_after_run_before_publish_leaves_no_final_packet",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_fib_pullback_02",
+        "name": "test_f1_publish_failure_leaves_no_final_packet",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_fib_pullback_02",
+        "name": "test_f1_stale_staging_is_refused_never_reused[0]",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_fib_pullback_02",
+        "name": "test_f1_stale_staging_is_refused_never_reused[1]",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_fib_pullback_02",
+        "name": "test_f1_stale_staging_is_refused_never_reused[2]",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_fib_pullback_02",
+        "name": "test_wrapper_refuses_holdout_and_non_mainnet_rules",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_fib_pullback_02",
+        "name": "test_wrapper_runs_frozen_runner_with_scoped_equivalents",
+        "kind": "failure",
+        "type": null
+      }
+    ],
+    "junit_sha256": "a3c3b244ddadd3ca70935d6bf79f044c9f0f25e590211671d684ae4a2793ac07"
+  },
+  "base": {
+    "receipt": {
+      "name": "base",
+      "kind": "tests",
+      "head": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+      "started_cairo": "2026-11-14T01:14:21.703049+02:00",
+      "deadline_s": 14400,
+      "python": "C:\\Users\\princ\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "command": [
+        "C:\\Users\\princ\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "-rfE",
+        "-n",
+        "6",
+        "--junitxml=F:\\ZackBot2_data\\CLOCK-1021-REVIEW-20261113\\supported_window_20261114\\base_tests.xml",
+        "tests"
+      ],
+      "localappdata": "F:\\ZackBot2_data\\CLOCK-1021-REVIEW-20261113\\supported_window_20261114\\base_tests_appdata",
+      "no_install": true,
+      "dependencies": {
+        "pytest": "9.1.1",
+        "pytest-xdist": "3.8.0",
+        "pandas": "3.0.6",
+        "numpy": "2.5.3",
+        "requests": "2.34.2"
+      },
+      "pid": 29276,
+      "timed_out": false,
+      "exit_code": 1,
+      "finished_cairo": "2026-11-14T01:33:14.937023+02:00",
+      "seconds": 1133.22,
+      "clean_at_end": true
+    },
+    "counts": {
+      "passed": 11056,
+      "skipped": 41,
+      "xfailed": 32,
+      "failure": 22
+    },
+    "unique_test_ids": 11151,
+    "collected": 11151,
+    "complete": true,
+    "failures": [
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_amended_execute_binds_the_amendment_into_run_json_lines_and_result",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_cli_never_evaluates_without_an_integration_loader",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_disclosures_are_in_docstring_result_and_run_json",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_execute_binds_an_immutable_rules_identity",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_execute_binds_the_rss_cap_to_the_source_before_any_read",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_execute_is_authorized_rss_guarded_chained_and_resumable",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_pass2_refuses_a_source_mutated_between_passes_or_without_identity",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_pit_default_path_carries_no_prospective_label",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_prospective_execute_binds_identity_and_labels_every_packet",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_rss_guard_trips_inside_heavy_work_and_writes_nothing_past_the_checkpoint[b0_sample]",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_rss_guard_trips_inside_heavy_work_and_writes_nothing_past_the_checkpoint[bootstrap_lcb]",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_rss_guard_trips_inside_heavy_work_and_writes_nothing_past_the_checkpoint[unit_replays]",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_run_assembles_gate_inputs_and_never_decides",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_run_is_in_memory_without_verdict_and_writes_are_refused",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_bpyr_runner",
+        "name": "test_run_json_binds_the_complete_authorization_and_resume_under_another_fails",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_fib_pullback_02",
+        "name": "test_f1_injected_failure_after_run_before_publish_leaves_no_final_packet",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_fib_pullback_02",
+        "name": "test_f1_publish_failure_leaves_no_final_packet",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_fib_pullback_02",
+        "name": "test_f1_stale_staging_is_refused_never_reused[0]",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_fib_pullback_02",
+        "name": "test_f1_stale_staging_is_refused_never_reused[1]",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_fib_pullback_02",
+        "name": "test_f1_stale_staging_is_refused_never_reused[2]",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_fib_pullback_02",
+        "name": "test_wrapper_refuses_holdout_and_non_mainnet_rules",
+        "kind": "failure",
+        "type": null
+      },
+      {
+        "classname": "tests.test_fib_pullback_02",
+        "name": "test_wrapper_runs_frozen_runner_with_scoped_equivalents",
+        "kind": "failure",
+        "type": null
+      }
+    ],
+    "junit_sha256": "27edb8e95a053d7a83d5df8455b8b7ae50910be454f582b8bba4494e614d4b4a"
+  },
+  "head_only_failure_or_error_ids": [],
+  "base_only_failure_or_error_ids": [],
+  "identical_failure_error_multisets": true,
+  "shared_failure_error_occurrences": 22,
+  "added_test_ids": [
+    [
+      "tests.test_clock_1021",
+      "test_1021_left_after_the_budget_raises_clock_rejected_not_ambiguous"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_ahead_answer_moves_the_timestamp_back"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_client_with_a_wider_own_window_never_narrows_it"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_clock_retries_do_not_use_up_the_network_retry_budget"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_clock_retries_stop_at_the_deadline"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_clock_retry_sync_uses_the_short_timeout"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_engine_clock_alert_ignores_other_errors"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_engine_clock_alert_survives_a_fake_without_clock_status"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_engine_raises_one_keyed_clock_alert_when_stop_and_close_are_refused"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_entry_gets_one_plain_retry_and_no_wider_window"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_entry_one_retry_can_still_succeed"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_failed_refresh_is_retried_after_the_gap_not_on_every_call"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_maker_entry_is_sent_as_risk_adding"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_persistent_busy_answer_still_ends_after_the_normal_retries"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_persistent_network_error_still_ends_after_the_normal_retries"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_r1_f1_alert_failure_never_skips_the_safety_close[err]"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_r1_f1_alert_failure_never_skips_the_safety_close[notify]"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_r1_f1_alert_failure_never_skips_the_safety_close[thread]"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_r1_f1_close_alert_failure_keeps_the_original_error"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_r1_f1_replace_stop_marks_dirty_even_if_the_alert_fails"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_r1_f2_a_close_that_gets_through_resolves_a_close_only_incident"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_r1_f3_provisional_stop_refused_on_time_raises_the_clock_alert"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_r1_f4_no_retry_is_sent_after_the_deadline_passed_during_the_resync"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_resync_failure_does_not_abort_the_protective_retry"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_safety_close_survives_three_1021_refusals"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_stale_offset_is_refreshed_before_a_signed_request"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_stop_survives_repeated_1021_with_resync_and_wider_window"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_sync_drops_a_sample_where_the_clock_stepped_back"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_sync_keeps_the_fastest_sample"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_sync_rejects_an_unusable_server_time_and_keeps_the_offset[-5]"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_sync_rejects_an_unusable_server_time_and_keeps_the_offset[0]"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_sync_rejects_an_unusable_server_time_and_keeps_the_offset[None]"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_sync_rejects_an_unusable_server_time_and_keeps_the_offset[True]"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_sync_rejects_an_unusable_server_time_and_keeps_the_offset[nan]"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_sync_rejects_an_unusable_server_time_and_keeps_the_offset[x]"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_sync_uses_the_round_trip_midpoint"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_sync_with_only_backward_samples_keeps_the_offset"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_unsigned_request_never_syncs"
+    ],
+    [
+      "tests.test_clock_1021",
+      "test_window_answer_does_not_move_the_timestamp_back"
+    ]
+  ],
+  "removed_test_ids": [],
+  "method": "Exact (classname, name, failure/error) multiset comparison. Native complete JUnit plus collected-item coverage; XML order and line endings ignored."
+}

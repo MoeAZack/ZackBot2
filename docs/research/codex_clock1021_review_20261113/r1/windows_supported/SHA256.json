@@ -1,0 +1,10 @@
+{
+  "collect_clock_supported.py": "95ddc2d97ed4f082c935e1bce689cfc76b65f930d6e720e2153279b73a1bb69f",
+  "collection_receipt.json": "09d0c1677aa3a87eb943ea0a60cd2f2875169b375f6e28b6d5776ef3141e569f",
+  "compare_clock_supported.py": "f0ca540cfd014284b665b6e8a2a254e4e0e389cf50edae592acbb20a2ffc7708",
+  "local_artifact_hashes.json": "a01bd143623cc7a38b906f6352cc52442f66f562f40cc7419b09cb21286197d5",
+  "run_clock_supported.py": "dcaccaf336db1722d824c493e8ff99b4add8033444a5ee8d2417d32edc91f7fd",
+  "test_comparison.json": "04bd231e9c4f219460e0c47d88b6c38c2b592f4323a8c9fc32c5785151f7ede2",
+  "TEST_REPORT.md": "beae1b7fef5f65452cfc0d5142aefb146ce1fa6ae834f4a32bc7058606be1972",
+  "test_run_receipt.json": "10e7638de2bfcef8f7fe06043511bffcc11b976c88b6618877edacfb064ae70d"
+}

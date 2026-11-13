@@ -1,0 +1,74 @@
+[
+  {
+    "name": "head_r1",
+    "kind": "tests",
+    "head": "6e259ea5acf2379fe09bff933d7c5b05cfaa269e",
+    "started_cairo": "2026-11-14T00:53:09.130852+02:00",
+    "deadline_s": 14400,
+    "python": "C:\\Users\\princ\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+    "command": [
+      "C:\\Users\\princ\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "-rfE",
+      "-n",
+      "6",
+      "--junitxml=F:\\ZackBot2_data\\CLOCK-1021-REVIEW-20261113\\supported_window_20261114\\head_r1_tests.xml",
+      "tests"
+    ],
+    "localappdata": "F:\\ZackBot2_data\\CLOCK-1021-REVIEW-20261113\\supported_window_20261114\\head_r1_tests_appdata",
+    "no_install": true,
+    "dependencies": {
+      "pytest": "9.1.1",
+      "pytest-xdist": "3.8.0",
+      "pandas": "3.0.6",
+      "numpy": "2.5.3",
+      "requests": "2.34.2"
+    },
+    "pid": 24720,
+    "timed_out": false,
+    "exit_code": 1,
+    "finished_cairo": "2026-11-14T01:14:21.259963+02:00",
+    "seconds": 1272.06,
+    "clean_at_end": true
+  },
+  {
+    "name": "base",
+    "kind": "tests",
+    "head": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+    "started_cairo": "2026-11-14T01:14:21.703049+02:00",
+    "deadline_s": 14400,
+    "python": "C:\\Users\\princ\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+    "command": [
+      "C:\\Users\\princ\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "-rfE",
+      "-n",
+      "6",
+      "--junitxml=F:\\ZackBot2_data\\CLOCK-1021-REVIEW-20261113\\supported_window_20261114\\base_tests.xml",
+      "tests"
+    ],
+    "localappdata": "F:\\ZackBot2_data\\CLOCK-1021-REVIEW-20261113\\supported_window_20261114\\base_tests_appdata",
+    "no_install": true,
+    "dependencies": {
+      "pytest": "9.1.1",
+      "pytest-xdist": "3.8.0",
+      "pandas": "3.0.6",
+      "numpy": "2.5.3",
+      "requests": "2.34.2"
+    },
+    "pid": 29276,
+    "timed_out": false,
+    "exit_code": 1,
+    "finished_cairo": "2026-11-14T01:33:14.937023+02:00",
+    "seconds": 1133.22,
+    "clean_at_end": true
+  }
+]
