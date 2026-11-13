@@ -210,12 +210,20 @@ def export(name, out):
     return dst
 
 
-def check_data(dirp, strict):
-    mp = os.path.join(dirp, CONTRACT['data']['manifest'])
-    got = sha(mp) if os.path.exists(mp) else None
+def check_data(dirp, strict, syms):
+    """The frozen manifest sits in the data folder or one level above it (D01 layout: <root>/input_manifest.json and
+    <root>/clean/*.csv). Its sha256 must equal the contract's; each CSV's sha256 is recorded, with the count of them found in the manifest text (reported, not a gate)."""
+    got, man = None, None
+    for mp in (os.path.join(dirp, CONTRACT['data']['manifest']), os.path.join(os.path.dirname(os.path.abspath(dirp)), CONTRACT['data']['manifest'])):
+        if os.path.exists(mp):
+            got = sha(mp); man = open(mp, encoding='utf-8').read(); break
     if strict and got != CONTRACT['data']['manifest_sha256']:
         raise SystemExit(f'data manifest sha256 {got} != frozen {CONTRACT["data"]["manifest_sha256"]}')
-    return got
+    files, listed = {}, 0
+    for s_ in syms:
+        h = sha(os.path.join(dirp, f'{s_}_1h.csv')); files[s_] = h
+        if man is not None and h in man: listed += 1
+    return got, files, listed
 
 
 def summarize(out):
@@ -249,7 +257,7 @@ def main():
     a = ap.parse_args()
     if a.worker: return worker(a)
     os.makedirs(a.out, exist_ok=True)
-    msha = check_data(a.data, strict=not a.universe)
+    msha, fsha, listed = check_data(a.data, not a.universe, [BTC] + (a.universe.split(',') if a.universe else EXTRA31))
     names = [a.source] if a.source else list(CONTRACT['sources'])
     if 'c254' in names and 'master' not in names and not os.path.exists(os.path.join(a.out, '_master_keys.json')):
         names = ['master'] + names
@@ -268,7 +276,7 @@ def main():
         if any(p.wait() for p in procs): raise SystemExit(f'worker failed for source {name}')
     rows, cnt = summarize(a.out)
     json.dump(dict(contract_sha256=sha(os.path.join(HERE, 'contract.json')), runner_sha256=sha(os.path.abspath(__file__)),
-                   data_manifest_sha256=msha, universe=a.universe or 'extra31', counts=cnt, strategies=len(rows)),
+                   data_manifest_sha256=msha, csv_sha256=fsha, csv_in_manifest=listed, universe=a.universe or 'extra31', counts=cnt, strategies=len(rows)),
               open(os.path.join(a.out, 'run_meta.json'), 'w', encoding='utf-8'), indent=1)
     print('DONE', cnt, flush=True)
 

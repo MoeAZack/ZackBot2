@@ -24,7 +24,7 @@
  },
  "data": {
   "dir": "C:/Dev/ZackBot_research_cache/h5_wide_d01_20261112/clean",
-  "manifest": "input_manifest.json",
+  "manifest": "input_manifest.json (in the data folder or one level above it, as in the D01 layout); each CSV sha256 is recorded with the count found in the manifest",
   "manifest_sha256": "99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95",
   "bars": "1h native; 4h and 1d are UTC bins built from 1h, a bin needs all of its 1h bars else it is dropped; 15m does not exist in this data",
   "late_listings": "no candle is invented: coins are grouped by listing date and each group is run in its own book that starts at that date and holds BTC plus every coin already listed (the cross-sectional context of that moment); a coin's own first max(warmup, 720h / bar hours) bars are never traded (warmup 220 bars, 60 for 1d)",
@@ -58,6 +58,7 @@
  "statuses": ["PASS", "FAIL", "SKIPPED_ALREADY_TESTED", "NO_DATA_15M", "NO_DATA_INPUT", "ERROR"],
  "status_notes": "NO_DATA_15M: 15m rule, the data is 1h. NO_DATA_INPUT: the rule reads an input (mark price, taker flow, minute bars, trade sizes) that this 1h price/volume data does not hold; it is listed, not judged. ERROR: listed with the error, not judged.",
  "order": "ema_st and kalman_innovation_recovery_long_1h (C101) are run and reported first; the order does not change any result",
+ "amendments": ["2026-11-13, before any extra31 run: the first launch stopped at the manifest check because the manifest sits one level above clean/. The runner now also looks there and records each CSV sha256 with the count found in the manifest. No rule, universe, cost or gate changed."],
  "limitations": [
   "about 290 strategies are screened at once, so a few passes by luck are expected; a pass only earns a full gated test (portfolio limits, order permutations, worst path, Codex reproduction)",
   "not a fresh time period: the same calendar window as earlier development, different coins",
