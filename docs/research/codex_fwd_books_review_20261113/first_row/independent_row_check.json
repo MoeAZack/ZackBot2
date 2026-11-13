@@ -1,0 +1,229 @@
+{
+  "row_sha256": "08c8aec9a4137bc40a7bb1ae642ca8c6e0368f8254aaad1403b745b773fd509c",
+  "receipts_sha256": "02ac2b46c9f53886decad18618c5faa1f8ef2746d9f6a478828415ab5df29b05",
+  "matching_raw_input_hashes": 18,
+  "own_H5_predicates": {
+    "ADAUSDT": [
+      {
+        "t": "2026-11-12 22:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": true,
+        "close_top20pct": false,
+        "EMA50_above_EMA200": false,
+        "signal": false
+      },
+      {
+        "t": "2026-11-12 23:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": true,
+        "close_top20pct": true,
+        "EMA50_above_EMA200": false,
+        "signal": false
+      }
+    ],
+    "AVAXUSDT": [
+      {
+        "t": "2026-11-12 22:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": true,
+        "close_top20pct": true,
+        "EMA50_above_EMA200": true,
+        "signal": false
+      },
+      {
+        "t": "2026-11-12 23:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": true,
+        "close_top20pct": true,
+        "EMA50_above_EMA200": true,
+        "signal": false
+      }
+    ],
+    "BNBUSDT": [
+      {
+        "t": "2026-11-12 22:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": false,
+        "close_top20pct": false,
+        "EMA50_above_EMA200": false,
+        "signal": false
+      },
+      {
+        "t": "2026-11-12 23:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": true,
+        "close_top20pct": true,
+        "EMA50_above_EMA200": false,
+        "signal": false
+      }
+    ],
+    "BTCUSDT": [
+      {
+        "t": "2026-11-12 22:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": false,
+        "close_top20pct": false,
+        "EMA50_above_EMA200": false,
+        "signal": false
+      },
+      {
+        "t": "2026-11-12 23:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": true,
+        "close_top20pct": false,
+        "EMA50_above_EMA200": false,
+        "signal": false
+      }
+    ],
+    "DOGEUSDT": [
+      {
+        "t": "2026-11-12 22:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": true,
+        "close_top20pct": false,
+        "EMA50_above_EMA200": false,
+        "signal": false
+      },
+      {
+        "t": "2026-11-12 23:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": true,
+        "close_top20pct": true,
+        "EMA50_above_EMA200": false,
+        "signal": false
+      }
+    ],
+    "ETHUSDT": [
+      {
+        "t": "2026-11-12 22:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": false,
+        "close_top20pct": false,
+        "EMA50_above_EMA200": false,
+        "signal": false
+      },
+      {
+        "t": "2026-11-12 23:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": true,
+        "close_top20pct": true,
+        "EMA50_above_EMA200": false,
+        "signal": false
+      }
+    ],
+    "LINKUSDT": [
+      {
+        "t": "2026-11-12 22:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": false,
+        "close_top20pct": false,
+        "EMA50_above_EMA200": false,
+        "signal": false
+      },
+      {
+        "t": "2026-11-12 23:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": true,
+        "close_top20pct": true,
+        "EMA50_above_EMA200": false,
+        "signal": false
+      }
+    ],
+    "SOLUSDT": [
+      {
+        "t": "2026-11-12 22:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": true,
+        "close_top20pct": false,
+        "EMA50_above_EMA200": false,
+        "signal": false
+      },
+      {
+        "t": "2026-11-12 23:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": true,
+        "close_top20pct": false,
+        "EMA50_above_EMA200": false,
+        "signal": false
+      }
+    ],
+    "XRPUSDT": [
+      {
+        "t": "2026-11-12 22:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": true,
+        "close_top20pct": false,
+        "EMA50_above_EMA200": false,
+        "signal": false
+      },
+      {
+        "t": "2026-11-12 23:00:00",
+        "body_at_least_ATR": false,
+        "body_at_most_3ATR": true,
+        "volume_2x_prior24median": false,
+        "positive_span": true,
+        "bullish": true,
+        "close_top20pct": true,
+        "EMA50_above_EMA200": false,
+        "signal": false
+      }
+    ]
+  },
+  "exact_semantic_row_match": true,
+  "exact_receipts_match": true,
+  "H5_cases": 12,
+  "EMA_baseline_cases": 12,
+  "receipt_sets": 24,
+  "verdict": "PASS_FIRST_ROW_RESEARCH_ONLY"
+}
