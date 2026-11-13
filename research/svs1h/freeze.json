@@ -25,7 +25,7 @@
  ],
  "files": {
   "SELF/svs_signals.py": "c869da24c6ba788ea62888bbe3fc15341a4d328b7d74bb000011da85d6eeb363",
-  "SELF/svs_run.py": "5216d19c046e81a02aa4867cf7fc9fc00f62e0213e8df021a652613fb89fd731",
+  "SELF/svs_run.py": "d8c5e0d85e7875985a962f0bccd95bb6d345cf04d927e5f83f856b6b01e3fb3a",
   "SELF/test_svs.py": "5e7699b534549436b1b7bed0ccda37879c7faa0ffa9a809da4cd053658b659d3",
   "SELF/spb_signals_6f16d49a.py": "6f16d49af129775042602ba03c2f85bc5995bd441e2421108ca3661e9c93c98e",
   "SPOTFLOW-D01-20261112/data_validation.json": "ed674fefcb3784d68882166884d9d1839a79ef844549ce441920d537b1c86183",
@@ -276,5 +276,11 @@
   "h5_wide_d01_20261112/clean/LINKUSDT_1h.csv": "cd7ed248ccbb1cb8caa56ff5bad667aea02a72723b07ef9ac22b734c0658161d",
   "h5_wide_d01_20261112/clean/AVAXUSDT_1h.csv": "50ba7ef4c6c8a2cfb333f3f3069efd030c8eabe0ff4447fc368edc374f182420"
  },
- "notes": "inputs = exactly the 247 SPB-pinned data/harness files (225 spot archives, 9 canonical futures, manifest, rules, harness); spb_signals helpers vendored byte-identical (6f16d49a)"
+ "notes": "inputs = exactly the 247 SPB-pinned data/harness files (225 spot archives, 9 canonical futures, manifest, rules, harness); spb_signals helpers vendored byte-identical (6f16d49a)",
+ "amendment_a1": {
+  "reason": "pre-outcome crash: assertion compared the SPOTFLOW manifest symbol order (cohort order) with the sorted coin list; process exited before any signal or outcome was computed (no output written). Fix sorts the symbol list; orders/economics/rules unchanged.",
+  "original_freeze_sha256": "a5c7b94604ef25acbcab964a49760dee32696a87d9738cf2a7b3ac7897328eb3",
+  "original_svs_run_sha256": "5216d19c046e81a02aa4867cf7fc9fc00f62e0213e8df021a652613fb89fd731",
+  "crash_log": "research/svs1h/a1_crash.log"
+ }
 }

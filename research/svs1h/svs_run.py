@@ -28,7 +28,7 @@ def main(root, out, verify_only=False):
     X, D = R.X, R.D
     T0 = pd.Timestamp('2024-10-11 17:00'); T1 = pd.Timestamp('2026-09-27 23:00')
     X.T0 = D.T0 = T0; X.T1 = D.T1 = T1; X.SPLIT = D.SPLIT = pd.Timestamp('2025-10-01')
-    syms = M['symbols']; assert syms == sorted(F['coins']) == F['coins']
+    syms = sorted(M['symbols']); assert syms == F['coins']
     rules = json.loads((S / 'harness/data/exchange_rules_testnet.json').read_text(encoding='utf-8'))['symbols']
     coins, raw, counts, masks = {}, [], {}, []
     for s in syms:
