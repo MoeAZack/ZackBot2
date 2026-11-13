@@ -1,0 +1,11 @@
+{
+  "status": "RETIRED",
+  "retired_utc": "2026-11-13T08:06:16.885109+00:00",
+  "reason": "cursor_data_changed after partial input append and failed cursor commit; original rows/cursor preserved",
+  "canonical_forward_record": "Claude FWD-BOOKS H5",
+  "original_freeze_head": "8f83494b",
+  "amendment_head": "4a349fe9",
+  "freeze_sha256": "389c466e3eca3fa99d0a477c7a87306536179602921b21d4bd46b1a01b395824",
+  "record_path": "docs/research/fwd_books/rows",
+  "local_historical_rows_preserved": true
+}
