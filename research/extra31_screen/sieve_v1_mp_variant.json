@@ -1,0 +1,25 @@
+{
+ "id": "SIEVE-V1-MP-VARIANT",
+ "status": "FROZEN before any multi-position outcome of these cases",
+ "label": "DISCLOSED_POST_HOC_VARIANT (not rule v1; chosen after the rule-v1 max-one results were seen)",
+ "approval": "moe 2026-11-13 (project chat, relayed by the coordinator): multi-position variant of the strict test for the six first-filter survivors",
+ "what_changes": "only the number of positions the account may hold at once: 3 and 5 instead of 1",
+ "max_pos": [
+  3,
+  5
+ ],
+ "unchanged": "everything else in sieve_v1.py / sieve_v1_panel.py and sieve_v1_panel_cases.json: signals, management, $8 risk per entry, the $3,333.33 cap (it stays an account-wide total-notional cap, so it is shared by the open positions), 7/15/23 bp, 40 symbol orders with medians, split 2025-01-01, >= 30 closes per half in order 0, D01 point-in-time liquidity, T0, all seven gates including the ex-best-coin gate, the worst-path diagnostic",
+ "open_risk": "at most 5 x $8 = $40 = 1.0% of the $4,000 account, inside the 2.5% open-risk cap; the engine does not model that cap and it cannot bind here",
+ "cases": [
+  "exp_trend",
+  "bear_breakdown",
+  "rotation",
+  "cp_n3_turtle_daily",
+  "cp_y2_breadth_thrust_1d",
+  "ema_st_panel"
+ ],
+ "disclosure_of_prior_outcomes": "rule-v1 max-one results existed and were seen before this freeze (PR #340 head 0ca35440, docs/research/extra31_screen/sieve_v1_panel): exp_trend PASS median n 321 meanR15 +0.122; bear_breakdown PASS n 196 +0.117 (worst-path diagnostic fails); ema_st FAIL ex-best -0.026; rotation FAIL ex-best -0.0003; cp_n3_turtle_daily FAIL n 64; cp_y2_breadth_thrust_1d FAIL n 37. The every-signal screen outcomes (max_pos 99) of all six were also seen: all six passed it. The variant relaxes the constraint that caused several of the failures, and it sits between two outcomes already known, so a pass here is weaker evidence than a rule-v1 pass and never replaces the rule-v1 result, which stays on record.",
+ "result_status": "POST_HOC_VARIANT_MP3_PASS / POST_HOC_VARIANT_MP5_PASS or FAIL; never TRANSFER_SCREEN_PASS",
+ "outputs": "<case>_mp<N>_result.json, _order0_{path,worst}_trades.csv, _signals.csv, _inputs.json",
+ "never": "no gate is weakened, no parameter tuned, no coin dropped, no other max_pos value run"
+}

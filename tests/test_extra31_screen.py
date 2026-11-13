@@ -183,3 +183,15 @@ def test_cut_ctx_keeps_scalars_and_cuts_aligned_fields():
     o = SP.cut_ctx(ctx, 2, 4)
     assert list(o['btc_down']) == [True, False] and list(o['rank']) == [3.0, 4.0] and list(o['rank'].index) == [0, 1]
     assert o['n_symbols'] == 7 and list(o['other']) == [1, 2]
+
+
+def test_mp_variant_is_frozen_and_default_is_rule_v1():
+    import json, os, inspect
+    here = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'research', 'extra31_screen')
+    v = json.load(open(os.path.join(here, 'sieve_v1_mp_variant.json'), encoding='utf-8'))
+    cases = json.load(open(os.path.join(here, 'sieve_v1_panel_cases.json'), encoding='utf-8'))['cases']
+    assert v['max_pos'] == [3, 5] and len(v['cases']) == 6 and set(v['cases']) <= set(cases)
+    assert 'POST_HOC' in v['label'] and max(v['max_pos']) * 8 <= 0.025 * 4000
+    src = open(os.path.join(here, 'sieve_v1_panel.py'), encoding='utf-8').read()
+    assert "'--max-pos', type=int, default=1, choices=[1, 3, 5]" in src and 'max_pos=mp, symbols=order' in src
+    assert "'TRANSFER_SCREEN_PASS' if mp == 1 else" in src
