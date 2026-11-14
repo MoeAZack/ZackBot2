@@ -787,3 +787,42 @@ def test_v27_stale_day_after_a_gap_does_not_fire_twice():
     drop = c.drop(index=i + 1).reset_index(drop=True)
     j = int(np.flatnonzero(pd.to_datetime(drop.t).values == t.values[i + 6])[0])
     assert not L27._staircase(drop, dict(days=3), True)[j]
+
+
+import longscout_v28 as L28
+L28.register()
+
+
+@pytest.mark.parametrize('key', sorted(L28.CANDIDATES))
+def test_v28_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _ms(_mk(2600, '4h', 56)), _ms(_mk(2600, '4h', 55))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v28_helper_values_match_on_every_prefix():
+    c = S.indicators(_ms(_mk(2600, '4h', 56)))
+    P = {k: v['params'] for k, v in L28.CANDIDATES.items()}
+    fns = [lambda x, u=u: L28._band_walk(x, P['r28_band_walk_4h'], u) for u in (True, False)] + \
+          [lambda x, u=u: L28._obv_break(x, P['r28_obv_confirmed_break_4h'], u) for u in (True, False)] + \
+          [lambda x: L28._nr7(x, P['l28_nr7_breakout_4h'])[0], lambda x: L28._nr7(x, P['l28_nr7_breakout_4h'])[1].values]
+    full = [f(c) for f in fns]
+    assert all(np.nansum(np.asarray(x, float)) > 0 for x in full)
+    for cut in range(700, 2600, 19):
+        part = c.iloc[:cut].reset_index(drop=True)
+        for f, x in zip(fns, full):
+            np.testing.assert_array_equal(f(part), x[:cut])
+
+
+def test_v28_nr7_entry_only_on_the_day_after_the_nr7_day():
+    c = S.indicators(_ms(_mk(2600, '4h', 56))); t = pd.to_datetime(c.t)
+    ok, _ = L28._nr7(c, dict(n=7))
+    D = L27._days_v(c); rng = D.h - D.l
+    nr = set((rng[(rng <= rng.rolling(7).min())].index + pd.Timedelta(days=1)).values)
+    assert ok.sum() > 0 and all(v in nr for v in t.dt.normalize().values[ok])
