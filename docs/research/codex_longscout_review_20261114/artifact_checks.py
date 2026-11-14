@@ -7,6 +7,9 @@ R=Path(r'F:\ZackBot2_data\LONGSCOUT-REVIEW-20261114')
 D=R/'docs/research/longscout_v1'; O=Path(r'F:\ZackBot2_data\LONGSCOUT-REVIEW-20261114-evidence')
 def blob(ref,path): return subprocess.check_output(['git','show',f'{ref}:{path}'],cwd=R)
 checks={}
+manifest=Path(r'C:\Dev\ZackBot_research_cache\h5_wide_d01_20261112\input_manifest.json')
+manifest_sha=hashlib.sha256(manifest.read_bytes()).hexdigest()
+assert manifest_sha=='99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95'
 for ref,path in [('a4e3b7591dcb7538ff9eb5aeeb1a07d82b6276e2','research/longscout_v1.py'),('465808a2289863beca314766f3cd55038004174b','research/extra31_screen/longscout_v1_cases.json')]:
     a,b=blob(ref,path),blob('0a54ad4c',path); assert a==b
     checks[path]=dict(freeze=ref,sha256=hashlib.sha256(a).hexdigest(),unchanged=True)
@@ -23,7 +26,7 @@ for name in cases:
     m=pd.DataFrame(nums).median().to_dict(); z=t[t.order==0]
     gates=dict(trades=m['n']>=100,meanR15=m['meanR15']>0,meanR23=m['meanR23']>=0,early=m['early']>0,late=m['late']>0,ex_best_coin=m['ex_best']>0,order0_30_per_half=bool((z.t_in<pd.Timestamp('2025-01-01')).sum()>=30 and (z.t_in>=pd.Timestamp('2025-01-01')).sum()>=30))
     ref=json.loads((D/f'{name}_result.json').read_text()); assert gates==ref['gates'],(name,gates,ref['gates'])
-    rows[name]=dict(medians=m,gates=gates,pass_all=all(gates.values()))
-out=dict(frozen_blobs=checks,gate_tables=rows,passed=sum(x['pass_all'] for x in rows.values()),limits='Gate arithmetic checked on supplied cash tables for all eight; independent raw-price replay only LC5, regime review separately. Not independent economics validation of all eight.')
+    rows[name]=dict(medians=m,gates=gates,orders_positive_R15=int((pd.DataFrame(nums).meanR15>0).sum()),pass_all=all(gates.values()))
+out=dict(manifest_sha256=manifest_sha,frozen_blobs=checks,gate_tables=rows,passed=sum(x['pass_all'] for x in rows.values()),limits='Gate arithmetic checked on supplied cash tables for all eight; independent raw-price replay only LC5, regime review separately. Not independent economics validation of all eight.')
 (O/'artifact_checks.json').write_text(json.dumps(out,indent=2)+'\n',encoding='utf-8')
 print(json.dumps(dict(freeze_unchanged=True,cases_checked=len(rows),pass_count=out['passed'],volume=rows['lc_volume_accum_1d']),indent=2))

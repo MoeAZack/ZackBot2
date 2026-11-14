@@ -4,7 +4,7 @@ Reviewed PR #347 at exact head `0a54ad4c92f699dcf15635859dfd4766d4c25276`. Resea
 
 ## Frozen source and inputs
 
-The longscout rules blob is unchanged from `a4e3b7591dcb7538ff9eb5aeeb1a07d82b6276e2`; the cases/R1/pass-rule blob is unchanged from `465808a2289863beca314766f3cd55038004174b`. Both independent programs verified all 32 input CSV hashes (31 traded coins plus BTC context) against the published pinned input receipts. Expected manifest identity is `99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95`. This review checks those actual CSV bytes; it does not independently establish that the published freeze preceded all outcomes or that these coins/calendar dates are untouched research holdouts.
+The longscout rules blob is unchanged from `a4e3b7591dcb7538ff9eb5aeeb1a07d82b6276e2`; the cases/R1/pass-rule blob is unchanged from `465808a2289863beca314766f3cd55038004174b`. Both independent programs verified all 32 input CSV hashes (31 traded coins plus BTC context) against the published pinned input receipts. The actual input_manifest.json SHA-256 also matches `99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95`. This review checks those actual CSV bytes; it does not independently establish that the published freeze preceded all outcomes or that these coins/calendar dates are untouched research holdouts.
 
 ## LC5 volume accumulation: independent execution replay PASS
 

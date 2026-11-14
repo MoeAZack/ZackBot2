@@ -1,4 +1,5 @@
 {
+  "manifest_sha256": "99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95",
   "frozen_blobs": {
     "research/longscout_v1.py": {
       "freeze": "a4e3b7591dcb7538ff9eb5aeeb1a07d82b6276e2",
@@ -30,6 +31,7 @@
         "ex_best_coin": false,
         "order0_30_per_half": false
       },
+      "orders_positive_R15": 0,
       "pass_all": false
     },
     "lc_rs_rsi2_dip_4h": {
@@ -50,6 +52,7 @@
         "ex_best_coin": false,
         "order0_30_per_half": true
       },
+      "orders_positive_R15": 0,
       "pass_all": false
     },
     "lc_washout_reclaim_1d": {
@@ -70,6 +73,7 @@
         "ex_best_coin": false,
         "order0_30_per_half": false
       },
+      "orders_positive_R15": 12,
       "pass_all": false
     },
     "lc_mss_higher_low_4h": {
@@ -90,6 +94,7 @@
         "ex_best_coin": false,
         "order0_30_per_half": true
       },
+      "orders_positive_R15": 12,
       "pass_all": false
     },
     "lc_volume_accum_1d": {
@@ -110,6 +115,7 @@
         "ex_best_coin": true,
         "order0_30_per_half": false
       },
+      "orders_positive_R15": 40,
       "pass_all": false
     },
     "lc_trend_pullback_1d": {
@@ -130,6 +136,7 @@
         "ex_best_coin": false,
         "order0_30_per_half": false
       },
+      "orders_positive_R15": 28,
       "pass_all": false
     },
     "rs_regime_gated_trend_4h": {
@@ -150,6 +157,7 @@
         "ex_best_coin": true,
         "order0_30_per_half": true
       },
+      "orders_positive_R15": 40,
       "pass_all": false
     },
     "ss_ma_rejection_short_1d": {
@@ -170,6 +178,7 @@
         "ex_best_coin": false,
         "order0_30_per_half": true
       },
+      "orders_positive_R15": 7,
       "pass_all": false
     }
   },
