@@ -204,3 +204,18 @@ def test_v6_v7_dense_prefix_cuts(key):
             assert (part[k] == full[k][:cut]).all(), (key, k, cut)
         if 'atr' in full:
             np.testing.assert_allclose(part['atr'], full['atr'][:cut], equal_nan=True)
+
+
+import longscout_v8 as L8
+L8.register()
+
+
+@pytest.mark.parametrize('key', sorted(L8.CANDIDATES))
+def test_v8_dense_prefix_cuts_and_fires(key):
+    coin, btc = _mk(2600, '4h', 55), _mk(2600, '4h', 56)
+    full = _sig(key, coin, btc)
+    assert (np.asarray(full['le']).sum() + np.asarray(full['se']).sum()) > 0, key
+    for cut in list(range(1250, 2300, 15)) + list(range(2300, 2600)):   # every bar near the end: a 1-bar lookahead
+        part = _sig(key, coin.iloc[:cut].reset_index(drop=True), btc.iloc[:cut].reset_index(drop=True))  # shows only at cut-1
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:cut]).all(), (key, k, cut)
