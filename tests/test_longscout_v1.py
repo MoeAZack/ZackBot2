@@ -394,3 +394,28 @@ def test_v14_cut_right_after_signals_and_prefixes(key):
         part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
         for k in ('le', 'se', 'lx', 'sx'):
             assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+import longscout_v15 as L15
+L15.register()
+
+
+@pytest.mark.parametrize('key', sorted(L15.CANDIDATES))
+def test_v15_cut_right_after_signals_and_prefixes(key):
+    coin, btc = _mk(2600, '4h', 55), _mk(2600, '4h', 56)
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v15_pivots_reach_bars_only_after_the_day_closes():
+    t = pd.date_range('2024-01-01', periods=12, freq='4h')
+    d = pd.DataFrame(dict(t=t, o=1.0, h=np.r_[np.full(6, 12.0), np.full(6, 99.0)], l=np.r_[np.full(6, 6.0), np.full(6, 1.0)],
+                          c=np.r_[np.full(6, 9.0), np.full(6, 50.0)], v=1.0))
+    r1, s1 = L15._pivots(d)
+    assert np.isnan(r1[:5]).all() and np.allclose(r1[5:11], 2 * 9 - 6) and np.allclose(s1[5:11], 2 * 9 - 12)
