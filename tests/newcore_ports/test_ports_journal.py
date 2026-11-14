@@ -133,9 +133,9 @@ def test_refused_event_leaves_the_gate_unchanged_and_the_right_event_still_appli
 
 
 def test_good_and_bad_catalogues_are_complete():
-    assert set(GOOD) == {'fill_and_protect', 'fallback', 'unknown_then_found', 'never_sent'}
+    assert set(GOOD) == {'fill_and_protect', 'fallback', 'algo_first', 'unknown_then_found', 'never_sent'}
     must = {'reused_sequence', 'wrong_parent', 'wrong_ordinal', 'wrong_id', 'fallback_after_unknown',
-            'duplicate_route_send',
+            'duplicate_route_send', 'algo_while_previous_live', 'algo_route_for_a_close',
             'second_algo_after_algo_rejected', 'decision_authorizes_leg1', 'leg1_after_leg0_completed',
             'unauthorized_intent', 'signal_decided_twice', 'result_before_intent', 'reorder', 'gap'}
     assert must <= set(BAD)

@@ -19,9 +19,11 @@ Grammar rules (G1-G10). Admission is atomic: a refused event leaves everything u
       derive_child_intent_id(account, owner, purpose, ordinal) with ordinal = the journal's count of earlier
       (owner, purpose) intents. An int_ owner is a recorded entry intent; a lot_ owner is derive_lot_id of an entry with
       an executing final result. One client id per intent: client_id_for(intent, route), never reused.
-  G6  routes: 'algo' only for protect, and only as the fallback of the owner's previous protect attempt, which was sent
-      on 'classic' and closed 'rejected'. An attempt intent is one route and one send; a second route is a new
-      lineage intent, so the second send is journaled and a third attempt on the same failure is refused.
+  G6  routes: 'algo' only for protect. An algo protect is the owner's first protect attempt, follows an attempt that
+      closed without a rejection (cancelled / expired / filled / not sent), or is the fallback of a classic attempt
+      that was sent and closed 'rejected' (Binance answers classic STOP_MARKET with -4120 since its algo migration).
+      It is refused while the previous attempt is live or unknown, and after an algo attempt closed 'rejected': an
+      attempt intent is one route and one send, so a third attempt on the same failure is refused.
   G7  sent: only from recorded, once.
   G8  state_changed (working / unknown / cancelling): live, no final result yet; working / unknown only after sent.
   G9  result_recorded: the intent is recorded (never a result before it), no final result yet, the result names the
@@ -347,9 +349,12 @@ class Grammar:
         req_g(cid not in self._client_ids, p + '.client_ids', 'G5: a client id is never reused')
         if route == 'algo':
             prev = self._intents.get(self._last_protect.get(owner, ''))
-            req_g(h.purpose is Purpose.PROTECT and prev is not None and prev.route == 'classic' and prev.sent
-                  and prev.closed is IntentState.REJECTED, p + '.client_ids',
-                  'G6: algo only as the fallback of a sent classic protect attempt that closed rejected')
+            fallback = (prev is not None and prev.route == 'classic' and prev.sent
+                        and prev.closed is IntentState.REJECTED)
+            fresh = prev is None or (prev.closed is not None and prev.closed is not IntentState.REJECTED)
+            req_g(h.purpose is Purpose.PROTECT and (fallback or fresh), p + '.client_ids',
+                  'G6: algo only as the fallback of a sent classic protect attempt that closed rejected, or as a '
+                  'protect after no attempt / an attempt that closed without a rejection')
 
         def commit():
             self._intents[h.intent_id] = _Intent(h.decision_id, h.purpose, owner, cid, route)
