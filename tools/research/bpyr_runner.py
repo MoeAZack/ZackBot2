@@ -69,6 +69,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import costs as C                                                                           # noqa: E402
 import manifest as M                                                                        # noqa: E402
+import xvol_paths as XP                                                                     # noqa: E402
 
 sys.path.insert(0, M.REPO)
 import backtest as BT                                                                       # noqa: E402
@@ -1543,6 +1544,8 @@ class ProspectiveRules:
         if not isinstance(expect_sha256, str) or not E5.HEX64.match(expect_sha256):
             raise RunnerError('--prospective-rules needs --expect-prospective-rules-sha256 (64 lowercase hex)')
         ap = os.path.realpath(path)
+        if not XP.is_within(ap, os.path.realpath(repo)):     # WINPATH-01: another drive is outside the repo
+            raise RunnerError('prospective rules snapshot must be a file inside the repo')
         rel = os.path.relpath(ap, os.path.realpath(repo)).replace(os.sep, '/')
         if rel == '..' or rel.startswith('../') or os.path.isabs(rel):
             raise RunnerError('prospective rules snapshot must be a file inside the repo')
@@ -1930,7 +1933,7 @@ def execute(outdir: str, src, pf: Preflight, *, symbols, rules, authorization: E
     src_id = source_identity(src)
     rules_id = rules_identity(rules)
     ledger_dir = os.path.abspath(os.path.join(REPO, *LEDGER_REL[:-1]))
-    if os.path.commonpath([os.path.abspath(outdir), ledger_dir]) == ledger_dir:
+    if XP.is_within(outdir, ledger_dir):          # WINPATH-01: another drive is never the ledger directory
         raise WriteRefused('the run directory may not be the ledger directory')
     ident = {'format': RUN_FORMAT, 'candidate_id': CANDIDATE, 'prereg_sha256': pf.prereg_sha256, 'code': pf.code,
              'sources': pf.sources, 'symbols': plan, 'windows': [w.dev_start, w.last_entry, w.sealed, list(w.slices)],
@@ -2074,7 +2077,7 @@ def write_result(result: dict, path: str, *, authorization: EvalAuthorization | 
     _require_authorization(authorization, result.get('prereg_sha256'), 'write_result()')
     ap = os.path.abspath(path)
     ledger_dir = os.path.abspath(os.path.join(REPO, *LEDGER_REL[:-1]))
-    if os.path.commonpath([ap, ledger_dir]) == ledger_dir or 'verdict' in os.path.basename(ap).lower() \
+    if XP.is_within(ap, ledger_dir) or 'verdict' in os.path.basename(ap).lower() \
             or 'verdict' in result or 'REGISTRY' in os.path.basename(ap):
         raise WriteRefused('verdict / ledger / registry writes are Integration-only')
     if result.get('decided') is not False:
