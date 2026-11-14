@@ -1,0 +1,1116 @@
+{
+  "head": "b7391ad964b3f1c1fbf9b4e0d9ac19ff396c2a67",
+  "cases_checked": 28,
+  "orderings_checked": 1120,
+  "path_trade_rows_checked": 250357,
+  "round_counts": {
+    "7": 6,
+    "8": 5,
+    "9": 5,
+    "10": 4,
+    "11": 4,
+    "12": 4
+  },
+  "passed": 0,
+  "failed": 28,
+  "frozen_v12_blobs_unchanged": true,
+  "scope": "Independent signal-free arithmetic on committed path trade tapes: all40 per-order count/cost/half/ex-best metrics, primary and subset gates. No raw-price alpha, fill or funding replay for these28 failures. Cloud execution claims not converted to official Windows evidence by this check.",
+  "cases": [
+    {
+      "case": "l10_base_breakout_4h",
+      "round": 10,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 173.0,
+        "meanR7": 0.014801230538220037,
+        "meanR15": -0.021279531413095243,
+        "meanR23": -0.05736029336441054,
+        "meanR15_early": 0.06536446345035132,
+        "meanR15_late": -0.14870791760215735,
+        "meanR15_ex_best": -0.08607782794434721
+      },
+      "failed_primary": [
+        "meanR15",
+        "late",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.046434669637237753,
+          "median_n": 129.0
+        },
+        "extra31": {
+          "median_meanR15": 0.005765407259562044,
+          "median_n": 44.0
+        }
+      },
+      "failed_subsets": [
+        "fresh134"
+      ],
+      "order0_halves": [
+        99,
+        75
+      ]
+    },
+    {
+      "case": "l10_decorrelated_rise_4h",
+      "round": 10,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 207.0,
+        "meanR7": 0.02510853995380599,
+        "meanR15": 0.007991046904353774,
+        "meanR23": -0.009168930934116552,
+        "meanR15_early": 0.07518664037973644,
+        "meanR15_late": -0.08604338621226823,
+        "meanR15_ex_best": -0.05143671788137752
+      },
+      "failed_primary": [
+        "late",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.024611615295001707,
+          "median_n": 173.0
+        },
+        "extra31": {
+          "median_meanR15": 0.163269335352505,
+          "median_n": 33.5
+        }
+      },
+      "failed_subsets": [
+        "fresh134"
+      ],
+      "order0_halves": [
+        137,
+        82
+      ]
+    },
+    {
+      "case": "r10_efficiency_trend_4h",
+      "round": 10,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 174.0,
+        "meanR7": 0.05201890451120797,
+        "meanR15": 0.030870652663983256,
+        "meanR23": 0.009722400816758577,
+        "meanR15_early": -0.08075223949345173,
+        "meanR15_late": 0.19313126554294324,
+        "meanR15_ex_best": -0.055937979061101144
+      },
+      "failed_primary": [
+        "early",
+        "ex_best_coin"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.16512968065140113,
+          "median_n": 129.0
+        },
+        "extra31": {
+          "median_meanR15": 0.6022742947504683,
+          "median_n": 44.0
+        }
+      },
+      "failed_subsets": [
+        "fresh134"
+      ],
+      "order0_halves": [
+        100,
+        68
+      ]
+    },
+    {
+      "case": "s10_base_breakdown_4h",
+      "round": 10,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 128.0,
+        "meanR7": 0.07554207347974462,
+        "meanR15": 0.046618738599871666,
+        "meanR23": 0.017695403719998715,
+        "meanR15_early": 0.11029711615082213,
+        "meanR15_late": -0.024029685951292526,
+        "meanR15_ex_best": -0.007460704731869442
+      },
+      "failed_primary": [
+        "late",
+        "ex_best_coin"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": 0.10653548943467428,
+          "median_n": 90.5
+        },
+        "extra31": {
+          "median_meanR15": -0.07843712718186222,
+          "median_n": 38.0
+        }
+      },
+      "failed_subsets": [
+        "extra31"
+      ],
+      "order0_halves": [
+        71,
+        60
+      ]
+    },
+    {
+      "case": "l11_btc_capitulation_buy_4h",
+      "round": 11,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 21.0,
+        "meanR7": 0.04404378905468553,
+        "meanR15": 0.02755012981019582,
+        "meanR23": 0.011056470565706172,
+        "meanR15_early": -0.0437553071241244,
+        "meanR15_late": 0.09894472004345557,
+        "meanR15_ex_best": -0.12446488369109461
+      },
+      "failed_primary": [
+        "trades",
+        "early",
+        "ex_best_coin",
+        "order0_30_per_half"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": 0.03371342939391404,
+          "median_n": 15.0
+        },
+        "extra31": {
+          "median_meanR15": -0.023401913547748662,
+          "median_n": 6.0
+        }
+      },
+      "failed_subsets": [
+        "extra31"
+      ],
+      "order0_halves": [
+        14,
+        7
+      ]
+    },
+    {
+      "case": "l11_mature_trend_breakout_4h",
+      "round": 11,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 145.0,
+        "meanR7": 0.03425475282271673,
+        "meanR15": 0.005587626119435157,
+        "meanR23": -0.02307950058384643,
+        "meanR15_early": 0.07533513546037113,
+        "meanR15_late": -0.19924186472641983,
+        "meanR15_ex_best": -0.13685333348610879
+      },
+      "failed_primary": [
+        "late",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.1020635829057566,
+          "median_n": 109.0
+        },
+        "extra31": {
+          "median_meanR15": 0.33018536220659633,
+          "median_n": 35.5
+        }
+      },
+      "failed_subsets": [
+        "fresh134"
+      ],
+      "order0_halves": [
+        105,
+        40
+      ]
+    },
+    {
+      "case": "r11_vwap30_regime_cross_4h",
+      "round": 11,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 410.0,
+        "meanR7": 0.04043038350611507,
+        "meanR15": 0.016585217624952842,
+        "meanR23": -0.007259948256209363,
+        "meanR15_early": 0.004723181114791133,
+        "meanR15_late": 0.04659648687206527,
+        "meanR15_ex_best": -0.026448020153679492
+      },
+      "failed_primary": [
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.06380742797122636,
+          "median_n": 306.5
+        },
+        "extra31": {
+          "median_meanR15": 0.2387751421143261,
+          "median_n": 103.5
+        }
+      },
+      "failed_subsets": [
+        "fresh134"
+      ],
+      "order0_halves": [
+        232,
+        171
+      ]
+    },
+    {
+      "case": "s11_mature_downtrend_breakdown_4h",
+      "round": 11,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 91.0,
+        "meanR7": 0.1069934198960327,
+        "meanR15": 0.08071562959588197,
+        "meanR23": 0.054437839295731275,
+        "meanR15_early": -0.05737699296587705,
+        "meanR15_late": 0.18066051972655162,
+        "meanR15_ex_best": 0.020460391023666834
+      },
+      "failed_primary": [
+        "trades",
+        "early"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": 0.013190742065413576,
+          "median_n": 61.0
+        },
+        "extra31": {
+          "median_meanR15": 0.2670958669615373,
+          "median_n": 31.5
+        }
+      },
+      "failed_subsets": [],
+      "order0_halves": [
+        38,
+        54
+      ]
+    },
+    {
+      "case": "l12_prior_week_high_break_4h",
+      "round": 12,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 236.0,
+        "meanR7": -0.003397977315997375,
+        "meanR15": -0.026986530681642994,
+        "meanR23": -0.050871335800382486,
+        "meanR15_early": -0.06413494911726496,
+        "meanR15_late": 0.039237086616900625,
+        "meanR15_ex_best": -0.09940673336862726
+      },
+      "failed_primary": [
+        "meanR15",
+        "early",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.02741842363693532,
+          "median_n": 172.0
+        },
+        "extra31": {
+          "median_meanR15": -0.05014975339883281,
+          "median_n": 65.5
+        }
+      },
+      "failed_subsets": [
+        "fresh134",
+        "extra31"
+      ],
+      "order0_halves": [
+        143,
+        93
+      ]
+    },
+    {
+      "case": "l12_strong_week_continuation_4h",
+      "round": 12,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 148.0,
+        "meanR7": -0.06357476611300325,
+        "meanR15": -0.07424301712956494,
+        "meanR23": -0.08491126814612655,
+        "meanR15_early": 0.04100133293926628,
+        "meanR15_late": -0.2466841834149113,
+        "meanR15_ex_best": -0.14085080319983354
+      },
+      "failed_primary": [
+        "meanR15",
+        "late",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.09469277693324576,
+          "median_n": 114.0
+        },
+        "extra31": {
+          "median_meanR15": 0.014500246522768193,
+          "median_n": 34.0
+        }
+      },
+      "failed_subsets": [
+        "fresh134"
+      ],
+      "order0_halves": [
+        89,
+        59
+      ]
+    },
+    {
+      "case": "s12_prior_week_low_break_4h",
+      "round": 12,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 174.5,
+        "meanR7": 0.017659061591662147,
+        "meanR15": -0.00677207427655399,
+        "meanR23": -0.030886678003335374,
+        "meanR15_early": -0.04688195141552168,
+        "meanR15_late": 0.034831019879093365,
+        "meanR15_ex_best": -0.051427277697179474
+      },
+      "failed_primary": [
+        "meanR15",
+        "early",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.012578486261439838,
+          "median_n": 126.5
+        },
+        "extra31": {
+          "median_meanR15": 0.01623109576737174,
+          "median_n": 48.5
+        }
+      },
+      "failed_subsets": [
+        "fresh134"
+      ],
+      "order0_halves": [
+        84,
+        89
+      ]
+    },
+    {
+      "case": "s12_weak_week_continuation_4h",
+      "round": 12,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 66.0,
+        "meanR7": -0.0030374043009084037,
+        "meanR15": -0.01446391030723478,
+        "meanR23": -0.025890416313561156,
+        "meanR15_early": -0.10076600709888993,
+        "meanR15_late": 0.03402191993264771,
+        "meanR15_ex_best": -0.04623582578127187
+      },
+      "failed_primary": [
+        "trades",
+        "meanR15",
+        "early",
+        "ex_best_coin",
+        "meanR23",
+        "order0_30_per_half"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.09897548351970839,
+          "median_n": 55.0
+        },
+        "extra31": {
+          "median_meanR15": 0.39664822739260325,
+          "median_n": 11.0
+        }
+      },
+      "failed_subsets": [
+        "fresh134"
+      ],
+      "order0_halves": [
+        28,
+        38
+      ]
+    },
+    {
+      "case": "l7_btc_regime_turn_long_4h",
+      "round": 7,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 22.0,
+        "meanR7": -0.28722703866322613,
+        "meanR15": -0.3067726224514199,
+        "meanR23": -0.3263182062396136,
+        "meanR15_early": -0.04275144185253535,
+        "meanR15_late": -0.6314661062082296,
+        "meanR15_ex_best": -0.4551945730678617
+      },
+      "failed_primary": [
+        "trades",
+        "meanR15",
+        "early",
+        "late",
+        "ex_best_coin",
+        "meanR23",
+        "order0_30_per_half"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.2621090631321902,
+          "median_n": 18.0
+        },
+        "extra31": {
+          "median_meanR15": null,
+          "median_n": 4.0
+        }
+      },
+      "failed_subsets": [
+        "fresh134",
+        "extra31"
+      ],
+      "order0_halves": [
+        11,
+        11
+      ]
+    },
+    {
+      "case": "l7_nr7_breakout_4h",
+      "round": 7,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 448.0,
+        "meanR7": -0.10657407583381572,
+        "meanR15": -0.13354142637116725,
+        "meanR23": -0.1605087769085188,
+        "meanR15_early": -0.1187037124575547,
+        "meanR15_late": -0.16229384937967045,
+        "meanR15_ex_best": -0.15283125793146152
+      },
+      "failed_primary": [
+        "meanR15",
+        "early",
+        "late",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.0934543794316211,
+          "median_n": 330.5
+        },
+        "extra31": {
+          "median_meanR15": -0.24704988728271426,
+          "median_n": 118.5
+        }
+      },
+      "failed_subsets": [
+        "fresh134",
+        "extra31"
+      ],
+      "order0_halves": [
+        256,
+        181
+      ]
+    },
+    {
+      "case": "r7_aroon_regime_4h",
+      "round": 7,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 333.0,
+        "meanR7": -0.06233387101353495,
+        "meanR15": -0.08670116579966905,
+        "meanR23": -0.11106846058580314,
+        "meanR15_early": -0.022836072691215414,
+        "meanR15_late": -0.15862841440931402,
+        "meanR15_ex_best": -0.12106501793706863
+      },
+      "failed_primary": [
+        "meanR15",
+        "early",
+        "late",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.09505890702390912,
+          "median_n": 245.5
+        },
+        "extra31": {
+          "median_meanR15": -0.05910225178280673,
+          "median_n": 86.0
+        }
+      },
+      "failed_subsets": [
+        "fresh134",
+        "extra31"
+      ],
+      "order0_halves": [
+        182,
+        156
+      ]
+    },
+    {
+      "case": "r7_ema_ribbon_alignment_4h",
+      "round": 7,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 391.0,
+        "meanR7": -0.006481687277454718,
+        "meanR15": -0.0301790222358329,
+        "meanR23": -0.053876357194211036,
+        "meanR15_early": -0.04800408903022037,
+        "meanR15_late": 0.020949938503156695,
+        "meanR15_ex_best": -0.0644546050264446
+      },
+      "failed_primary": [
+        "meanR15",
+        "early",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.029592875954831975,
+          "median_n": 283.0
+        },
+        "extra31": {
+          "median_meanR15": -0.027736803007296428,
+          "median_n": 106.0
+        }
+      },
+      "failed_subsets": [
+        "fresh134",
+        "extra31"
+      ],
+      "order0_halves": [
+        233,
+        148
+      ]
+    },
+    {
+      "case": "r7_regression_tstat_4h",
+      "round": 7,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 201.5,
+        "meanR7": 0.011798613246115305,
+        "meanR15": -0.013310048372937928,
+        "meanR23": -0.03841870999199122,
+        "meanR15_early": 0.05686649291152471,
+        "meanR15_late": -0.12548205567140158,
+        "meanR15_ex_best": -0.13680676684799872
+      },
+      "failed_primary": [
+        "meanR15",
+        "late",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.04585068115722478,
+          "median_n": 146.0
+        },
+        "extra31": {
+          "median_meanR15": -0.01826287873230079,
+          "median_n": 56.0
+        }
+      },
+      "failed_subsets": [
+        "fresh134",
+        "extra31"
+      ],
+      "order0_halves": [
+        103,
+        87
+      ]
+    },
+    {
+      "case": "s7_blowoff_fade_short_4h",
+      "round": 7,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 139.0,
+        "meanR7": -0.05450332695421213,
+        "meanR15": -0.0666991841076077,
+        "meanR23": -0.07889504126100325,
+        "meanR15_early": -0.06099306822527699,
+        "meanR15_late": -0.07790440082844705,
+        "meanR15_ex_best": -0.08837339526144346
+      },
+      "failed_primary": [
+        "meanR15",
+        "early",
+        "late",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": 0.027266511989280477,
+          "median_n": 105.0
+        },
+        "extra31": {
+          "median_meanR15": -0.3462104485775882,
+          "median_n": 34.0
+        }
+      },
+      "failed_subsets": [
+        "extra31"
+      ],
+      "order0_halves": [
+        94,
+        47
+      ]
+    },
+    {
+      "case": "l8_calm_uptrend_hold_4h",
+      "round": 8,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 384.5,
+        "meanR7": -0.026445622748949196,
+        "meanR15": -0.04390854148153607,
+        "meanR23": -0.06137146021412296,
+        "meanR15_early": 0.04161965000160128,
+        "meanR15_late": -0.16900945891941244,
+        "meanR15_ex_best": -0.07659732337376172
+      },
+      "failed_primary": [
+        "meanR15",
+        "late",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.022121755446737907,
+          "median_n": 288.5
+        },
+        "extra31": {
+          "median_meanR15": -0.09076326474727586,
+          "median_n": 97.0
+        }
+      },
+      "failed_subsets": [
+        "fresh134",
+        "extra31"
+      ],
+      "order0_halves": [
+        219,
+        155
+      ]
+    },
+    {
+      "case": "l8_near_high_momentum_4h",
+      "round": 8,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 169.0,
+        "meanR7": 0.02306687040093642,
+        "meanR15": 0.00473076580992072,
+        "meanR23": -0.013605338781094913,
+        "meanR15_early": -0.11922597915287098,
+        "meanR15_late": 0.16493822588592538,
+        "meanR15_ex_best": -0.10445611641124734
+      },
+      "failed_primary": [
+        "early",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.10425234525289184,
+          "median_n": 121.0
+        },
+        "extra31": {
+          "median_meanR15": 0.23868866674654976,
+          "median_n": 48.0
+        }
+      },
+      "failed_subsets": [
+        "fresh134"
+      ],
+      "order0_halves": [
+        98,
+        69
+      ]
+    },
+    {
+      "case": "l8_up_streak_4h",
+      "round": 8,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 426.0,
+        "meanR7": -0.04592430358795381,
+        "meanR15": -0.07699529374835157,
+        "meanR23": -0.10806628390874928,
+        "meanR15_early": -0.11288606933194728,
+        "meanR15_late": -0.015475205574146868,
+        "meanR15_ex_best": -0.09619223964819057
+      },
+      "failed_primary": [
+        "meanR15",
+        "early",
+        "late",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.16002812866855043,
+          "median_n": 312.5
+        },
+        "extra31": {
+          "median_meanR15": 0.15149979337602276,
+          "median_n": 113.0
+        }
+      },
+      "failed_subsets": [
+        "fresh134"
+      ],
+      "order0_halves": [
+        255,
+        177
+      ]
+    },
+    {
+      "case": "r8_ratio_regime_flip_4h",
+      "round": 8,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 167.0,
+        "meanR7": -0.0050935539457088504,
+        "meanR15": -0.023512576550622718,
+        "meanR23": -0.041931599155536625,
+        "meanR15_early": 0.03747853432788088,
+        "meanR15_late": -0.12215177465747541,
+        "meanR15_ex_best": -0.09827933841779204
+      },
+      "failed_primary": [
+        "meanR15",
+        "late",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.04179422719056923,
+          "median_n": 128.0
+        },
+        "extra31": {
+          "median_meanR15": -0.09783340095745244,
+          "median_n": 40.5
+        }
+      },
+      "failed_subsets": [
+        "fresh134",
+        "extra31"
+      ],
+      "order0_halves": [
+        94,
+        70
+      ]
+    },
+    {
+      "case": "s8_dual_falling_hold_4h",
+      "round": 8,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 35.0,
+        "meanR7": 0.30182844824760785,
+        "meanR15": 0.28308213633018653,
+        "meanR23": 0.26433582441276526,
+        "meanR15_early": 0.01845803335314035,
+        "meanR15_late": 0.5032673368635313,
+        "meanR15_ex_best": 0.17180802287820923
+      },
+      "failed_primary": [
+        "trades",
+        "order0_30_per_half"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": 0.30681160668719915,
+          "median_n": 27.5
+        },
+        "extra31": {
+          "median_meanR15": 0.1299551796527031,
+          "median_n": 7.5
+        }
+      },
+      "failed_subsets": [],
+      "order0_halves": [
+        17,
+        20
+      ]
+    },
+    {
+      "case": "l9_decoupled_strength_4h",
+      "round": 9,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 55.0,
+        "meanR7": 0.2954749410025933,
+        "meanR15": 0.27327903874381626,
+        "meanR23": 0.2510831364850392,
+        "meanR15_early": 0.14880969610281686,
+        "meanR15_late": 0.34541369912190045,
+        "meanR15_ex_best": -0.1790469942425969
+      },
+      "failed_primary": [
+        "trades",
+        "ex_best_coin",
+        "order0_30_per_half"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.017996766496423802,
+          "median_n": 39.0
+        },
+        "extra31": {
+          "median_meanR15": 1.02489427398167,
+          "median_n": 16.0
+        }
+      },
+      "failed_subsets": [
+        "fresh134"
+      ],
+      "order0_halves": [
+        25,
+        34
+      ]
+    },
+    {
+      "case": "l9_weekly_range_breakout_4h",
+      "round": 9,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 251.5,
+        "meanR7": -0.006926744156788603,
+        "meanR15": -0.029819583593829933,
+        "meanR23": -0.0527397213439645,
+        "meanR15_early": 0.04849230475074859,
+        "meanR15_late": -0.13940912394423713,
+        "meanR15_ex_best": -0.06841048646376052
+      },
+      "failed_primary": [
+        "meanR15",
+        "late",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.037610660478182754,
+          "median_n": 183.0
+        },
+        "extra31": {
+          "median_meanR15": -0.01017182631229294,
+          "median_n": 69.0
+        }
+      },
+      "failed_subsets": [
+        "fresh134",
+        "extra31"
+      ],
+      "order0_halves": [
+        145,
+        101
+      ]
+    },
+    {
+      "case": "r9_keltner_regime_4h",
+      "round": 9,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 419.5,
+        "meanR7": 0.0005185768898067629,
+        "meanR15": -0.022955249904908673,
+        "meanR23": -0.04642907669962411,
+        "meanR15_early": -0.009276007533247827,
+        "meanR15_late": -0.04637879761521942,
+        "meanR15_ex_best": -0.04500959986341236
+      },
+      "failed_primary": [
+        "meanR15",
+        "early",
+        "late",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.03531893378395687,
+          "median_n": 287.5
+        },
+        "extra31": {
+          "median_meanR15": -0.012074467407437582,
+          "median_n": 131.5
+        }
+      },
+      "failed_subsets": [
+        "fresh134",
+        "extra31"
+      ],
+      "order0_halves": [
+        228,
+        180
+      ]
+    },
+    {
+      "case": "r9_obv_trend_regime_4h",
+      "round": 9,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 757.5,
+        "meanR7": -0.03190931962729938,
+        "meanR15": -0.05588323635533296,
+        "meanR23": -0.07985715308336655,
+        "meanR15_early": -0.08546200090697567,
+        "meanR15_late": -0.021453557382074377,
+        "meanR15_ex_best": -0.07124540394357877
+      },
+      "failed_primary": [
+        "meanR15",
+        "early",
+        "late",
+        "ex_best_coin",
+        "meanR23"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": -0.06566910162414318,
+          "median_n": 537.5
+        },
+        "extra31": {
+          "median_meanR15": -0.031102388112214347,
+          "median_n": 216.0
+        }
+      },
+      "failed_subsets": [
+        "fresh134",
+        "extra31"
+      ],
+      "order0_halves": [
+        408,
+        330
+      ]
+    },
+    {
+      "case": "s9_alt_weakness_hold_4h",
+      "round": 9,
+      "verdict": "FAIL",
+      "medians": {
+        "n": 77.0,
+        "meanR7": 0.05657254784276067,
+        "meanR15": 0.03763744657094907,
+        "meanR23": 0.018702345299137495,
+        "meanR15_early": -0.01966613504300714,
+        "meanR15_late": 0.15326231287665948,
+        "meanR15_ex_best": -0.04728898606208903
+      },
+      "failed_primary": [
+        "trades",
+        "early",
+        "ex_best_coin",
+        "order0_30_per_half"
+      ],
+      "subset_gates": {
+        "fresh134": {
+          "median_meanR15": 0.03088326990966902,
+          "median_n": 56.0
+        },
+        "extra31": {
+          "median_meanR15": 0.01163390846744809,
+          "median_n": 23.0
+        }
+      },
+      "failed_subsets": [],
+      "order0_halves": [
+        50,
+        20
+      ]
+    }
+  ],
+  "artifact_hashes": {
+    "docs/research/longscout_v10/l10_base_breakout_4h/l10_base_breakout_4h_result.json": "8f6acb933dfe85cc730fc8333f1618bd8aef1cee343090e67cc1db806e612a4d",
+    "docs/research/longscout_v10/l10_base_breakout_4h/l10_base_breakout_4h_all_orders_trades.csv.gz": "2332e56e9f1bc42949781161bb15a1d70766bb0b98ab8dc21dd247cb5e485ba8",
+    "docs/research/longscout_v10/l10_decorrelated_rise_4h/l10_decorrelated_rise_4h_result.json": "280ac54e4ceee80f673da734ae89471c7b86b207d3f3085b4d0ab64391412d06",
+    "docs/research/longscout_v10/l10_decorrelated_rise_4h/l10_decorrelated_rise_4h_all_orders_trades.csv.gz": "5910125e4d27c1af1aa2db8182d23627b4f8b36d77a87eecef67a029b11c1412",
+    "docs/research/longscout_v10/r10_efficiency_trend_4h/r10_efficiency_trend_4h_result.json": "1a77aed30113739def2e69345e0afca3dba2066ccecad331234d5bc558ba42ba",
+    "docs/research/longscout_v10/r10_efficiency_trend_4h/r10_efficiency_trend_4h_all_orders_trades.csv.gz": "9f50fe46b05f84acec727c2d35da4ed84ed42a8ebeec61d99a106a145eaf4c63",
+    "docs/research/longscout_v10/s10_base_breakdown_4h/s10_base_breakdown_4h_result.json": "8960f0626730e549abd700af914ae9eab75f7c26dcac1aaf8076cd56bc309723",
+    "docs/research/longscout_v10/s10_base_breakdown_4h/s10_base_breakdown_4h_all_orders_trades.csv.gz": "a17d20cb30b1eabc43cd69f4ed305c3704697431e6003237541ff02183209d84",
+    "docs/research/longscout_v11/l11_btc_capitulation_buy_4h/l11_btc_capitulation_buy_4h_result.json": "0abb3a6615344e790be1fbcf76a0a7eef8dd1a0edb9be15d958741c4c79353a6",
+    "docs/research/longscout_v11/l11_btc_capitulation_buy_4h/l11_btc_capitulation_buy_4h_all_orders_trades.csv.gz": "633e6f5a578ffd0433fbb3fdbb45291ba54a26e75cc36b9716cb801458843431",
+    "docs/research/longscout_v11/l11_mature_trend_breakout_4h/l11_mature_trend_breakout_4h_result.json": "d2bd35a17b9e161644965ae8215f61dc68bd1d83ebdd37a15029a79f361b014b",
+    "docs/research/longscout_v11/l11_mature_trend_breakout_4h/l11_mature_trend_breakout_4h_all_orders_trades.csv.gz": "00cad20251a73408e8601dda3cb558712d9a76a3eb0a42e46f357d2827b954d8",
+    "docs/research/longscout_v11/r11_vwap30_regime_cross_4h/r11_vwap30_regime_cross_4h_result.json": "2901ed6d7692c4341791a19a7c50cffe0457b2e9bf395b8b12030a6bc34b19bd",
+    "docs/research/longscout_v11/r11_vwap30_regime_cross_4h/r11_vwap30_regime_cross_4h_all_orders_trades.csv.gz": "3a422729123aee607d8f92d5bf7e38be0b56d8599811f6ecd2fdff64d8f853d0",
+    "docs/research/longscout_v11/s11_mature_downtrend_breakdown_4h/s11_mature_downtrend_breakdown_4h_result.json": "ec9720ba5ce27f40de11c581cea665dd4cecd03baa929f5083ec5f2697c39cf3",
+    "docs/research/longscout_v11/s11_mature_downtrend_breakdown_4h/s11_mature_downtrend_breakdown_4h_all_orders_trades.csv.gz": "7beba3dfc04b01f633badc2cf74adb907d646ed69a65f264482636b4ba26f86a",
+    "docs/research/longscout_v12/l12_prior_week_high_break_4h/l12_prior_week_high_break_4h_result.json": "3610836d3524a6127321590de24e895d756271d269fb5b3e17b3ff1a7e0056aa",
+    "docs/research/longscout_v12/l12_prior_week_high_break_4h/l12_prior_week_high_break_4h_all_orders_trades.csv.gz": "97aff7819dea4ce8ea673cc11970daf3a7899d29348ffb58e156bc0e5b7659dd",
+    "docs/research/longscout_v12/l12_strong_week_continuation_4h/l12_strong_week_continuation_4h_result.json": "7b13d89dd3067430bf9f1cbf68bbe0d3c97dd0d6fa1609c0d7358fe840634c67",
+    "docs/research/longscout_v12/l12_strong_week_continuation_4h/l12_strong_week_continuation_4h_all_orders_trades.csv.gz": "589bfb005fc1238789171ddac9da26a4f009767449cd72314b9712831c83e3df",
+    "docs/research/longscout_v12/s12_prior_week_low_break_4h/s12_prior_week_low_break_4h_result.json": "ed181526e0ee1671766a10d73cbedce78e8ccd46cc1f855f44697368ecab1b18",
+    "docs/research/longscout_v12/s12_prior_week_low_break_4h/s12_prior_week_low_break_4h_all_orders_trades.csv.gz": "d092a365de53fd4944d3ad00ca6b89bc41093384d2e3ab7ab5e4661f7aaae0a0",
+    "docs/research/longscout_v12/s12_weak_week_continuation_4h/s12_weak_week_continuation_4h_result.json": "0ff7211aa024e6567f9b8590a89f5fa08f7998d89a0baabb443133a8fbf33ad8",
+    "docs/research/longscout_v12/s12_weak_week_continuation_4h/s12_weak_week_continuation_4h_all_orders_trades.csv.gz": "460e0208cd22a77d0e413719e7293f80a2ba92f07f27f01df7539947bfc667ec",
+    "docs/research/longscout_v7/l7_btc_regime_turn_long_4h/l7_btc_regime_turn_long_4h_result.json": "3d2f6d7638383f206b12cfeafa33c0a59759a33eb98720b337216e72cca9199a",
+    "docs/research/longscout_v7/l7_btc_regime_turn_long_4h/l7_btc_regime_turn_long_4h_all_orders_trades.csv.gz": "db7063a610180592e9b375c2c35ae8869e85500658ff92395aea3ce6a9bbb151",
+    "docs/research/longscout_v7/l7_nr7_breakout_4h/l7_nr7_breakout_4h_result.json": "824d6c6ddda4092d8f253588a8c0801e6fb2e64c14b332e378aeccff68790077",
+    "docs/research/longscout_v7/l7_nr7_breakout_4h/l7_nr7_breakout_4h_all_orders_trades.csv.gz": "28fcb3ddd2cd1bbc916af482d413f23a92afc4a1de4aeaab809918e0e29be2c4",
+    "docs/research/longscout_v7/r7_aroon_regime_4h/r7_aroon_regime_4h_result.json": "e7309f7e2dd1e7b9964b0ad3d7f1f74e24c5be19c2fa60c9cc23c61c45861f69",
+    "docs/research/longscout_v7/r7_aroon_regime_4h/r7_aroon_regime_4h_all_orders_trades.csv.gz": "8a57e10261babafd207a25e6ea4e697b02368748fe944e2f34edadddfda1126d",
+    "docs/research/longscout_v7/r7_ema_ribbon_alignment_4h/r7_ema_ribbon_alignment_4h_result.json": "56562042543589690e3a08988c4ee7cdc82e785226488282f2b6a983ddf0ca2e",
+    "docs/research/longscout_v7/r7_ema_ribbon_alignment_4h/r7_ema_ribbon_alignment_4h_all_orders_trades.csv.gz": "9920433f88cd1f8e6c305e22541d64a80e5d65d1b9f0ad7c9a3df5899282d2ab",
+    "docs/research/longscout_v7/r7_regression_tstat_4h/r7_regression_tstat_4h_result.json": "f3e0ffe05c9d4d5986f1185294e4c1252052f870425a7176d8c18e8a2121ed54",
+    "docs/research/longscout_v7/r7_regression_tstat_4h/r7_regression_tstat_4h_all_orders_trades.csv.gz": "32976edcdda3910fefc66ee946d39fbb98c8c591aaa9c8005c52f236a4f4ab9c",
+    "docs/research/longscout_v7/s7_blowoff_fade_short_4h/s7_blowoff_fade_short_4h_result.json": "0be352d0c44a86dc0e5aeb71794c796bbe55335b16737903b5634a46640d8577",
+    "docs/research/longscout_v7/s7_blowoff_fade_short_4h/s7_blowoff_fade_short_4h_all_orders_trades.csv.gz": "b886d04afe340f57e253cd51251474690ba6bd409355ec6a51e21ddfe8281322",
+    "docs/research/longscout_v8/l8_calm_uptrend_hold_4h/l8_calm_uptrend_hold_4h_result.json": "17977942abf987d5e57a271ee4feba6609b29c17bb0d613a29236b72881508f1",
+    "docs/research/longscout_v8/l8_calm_uptrend_hold_4h/l8_calm_uptrend_hold_4h_all_orders_trades.csv.gz": "2c61373b4dc8e4744e2c2b7a997eb7dedb90008ddbcca51045d72d74c02fc3ee",
+    "docs/research/longscout_v8/l8_near_high_momentum_4h/l8_near_high_momentum_4h_result.json": "ac88e76283b7785027aff9c28535d01a13ded2bdc2304883ae61d32e15582658",
+    "docs/research/longscout_v8/l8_near_high_momentum_4h/l8_near_high_momentum_4h_all_orders_trades.csv.gz": "dd47ce40dfb00647dbc1164127847729a29744ac18db9b12f758fb010d61d899",
+    "docs/research/longscout_v8/l8_up_streak_4h/l8_up_streak_4h_result.json": "3892a737bb701022e2d1d37c0476e6ea0347d36819e143aef8b22bd3e74c1ae4",
+    "docs/research/longscout_v8/l8_up_streak_4h/l8_up_streak_4h_all_orders_trades.csv.gz": "6b6667148fc1edebc58ed637b31715b0cbda98a086dbbdfbd9ac0bc997f24bc6",
+    "docs/research/longscout_v8/r8_ratio_regime_flip_4h/r8_ratio_regime_flip_4h_result.json": "d30d5777f052f40a8490b8b06efab9fa217f81aa1c35633024b26f40b85ecb87",
+    "docs/research/longscout_v8/r8_ratio_regime_flip_4h/r8_ratio_regime_flip_4h_all_orders_trades.csv.gz": "99aed2736ddb141f1b959b30056ab3982264cf105bc15a23391637108522cac9",
+    "docs/research/longscout_v8/s8_dual_falling_hold_4h/s8_dual_falling_hold_4h_result.json": "756093cb14000b4960dd629385a51b88f0647b6b84bbc536af760ade114b274d",
+    "docs/research/longscout_v8/s8_dual_falling_hold_4h/s8_dual_falling_hold_4h_all_orders_trades.csv.gz": "2b4706903215434c6246c4dd70f765a2597bc6ea1e18fa7bc96e71f2407e5123",
+    "docs/research/longscout_v9/l9_decoupled_strength_4h/l9_decoupled_strength_4h_result.json": "a8fc8f0020dd8f1d02db2fad51d4052545fc65aefc1a7ee03f9ee9ed191fed30",
+    "docs/research/longscout_v9/l9_decoupled_strength_4h/l9_decoupled_strength_4h_all_orders_trades.csv.gz": "a6e01a69bac59f2c7e41aadc9fe63aa649aa245852d5b4fc890489e00d233e26",
+    "docs/research/longscout_v9/l9_weekly_range_breakout_4h/l9_weekly_range_breakout_4h_result.json": "fbef28d88f1b78fa927b875424b5a5ceb68898cad029208b4ffe615a7ff36992",
+    "docs/research/longscout_v9/l9_weekly_range_breakout_4h/l9_weekly_range_breakout_4h_all_orders_trades.csv.gz": "e26c7e1ba3cc1ae5797541075abcea716cc9273c3bd53017e1b87573096c0786",
+    "docs/research/longscout_v9/r9_keltner_regime_4h/r9_keltner_regime_4h_result.json": "8e61246ae8fe9fca59944f793af301bb4d455ed172e6ac5e5da5f7980520b72f",
+    "docs/research/longscout_v9/r9_keltner_regime_4h/r9_keltner_regime_4h_all_orders_trades.csv.gz": "35e1c8c861668a547f12b8783eece16ee42abb2974a0f70afef241f9c8c82f2b",
+    "docs/research/longscout_v9/r9_obv_trend_regime_4h/r9_obv_trend_regime_4h_result.json": "178f5a49813b0ad21ac09899357ef9b3be3189ae0b60a467b5c020192fb2d3a5",
+    "docs/research/longscout_v9/r9_obv_trend_regime_4h/r9_obv_trend_regime_4h_all_orders_trades.csv.gz": "85ac524a27ba7ba4f69614304949fa9fd9f6a6997feafa68e31d4ccc31e7a1a2",
+    "docs/research/longscout_v9/s9_alt_weakness_hold_4h/s9_alt_weakness_hold_4h_result.json": "c5033be576cfa52f573a0e4a2b1ffa47dbee9f7fe3ecaa7e40f04f6ae7e652b7",
+    "docs/research/longscout_v9/s9_alt_weakness_hold_4h/s9_alt_weakness_hold_4h_all_orders_trades.csv.gz": "67b97f8ff8dff8ca01101f4884a94df3244f20b7e982b6dc1189d57de554ce71"
+  }
+}

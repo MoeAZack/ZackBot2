@@ -1,0 +1,282 @@
+[
+  {
+    "order": 0,
+    "symbol": "ALGOUSDT",
+    "terminal_liquidation_mark15": -2.9179059583239897,
+    "closed_pnl15": 359.80747543798543,
+    "reported_4000_equity15": 4356.889569479661
+  },
+  {
+    "order": 1,
+    "symbol": "TIAUSDT",
+    "terminal_liquidation_mark15": -2.0399195698199977,
+    "closed_pnl15": 116.87716323243872,
+    "reported_4000_equity15": 4114.837243662619
+  },
+  {
+    "order": 2,
+    "symbol": "TIAUSDT",
+    "terminal_liquidation_mark15": -2.0399195698199977,
+    "closed_pnl15": 231.78190767241432,
+    "reported_4000_equity15": 4229.741988102594
+  },
+  {
+    "order": 3,
+    "symbol": "MINAUSDT",
+    "terminal_liquidation_mark15": 7.216456116235012,
+    "closed_pnl15": 425.47996495556475,
+    "reported_4000_equity15": 4432.6964210718
+  },
+  {
+    "order": 4,
+    "symbol": "ALGOUSDT",
+    "terminal_liquidation_mark15": -2.542705806454389,
+    "closed_pnl15": 93.40748000944802,
+    "reported_4000_equity15": 4090.864774202994
+  },
+  {
+    "order": 5,
+    "symbol": "MINAUSDT",
+    "terminal_liquidation_mark15": 7.216456116235012,
+    "closed_pnl15": 276.33191635209505,
+    "reported_4000_equity15": 4283.548372468331
+  },
+  {
+    "order": 6,
+    "symbol": "ALGOUSDT",
+    "terminal_liquidation_mark15": -2.542705806454389,
+    "closed_pnl15": -69.23723034889788,
+    "reported_4000_equity15": 3928.220063844648
+  },
+  {
+    "order": 7,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 1.514402177518213,
+    "closed_pnl15": 78.19209852703804,
+    "reported_4000_equity15": 4079.706500704556
+  },
+  {
+    "order": 8,
+    "symbol": "ALGOUSDT",
+    "terminal_liquidation_mark15": -2.542705806454389,
+    "closed_pnl15": 286.7808993819302,
+    "reported_4000_equity15": 4284.238193575476
+  },
+  {
+    "order": 9,
+    "symbol": "ALGOUSDT",
+    "terminal_liquidation_mark15": -2.9174584267352897,
+    "closed_pnl15": 44.24470964154421,
+    "reported_4000_equity15": 4041.327251214809
+  },
+  {
+    "order": 10,
+    "symbol": "MINAUSDT",
+    "terminal_liquidation_mark15": 7.216456116235012,
+    "closed_pnl15": 24.117270355029177,
+    "reported_4000_equity15": 4031.333726471264
+  },
+  {
+    "order": 11,
+    "symbol": "TIAUSDT",
+    "terminal_liquidation_mark15": -2.0399195698199977,
+    "closed_pnl15": 398.6817271237351,
+    "reported_4000_equity15": 4396.641807553915
+  },
+  {
+    "order": 12,
+    "symbol": "MINAUSDT",
+    "terminal_liquidation_mark15": 7.216456116235012,
+    "closed_pnl15": 359.1397391758136,
+    "reported_4000_equity15": 4366.356195292049
+  },
+  {
+    "order": 13,
+    "symbol": "TIAUSDT",
+    "terminal_liquidation_mark15": -2.0399195698199977,
+    "closed_pnl15": 492.30392209753745,
+    "reported_4000_equity15": 4490.264002527717
+  },
+  {
+    "order": 14,
+    "symbol": "MINAUSDT",
+    "terminal_liquidation_mark15": 7.216456116235012,
+    "closed_pnl15": 302.9019228513801,
+    "reported_4000_equity15": 4310.118378967615
+  },
+  {
+    "order": 15,
+    "symbol": "ALGOUSDT",
+    "terminal_liquidation_mark15": -2.542705806454389,
+    "closed_pnl15": 223.769778161167,
+    "reported_4000_equity15": 4221.227072354713
+  },
+  {
+    "order": 16,
+    "symbol": "ZROUSDT",
+    "terminal_liquidation_mark15": 15.022196030679995,
+    "closed_pnl15": 322.1320337824131,
+    "reported_4000_equity15": 4337.154229813093
+  },
+  {
+    "order": 17,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 1.5144278857734315,
+    "closed_pnl15": 250.80056153941632,
+    "reported_4000_equity15": 4252.314989425189
+  },
+  {
+    "order": 18,
+    "symbol": "ALGOUSDT",
+    "terminal_liquidation_mark15": -2.542705806454389,
+    "closed_pnl15": 116.00707015973538,
+    "reported_4000_equity15": 4113.464364353281
+  },
+  {
+    "order": 19,
+    "symbol": "MINAUSDT",
+    "terminal_liquidation_mark15": 7.216456116235012,
+    "closed_pnl15": 263.92952845948304,
+    "reported_4000_equity15": 4271.145984575718
+  },
+  {
+    "order": 20,
+    "symbol": "TIAUSDT",
+    "terminal_liquidation_mark15": -2.0399195698199977,
+    "closed_pnl15": 338.7729661978375,
+    "reported_4000_equity15": 4336.733046628017
+  },
+  {
+    "order": 21,
+    "symbol": "ALGOUSDT",
+    "terminal_liquidation_mark15": -2.542705806454389,
+    "closed_pnl15": 487.3532258001199,
+    "reported_4000_equity15": 4484.810519993665
+  },
+  {
+    "order": 22,
+    "symbol": "TIAUSDT",
+    "terminal_liquidation_mark15": -2.0399195698199977,
+    "closed_pnl15": 336.64132970561525,
+    "reported_4000_equity15": 4334.601410135795
+  },
+  {
+    "order": 23,
+    "symbol": "MINAUSDT",
+    "terminal_liquidation_mark15": 7.216456116235012,
+    "closed_pnl15": 298.79632978757314,
+    "reported_4000_equity15": 4306.012785903808
+  },
+  {
+    "order": 24,
+    "symbol": "ALGOUSDT",
+    "terminal_liquidation_mark15": -2.542705806454389,
+    "closed_pnl15": 434.3576354512921,
+    "reported_4000_equity15": 4431.814929644838
+  },
+  {
+    "order": 25,
+    "symbol": "MINAUSDT",
+    "terminal_liquidation_mark15": 7.216456116235012,
+    "closed_pnl15": 407.08173228618983,
+    "reported_4000_equity15": 4414.298188402425
+  },
+  {
+    "order": 26,
+    "symbol": "ALGOUSDT",
+    "terminal_liquidation_mark15": -2.542705806454389,
+    "closed_pnl15": 397.3443874688137,
+    "reported_4000_equity15": 4394.801681662359
+  },
+  {
+    "order": 27,
+    "symbol": "TIAUSDT",
+    "terminal_liquidation_mark15": -2.0399195698199977,
+    "closed_pnl15": 73.66456658050073,
+    "reported_4000_equity15": 4071.6246470106807
+  },
+  {
+    "order": 28,
+    "symbol": "ALGOUSDT",
+    "terminal_liquidation_mark15": -2.542705806454389,
+    "closed_pnl15": 344.7251258972034,
+    "reported_4000_equity15": 4342.1824200907495
+  },
+  {
+    "order": 29,
+    "symbol": "ALGOUSDT",
+    "terminal_liquidation_mark15": -2.542705806454389,
+    "closed_pnl15": 275.7258482213035,
+    "reported_4000_equity15": 4273.1831424148495
+  },
+  {
+    "order": 30,
+    "symbol": "MINAUSDT",
+    "terminal_liquidation_mark15": 7.216456116235012,
+    "closed_pnl15": 162.3927466284892,
+    "reported_4000_equity15": 4169.609202744725
+  },
+  {
+    "order": 31,
+    "symbol": "TIAUSDT",
+    "terminal_liquidation_mark15": -2.0399195698199977,
+    "closed_pnl15": 180.23829473191844,
+    "reported_4000_equity15": 4178.198375162098
+  },
+  {
+    "order": 32,
+    "symbol": "TIAUSDT",
+    "terminal_liquidation_mark15": -2.0399195698199977,
+    "closed_pnl15": 157.44002107774293,
+    "reported_4000_equity15": 4155.400101507923
+  },
+  {
+    "order": 33,
+    "symbol": "MINAUSDT",
+    "terminal_liquidation_mark15": 7.216456116235012,
+    "closed_pnl15": 195.62177735117143,
+    "reported_4000_equity15": 4202.838233467407
+  },
+  {
+    "order": 34,
+    "symbol": "TIAUSDT",
+    "terminal_liquidation_mark15": -2.0399195698199977,
+    "closed_pnl15": 162.38154762932737,
+    "reported_4000_equity15": 4160.3416280595075
+  },
+  {
+    "order": 35,
+    "symbol": "TIAUSDT",
+    "terminal_liquidation_mark15": -2.0399195698199977,
+    "closed_pnl15": 156.40788500464794,
+    "reported_4000_equity15": 4154.367965434828
+  },
+  {
+    "order": 36,
+    "symbol": "ALGOUSDT",
+    "terminal_liquidation_mark15": -2.9179059583239897,
+    "closed_pnl15": 171.0521802719914,
+    "reported_4000_equity15": 4168.134274313667
+  },
+  {
+    "order": 37,
+    "symbol": "TIAUSDT",
+    "terminal_liquidation_mark15": -2.0399195698199977,
+    "closed_pnl15": 139.46629897200788,
+    "reported_4000_equity15": 4137.426379402188
+  },
+  {
+    "order": 38,
+    "symbol": "ALGOUSDT",
+    "terminal_liquidation_mark15": -2.542705806454389,
+    "closed_pnl15": 271.02998715656776,
+    "reported_4000_equity15": 4268.487281350113
+  },
+  {
+    "order": 39,
+    "symbol": "ALGOUSDT",
+    "terminal_liquidation_mark15": -2.542705806454389,
+    "closed_pnl15": 230.88946980677562,
+    "reported_4000_equity15": 4228.346764000321
+  }
+]

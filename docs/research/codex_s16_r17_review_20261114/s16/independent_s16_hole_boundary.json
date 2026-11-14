@@ -1,0 +1,8 @@
+{
+  "prefix_mismatches_with_hole": 0,
+  "before_inside_day_close_flag": "0.0",
+  "at_inside_day_close_flag": "1.0",
+  "after_incomplete_day_close_flag": "1.0",
+  "after_incomplete_day_close_low": 1.0,
+  "interpretation": "Prior inside day persists after incomplete subsequent day closes; current 165 pinned inputs contain no 4h gaps."
+}

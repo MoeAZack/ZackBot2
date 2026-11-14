@@ -1,0 +1,40 @@
+{
+  "head": "b6f82edb0be9a134aefb74ec1b58366d269628f4",
+  "source": "6e3f37531aeedf2316cb82e492dfe0955d86885e",
+  "inputs_verified": 166,
+  "signals_matched": 30486,
+  "eligible": 17983,
+  "missing": 0,
+  "extra": 0,
+  "order0_trades_matched": 269,
+  "order0_max_abs_differences": {
+    "pnl": 1.4210854715202004e-14,
+    "R": 1.7763568394002505e-15,
+    "pnl7": 1.4210854715202004e-14,
+    "pnl15": 1.4210854715202004e-14,
+    "pnl23": 1.4210854715202004e-14,
+    "turnover": 5.684341886080802e-14
+  },
+  "orders_independently_replayed": 40,
+  "medians": {
+    "n": 280.5,
+    "meanR15": 0.11739545596715345,
+    "meanR23": 0.09711219318541406,
+    "meanR15_early": 0.05849093345182732,
+    "meanR15_late": 0.175590255514191,
+    "meanR15_ex_best": 0.06317043095783166,
+    "fresh_R15": 0.01446931955198014,
+    "extra_R15": 0.31434345890647575
+  },
+  "verdict": "Economic screen reproduced; consumed-data lead only, not mainnet or account activation.",
+  "method": "Own 1h aggregation, R1 daily availability, ATR, signals, liquidity, native-capacity convention, floor sizing, stop/gap/signal/time fills, fees/slippage/funding and cash. Imports no submitted strategy, runner or native execution engine. Historical filter snapshot/proxy and 10m sizing device preserved for parity.",
+  "signal_overlap_with_r6": {
+    "r6_eligible": 3722,
+    "r17_eligible": 17983,
+    "same_symbol_candle_side": 246,
+    "jaccard": 0.011463721515448064
+  },
+  "terminal_open_orders_count": 40,
+  "terminal_mark15_min": -2.9179059583239897,
+  "terminal_mark15_max": 15.022196030679995
+}

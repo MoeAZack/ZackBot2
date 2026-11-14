@@ -1,0 +1,20 @@
+{
+  "head": "d9bf7bf75bd274e47e72dc4fc33bf10d32802895",
+  "closed_trades_matched": 223,
+  "missing": 0,
+  "extra": 0,
+  "max_abs_differences": {
+    "pnl": 8.881784197001252e-14,
+    "R": 1.1102230246251565e-14,
+    "pnl7": 8.881784197001252e-14,
+    "pnl15": 8.881784197001252e-14,
+    "pnl23": 8.881784197001252e-14,
+    "turnover": 2.2737367544323206e-13
+  },
+  "order0_net_R15": 10.706869540137548,
+  "order0_mean_R15": 0.04801286789299349,
+  "order0_closed_DD_R15": 8.81775001884808,
+  "early": 113,
+  "late": 110,
+  "scope": "Own signal reconstruction and independent native-capacity order0 cash replay. All-order economic medians and concentration remain submitted results, not independently re-simulated."
+}

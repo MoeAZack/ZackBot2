@@ -1,0 +1,29 @@
+{
+  "method": "Closed-lot holding intervals include entry and exit bars on the common BTC timeline. Terminal open lots excluded; no shared-account admission or P&L inferred. Native supplied journals used only after independent R6/R17 signal and execution reproductions.",
+  "orders": 40,
+  "medians": {
+    "r6_closed_lots": 155.0,
+    "r17_closed_lots": 280.5,
+    "r6_active_bars": 7711.0,
+    "r17_active_bars": 8058.0,
+    "both_active_bars": 7395.5,
+    "same_coin_side_bars": 549.0,
+    "same_side_when_both": 0.7069023941431156,
+    "r17_time_same_coin_side": 0.06832627702774455,
+    "r17_entries_while_r6_same_coin_side": 17.0,
+    "r17_entry_fraction_same_coin_side": 0.06156633221850613
+  },
+  "order0": {
+    "order": 0,
+    "r6_closed_lots": 149,
+    "r17_closed_lots": 269,
+    "r6_active_bars": 7747,
+    "r17_active_bars": 8037,
+    "both_active_bars": 7414,
+    "same_coin_side_bars": 807,
+    "same_side_when_both": 0.7159428108983005,
+    "r17_time_same_coin_side": 0.10041060097051138,
+    "r17_entries_while_r6_same_coin_side": 17,
+    "r17_entry_fraction_same_coin_side": 0.06319702602230483
+  }
+}
