@@ -16,6 +16,7 @@ uninstall(engine, app_module)        unregister - refused while any slot or lot 
 """
 import json
 import logging
+import os
 import threading
 import time
 
@@ -37,8 +38,43 @@ class R6InstallError(RuntimeError):
 
 def sleeve(enabled=False):
     """The exact EX14 slot (explicit frozen list: bypasses the global UNIVERSE and its 120-coin truncation)."""
-    return dict(id=R.SLEEVE_ID, key=R.KEY, name=S.STRATEGIES[R.KEY]['name'], enabled=bool(enabled), share=SHARE,
+    return dict(id=R.SLEEVE_ID, key=R.KEY, name=S.STRATEGIES.get(R.KEY, {}).get('name', '[PAPER CANARY] R6 regime flip L/S 4h'), enabled=bool(enabled), share=SHARE,
                 risk=RISK, max_pos=MAX_POS, symbols=list(R.SYMBOLS), sides='both', mgmt={}, tf='4h')
+
+
+RISK_USD_MAX = 8.0              # first-canary ceilings (Codex): at most $8 risk, $3,333.33 notional cap
+NOTIONAL_CAP_MAX = 3333.34
+_SHAPE = ('id', 'key', 'share', 'risk', 'max_pos', 'symbols', 'sides', 'mgmt', 'tf')
+_ALLOWED = set(_SHAPE) | {'name', 'enabled'}
+
+
+def slot_problem(sl):
+    """None when sl is exactly the frozen first-canary EX14 shape (only 'enabled' may differ)."""
+    want = dict(id=R.SLEEVE_ID, key=R.KEY, share=SHARE, risk=RISK, max_pos=MAX_POS, symbols=list(R.SYMBOLS),
+                sides='both', mgmt={}, tf='4h')
+    if not isinstance(sl, dict): return 'EX14 slot malformed'
+    extra = sorted(k for k in sl if k not in _ALLOWED and sl.get(k) not in (None, '', [], {}, 'any'))
+    if extra: return f"EX14 slot has extra settings: {', '.join(extra)}"
+    for k in _SHAPE:
+        v, w = sl.get(k), want[k]
+        if k in ('share', 'risk'):
+            try: ok = abs(float(v) - w) <= 1e-9
+            except (TypeError, ValueError): ok = False
+        elif k == 'symbols': ok = isinstance(v, (list, tuple)) and list(v) == w
+        elif k == 'mgmt': ok = not v
+        else: ok = v == w
+        if not ok: return f'EX14 slot {k} differs from the frozen first-canary shape'
+    return None
+
+
+def slots_problem(sleeves):
+    """The strategy may live ONLY in the one EX14 slot, in its frozen shape; EX14 may hold nothing else."""
+    r6 = [x for x in sleeves or [] if isinstance(x, dict) and (x.get('key') == R.KEY or x.get('id') == R.SLEEVE_ID)]
+    if len(r6) > 1: return 'more than one slot uses R6 / the EX14 id'
+    if r6:
+        if r6[0].get('id') != R.SLEEVE_ID: return f"R6 is reserved for slot {R.SLEEVE_ID} (found on {r6[0].get('id')})"
+        return slot_problem(r6[0])
+    return None
 
 
 def frame_resolver(engine):
@@ -103,8 +139,13 @@ def allow_exact_list(app_module):
 
     def validate_sleeve(sl, *a, **k):
         flag.on = isinstance(sl, dict) and sl.get('id') == R.SLEEVE_ID and sl.get('key') == R.KEY
-        try: return orig_validate(sl, *a, **k)
+        try: out = orig_validate(sl, *a, **k)
         finally: flag.on = False
+        if isinstance(sl, dict) and (sl.get('key') == R.KEY or sl.get('id') == R.SLEEVE_ID or out.get('key') == R.KEY
+                                     or out.get('id') == R.SLEEVE_ID):
+            why = slots_problem([out])
+            if why: raise ValueError(why)
+        return out
     clean_symbols._r6_orig = orig_clean
     validate_sleeve._r6_exact = True
     validate_sleeve._r6_orig = orig_validate
@@ -141,12 +182,43 @@ def settings_problem(engine):
     return None
 
 
+def overlap(engine):
+    """Codex decision (r1): EX13/EX14 coin overlap ACCEPTED for the max1 / $8 canary - recorded, not blocked. Lists every
+    other slot that can trade a frozen coin and the worst combined first-entry risk on one coin (slot basis)."""
+    out, eq = {}, float(engine.S.get('CAPITAL_CAP') or 0)
+    for sl in engine.S.get('SLEEVES', []):
+        if sl.get('id') == R.SLEEVE_ID: continue
+        common = sorted(set(engine.sleeve_symbols(sl, include_off=True)) & set(R.SYMBOLS))
+        if common: out[sl['id']] = dict(key=sl.get('key'), enabled=bool(sl.get('enabled')), coins=len(common),
+                                        risk_usd=round(eq * float(sl.get('share', 0)) * float(sl.get('risk', 0)), 2))
+    worst = max([v['risk_usd'] for v in out.values()] or [0.0])
+    return dict(slots=out, worst_combined_risk_usd_one_coin=round(RISK_USD_MAX + worst, 2))
+
+
 def notes(engine):
     """Settings that can only scale risk DOWN or refuse an entry (allowed; reported for the canary record)."""
     Sg = engine.S
-    return dict(CTRL_BIAS=Sg.get('CTRL_BIAS'), CTRL_RISK=Sg.get('CTRL_RISK'), FEE_EDGE_GATE=Sg.get('FEE_EDGE_GATE'),
+    return dict(overlap=overlap(engine), CTRL_BIAS=Sg.get('CTRL_BIAS'), CTRL_RISK=Sg.get('CTRL_RISK'), FEE_EDGE_GATE=Sg.get('FEE_EDGE_GATE'),
                 AI_FILTER=Sg.get('AI_FILTER'), COMPOUND=Sg.get('COMPOUND'), CAPITAL_CAP=Sg.get('CAPITAL_CAP'),
                 MAX_LEVERAGE=Sg.get('MAX_LEVERAGE'))
+
+
+def risk_problem(engine, sl, eq):
+    """Actual first-entry risk and notional cap of EX14 at sizing equity eq, with the engine's own multipliers (Kelly,
+    governor - which can be > 1 - and the direction/risk control). None when both stay within the canary ceilings."""
+    if eq is None: return 'sizing equity unknown'
+    eq = float(eq)
+    m = float(engine.kelly_mult(sl)) * float(engine.governor_mult())
+    try:
+        ce = engine.ctrl_now()
+        if ce: m *= max(float(ce.get('long_factor', 1.0)), float(ce.get('short_factor', 1.0)))
+    except Exception:
+        pass
+    risk_usd = eq * float(sl['share']) * float(sl['risk']) * m
+    cap = float(engine.S.get('MAX_LEVERAGE') or 0) * eq * float(sl['share'])
+    if risk_usd > RISK_USD_MAX + 1e-9: return f'EX14 risk ${risk_usd:.2f} > ${RISK_USD_MAX:.2f} (multipliers x{m:g})'
+    if cap > NOTIONAL_CAP_MAX: return f'EX14 notional cap ${cap:,.2f} > ${NOTIONAL_CAP_MAX:,.2f}'
+    return None
 
 
 def _slot(engine):
@@ -167,11 +239,75 @@ def entry_guard(engine):
             if why: return why
             sl = _slot(engine)
             if sl is None or sl.get('key') != R.KEY: return 'no EX14 slot'
+            why = slots_problem(engine.S.get('SLEEVES'))
+            if why: return why
             if not sl.get('enabled'): return 'EX14 switched off'
-            return None
+            return risk_problem(engine, sl, getattr(engine, 'last_eq', None))
         except Exception as ex:
             return f'settings check error ({type(ex).__name__})'
     return guard
+
+
+def lot_entry(engine):
+    """symbol -> (side, entry bar open) of the EX14 lot on that symbol, from the bar recorded at entry (r6_entry_bar), else
+    the 4h bar its fill fell in (an entry is submitted within ENTRY_WINDOW_S of its bar's open)."""
+    def f(sym):
+        for l in list(engine.state['lots'].values()):
+            if l.get('sleeve') == R.SLEEVE_ID and l.get('symbol') == sym and not l.get('manual'):
+                b = l.get('r6_entry_bar')
+                t = pd.Timestamp(b or l['opened'])
+                if t.tzinfo is not None: t = t.tz_convert(None)
+                return l['side'], (t if b else t.floor('4h'))
+        return None
+    return f
+
+
+def _record(engine, row):
+    try:
+        with open(os.path.join(engine.dir, 'r6_entries.jsonl'), 'a', encoding='utf-8') as fh:
+            fh.write(json.dumps(row, default=str) + '\n')
+    except Exception as ex:
+        log.warning(f'R6 entry record not written ({type(ex).__name__})')
+
+
+def wrap_open_lot(engine, clock=time.time):
+    """Instance-level wrapper (no engine.py change) for automatic EX14 entries ONLY: re-check the submission window, the
+    settings / slot shape guard and the actual risk at the eq the engine is about to size with, immediately before the
+    entry attempt; record the entry bar on the lot (canonical time exit) and the submission latency / slippage. Manual
+    trades, other slots, adds, exits and stops are untouched."""
+    if getattr(engine, '_r6_open_wrapped', False): return
+    orig = engine.open_lot
+    guard = entry_guard(engine)
+
+    def open_lot(sl, sym, side, sg, df, eq, *a, **k):
+        if not (isinstance(sl, dict) and sl.get('id') == R.SLEEVE_ID and not k.get('manual') and not (len(a) > 1 and a[1])):
+            return orig(sl, sym, side, sg, df, eq, *a, **k)
+        now = clock()
+        dec = pd.Timestamp(str((sg or {}).get('time')))
+        why = R.window_problem(dec, now) or guard() or risk_problem(engine, sl, eq)
+        row = dict(event='entry', symbol=sym, side=side, decision_open=str(dec), decision_close=str(dec + R.STEP),
+                   submit_utc=pd.Timestamp(now, unit='s').isoformat(), latency_s=round(now - (dec + R.STEP).timestamp(), 1),
+                   signal_close=(sg or {}).get('close'))
+        if why:
+            engine.last_skip = f'R6: {why}'; row.update(result='refused', reason=why); _record(engine, row)
+            log.warning(f'R6 {sym} {side}: entry refused before submission - {why}')
+            return False
+        before = set(engine.state['lots'])
+        ok = orig(sl, sym, side, sg, df, eq, *a, **k)
+        new = [kk for kk in engine.state['lots'] if kk not in before and engine.state['lots'][kk].get('sleeve') == R.SLEEVE_ID]
+        if ok and new:
+            lot = engine.state['lots'][new[-1]]
+            lot['r6_entry_bar'] = (dec + R.STEP).isoformat()
+            sd = 1 if side == 'LONG' else -1
+            c = float((sg or {}).get('close') or 0)
+            row.update(result='filled', fill=lot.get('avg'), qty=lot.get('qty'), risk_usd=lot.get('risk_usd'),
+                       slippage_bps=round(sd * (float(lot['avg']) - c) / c * 1e4, 2) if c else None)
+        else:
+            row.update(result='opened' if ok else 'not opened', reason=getattr(engine, 'last_skip', ''))
+        _record(engine, row)
+        return ok
+    engine.open_lot = open_lot
+    engine._r6_open_wrapped = True
 
 
 def install(engine, app_module=None, pace=True):
@@ -187,11 +323,17 @@ def install(engine, app_module=None, pace=True):
         if rep['missing_rules']:
             raise R6InstallError(f"R6 overlay: {len(rep['missing_rules'])} frozen symbol(s) without a testnet rule: "
                                  f"{', '.join(rep['missing_rules'])} - not installed (no silent dropping)")
-        if pace and _slot(engine) is not None: install_weight_pacer(engine.data)
+        why = slots_problem(engine.S.get('SLEEVES'))
+        if why: raise R6InstallError(f'R6 overlay: {why}')
+        if pace:                                       # before any slot can become visible through any path
+            if engine.data is engine.trade: raise R6InstallError('R6 overlay: data client is the order client - not paced')
+            install_weight_pacer(engine.data)
         if app_module is not None: allow_exact_list(app_module)
-        R.register_for_paper('paper', base, frame_resolver(engine), h1_fetcher(engine), guard=entry_guard(engine))
+        wrap_open_lot(engine)
+        R.register_for_paper('paper', base, frame_resolver(engine), h1_fetcher(engine), guard=entry_guard(engine),
+                             lot_entry=lot_entry(engine))
     except Exception as ex:
-        if _referenced(engine): R.register_exits_only(str(ex))
+        if _referenced(engine) or R._PAPER_ENTRY is not None: R.register_exits_only(str(ex))
         raise
     rep.update(registered=R.KEY, base=base, paced=bool(getattr(engine.data, '_r6_paced', False)),
                panel_exact_list=app_module is not None, notes=notes(engine))
@@ -216,8 +358,11 @@ def add_sleeve(engine, enabled=False):
             return cur[0]
         new = list(engine.S['SLEEVES']) + [want]
         if not _shares_ok(engine, new): raise R6InstallError('R6 overlay: enabled capital shares would exceed 100%')
+        why = slots_problem(new)
+        if why: raise R6InstallError(f'R6 overlay: {why}')
+        if not getattr(engine.data, '_r6_paced', False) and engine.data is not engine.trade:
+            install_weight_pacer(engine.data)
         engine.S['SLEEVES'] = new; engine.save_settings()
-    install_weight_pacer(engine.data)              # from now on the engine downloads 163 more 4h candle sets per close
     log.info(f"R6 overlay: slot {R.SLEEVE_ID} added ({'on' if enabled else 'off'})")
     return want
 

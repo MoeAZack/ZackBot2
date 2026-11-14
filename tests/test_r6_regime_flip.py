@@ -165,7 +165,7 @@ def test_frozen_symbol_list_is_exact():
 def test_management_is_exactly_3atr_and_120_bars():
     R = mod()
     R.register_for_paper('paper', 'https://demo-fapi.binance.com', lambda d: None, lambda *a: None)
-    assert S.merge_mgmt(R.KEY, {}) == {'stop_atr': 3.0, 'max_bars': 120.5}
+    assert S.merge_mgmt(R.KEY, {}) == {'stop_atr': 3.0, 'max_bars': R.BACKSTOP_BARS} and R.MAX_BARS == 120
 
 
 # ---------------------------------------------------------------- frozen rule parity + causality
@@ -402,6 +402,19 @@ def test_panel_exact_list_exception_is_bounded_to_ex14():
         app.clean_symbols, app.validate_sleeve = orig_c, orig_v
 
 
+def fresh_time(ago=60):
+    """A decision bar whose close was `ago` seconds before now (as the engine's sg['time'] string)."""
+    import time as _t
+    return str(pd.Timestamp(int(_t.time()) - 14400 - ago, unit='s'))
+
+
+class DataX:
+    """A separate public-data client (as in production, where engine.data is not engine.trade)."""
+    def __init__(self): self.calls = []
+    def _once(self, *a, **k): self.calls.append(a); return Resp(0), {}
+    def klines(self, *a, **k): return []
+
+
 def a4_engine(**kw):
     import test_safety as TS
     import engine as E
@@ -440,9 +453,12 @@ def test_overlay_install_missing_rules_named_and_ok_path():
     assert R.KEY not in S.STRATEGIES
     e.rules['ZRXUSDT'] = e.rules['1000BONKUSDT'] = dict(step=0.001, min_qty=0.001, tick=0.0001, min_notional=5.0)
     e.S['SYMBOLS_ON']['AAVEUSDT'] = False
+    with pytest.raises(OV.R6InstallError, match='order client'): OV.install(e)      # never pace the order client
+    e.data = DataX()
     rep = OV.install(e)
     assert rep['missing_rules'] == [] and rep['switched_off'] == ['AAVEUSDT'] and rep['registered'] == R.KEY
-    assert S.STRATEGIES[R.KEY] is R._PAPER_ENTRY and rep['paced'] is False         # no slot yet -> no pacer
+    assert S.STRATEGIES[R.KEY] is R._PAPER_ENTRY and rep['paced'] is True          # paced before any slot exists
+    assert not getattr(e.trade, '_r6_paced', False)
 
 
 def test_saved_slot_without_install_keeps_other_slots_cycling():
@@ -452,7 +468,6 @@ def test_saved_slot_without_install_keeps_other_slots_cycling():
     OV.install(e, pace=False)
     e.S['SLEEVES'] = [E.sleeve('EX01', 'ema_mom', 1 / 12, 0.024, 1, ['BTCUSDT'])]
     OV.add_sleeve(e)
-    assert getattr(e.data, '_r6_paced', False)                                   # pacer only once the slot exists
     with pytest.raises(OV.R6InstallError): OV.uninstall(e)                         # rollback order enforced
     R.unregister()
     e2 = E.Engine(dict(MODE='paper', API_KEY='k' * 16, API_SECRET='s' * 16), e.dir)
@@ -462,7 +477,7 @@ def test_saved_slot_without_install_keeps_other_slots_cycling():
         S.signals(R.KEY, d, dict(btc_down=np.zeros(len(d), bool)), mask_sides=False)
     with pytest.raises(OV.R6InstallError, match='without a testnet rule'): OV.install(e2, pace=False)
     entry = S.STRATEGIES[R.KEY]
-    assert entry is R._EXITS_ONLY and entry['mgmt'] == {'stop_atr': 3.0, 'max_bars': 120.5}
+    assert entry is R._EXITS_ONLY and entry['mgmt'] == {'stop_atr': 3.0, 'max_bars': R.BACKSTOP_BARS}
     out = S.signals(R.KEY, d, dict(btc_down=np.zeros(len(d), bool)), mask_sides=False)
     assert not out['le'].any() and not out['se'].any()
     np.testing.assert_array_equal(out['lx'], R.raw_signals(d)['lx'].values)
@@ -518,7 +533,7 @@ def test_sizing_receipt_through_engine_open_lot(atr, cap_binds):
     e.S['SLEEVES'] = [sl]
     eq = e.equity()
     assert eq == pytest.approx(4000.0)
-    sg = dict(close=100.0, atr=atr, time='2026-10-20 20:00:00', le=True, se=False, lx=False, sx=False)
+    sg = dict(close=100.0, atr=atr, time=fresh_time(), le=True, se=False, lx=False, sx=False)
     assert e.open_lot(sl, 'AAVEUSDT', 'LONG', sg, None, eq) is True, e.last_skip
     lot = next(iter(e.state['lots'].values()))
     assert lot['sleeve'] == 'EX14' and lot['risk_usd'] == pytest.approx(8.0)
@@ -529,7 +544,7 @@ def test_sizing_receipt_through_engine_open_lot(atr, cap_binds):
         assert lot['qty'] == pytest.approx(8.0 / (3 * atr), abs=1e-3)
         assert lot['stop'] == pytest.approx(100.0 - 3 * atr, abs=0.01)
     assert lot.get('book') in (None, '')
-    assert lot['mgmt'].get('max_bars') == 120.5 and lot['mgmt'].get('stop_atr') == 3.0 and not lot['mgmt'].get('tp_r')
+    assert lot['mgmt'].get('max_bars') == R.BACKSTOP_BARS and lot['mgmt'].get('stop_atr') == 3.0 and not lot['mgmt'].get('tp_r')
 
 
 def test_engine_compute_signals_resolves_symbol_and_emits_ex14_entry():
@@ -566,7 +581,7 @@ def test_engine_compute_signals_resolves_symbol_and_emits_ex14_entry():
 # ---------------------------------------------------------------- engine cycle: exits and data behaviour
 def _opened_ex14(e, OV_):
     sl = OV_.sleeve(True); e.S['SLEEVES'] = [sl]
-    sg = dict(close=100.0, atr=2.0, time='2026-10-20 20:00:00', le=True, se=False, lx=False, sx=False)
+    sg = dict(close=100.0, atr=2.0, time=fresh_time(), le=True, se=False, lx=False, sx=False)
     assert e.open_lot(sl, 'AAVEUSDT', 'LONG', sg, None, e.equity()) is True, e.last_skip
     return next(iter(e.state['lots']))
 
@@ -579,10 +594,10 @@ def _cycle(e, sig):
 BASE_SIG = dict(le=False, se=False, lx=False, sx=False, close=100.0, atr=2.0, time='2026-10-21 00:00:00', vol_rank=0.5)
 
 
-@pytest.mark.parametrize('bars,closes', [(120.0, False), (120.4, False), (120.6, True), (121.0, True)])
-def test_cycle_time_exit_matches_research_bar_120(bars, closes):
-    # entry at the open of bar ie (+ cycle delay); research exits at the close of ie+120 = 121 wall-clock bars after
-    # that open, and NOT at the close of ie+119 (120 bars + the later cycle's delay - the entry cycle's delay)
+@pytest.mark.parametrize('bars,closes', [(121.0, False), (123.9, False), (124.0, True)])
+def test_engine_max_bars_is_only_a_backstop(bars, closes):
+    # the engine's wall-clock max_bars never fires before the canonical deadline (close of entry+120 = 121 bars after the
+    # entry bar's open); it only catches a lot whose canonical exit signal could not be computed
     from datetime import timedelta
     import engine as E
     e, E, R = a4_engine()
@@ -690,3 +705,216 @@ def test_registration_refuses_an_altered_symbol_list(monkeypatch):
     monkeypatch.setattr(R, 'SYMBOLS', R.SYMBOLS[:-1] + ('ZZZUSDT',))       # still 163, still sorted: only the hash differs
     with pytest.raises(ValueError, match='altered'):
         R.register_for_paper('paper', 'https://demo-fapi.binance.com', lambda d: None, lambda *a: None)
+
+
+# ---------------------------------------------------------------- Codex review r1: canonical deadline
+def frame_rows(t_last, n=900):
+    t = pd.date_range(end=pd.Timestamp(t_last), periods=n, freq='4h')
+    c = np.full(n, 100.0)
+    return pd.DataFrame(dict(t=t, o=c, h=c, l=c, c=c, v=np.ones(n)))
+
+
+@pytest.mark.parametrize('k,due', [(118, False), (119, False), (120, True), (121, True), (127, True)])
+def test_canonical_deadline_from_the_entry_bar(k, due):
+    """Research: exit when i - i_entry >= 120 -> at the close of row entry+120, whatever the cycle delays; a late or
+    restarted cycle (row entry+121, +127) exits at its first chance."""
+    R = mod()
+    entry = pd.Timestamp('2026-06-01 04:00')
+    d = frame_rows(entry + k * R.STEP)
+    for side, ex in (('LONG', 'lx'), ('SHORT', 'sx')):
+        R._CTX.update(resolve=lambda x: 'AAVEUSDT', lot_entry=lambda s, side=side: (side, entry))
+        lx, sx = R.deadline_exits(d, pd.Series(False, index=d.index), pd.Series(False, index=d.index))
+        got = {'lx': lx, 'sx': sx}
+        assert bool(got[ex].iloc[-1]) == due
+        assert not got['sx' if ex == 'lx' else 'lx'].any()           # only the lot's own side
+    R._CTX.update(lot_entry=lambda s: None)
+    lx, sx = R.deadline_exits(d, pd.Series(False, index=d.index), pd.Series(False, index=d.index))
+    assert not lx.any() and not sx.any()
+
+
+def test_backstop_can_never_precede_the_canonical_deadline():
+    R = mod()
+    # worst case: fill submitted ENTRY_WINDOW_S after the entry bar opened, every later cycle exactly on time
+    for k in range(0, 121):
+        wall = (k + 1) * 14400 - R.ENTRY_WINDOW_S
+        assert wall / 14400 < R.BACKSTOP_BARS, k
+
+
+def test_lot_entry_uses_the_recorded_bar_else_the_fill_bar():
+    e, E, R = a4_engine()
+    f = OV.lot_entry(e)
+    e.state['lots']['a'] = dict(sleeve='EX14', symbol='AAVEUSDT', side='LONG', opened='2026-06-01T04:19:00+00:00')
+    assert f('AAVEUSDT') == ('LONG', pd.Timestamp('2026-06-01 04:00'))
+    e.state['lots']['a']['r6_entry_bar'] = '2026-06-01T04:00:00'
+    e.state['lots']['a']['opened'] = '2026-06-01T07:59:00+00:00'
+    assert f('AAVEUSDT') == ('LONG', pd.Timestamp('2026-06-01 04:00'))
+    assert f('ZRXUSDT') is None
+    e.state['lots']['b'] = dict(sleeve='EX13', symbol='ZRXUSDT', side='SHORT', opened='2026-06-01T04:19:00+00:00')
+    assert f('ZRXUSDT') is None                                          # another slot's lot is not R6's
+
+
+# ---------------------------------------------------------------- Codex review r1: reserved, immutable slot
+BAD_SLOTS = [dict(id='EX15'), dict(symbols=['AAVEUSDT']), dict(risk=0.048), dict(max_pos=3), dict(share=0.2),
+             dict(sides='long'), dict(mgmt={'tp_r': 3}), dict(kelly={'frac': 1.0}), dict(hours=[0, 4])]
+
+
+@pytest.mark.parametrize('chg', BAD_SLOTS)
+def test_panel_refuses_any_r6_slot_but_the_frozen_ex14(chg):
+    import app
+    orig_c, orig_v = app.clean_symbols, app.validate_sleeve
+    try:
+        R = mod()
+        R.register_for_paper('paper', 'https://demo-fapi.binance.com', lambda d: None, lambda *a: None)
+        OV.allow_exact_list(app)
+        assert app.validate_sleeve(OV.sleeve(True), 0)['enabled'] is True
+        with pytest.raises(ValueError): app.validate_sleeve(dict(OV.sleeve(True), **chg), 0)
+        with pytest.raises(ValueError): app.validate_sleeve(dict(id='EX14', key='ema_mom', share=0.05, risk=0.01, max_pos=1, symbols=['BTCUSDT']), 0)
+    finally:
+        app.clean_symbols, app.validate_sleeve = orig_c, orig_v
+
+
+@pytest.mark.parametrize('chg', BAD_SLOTS)
+def test_entry_guard_refuses_a_changed_or_extra_r6_slot(chg):
+    e, E, R = a4_engine()
+    OV.install(e, pace=False)
+    e.equity()
+    g = OV.entry_guard(e)
+    e.S['SLEEVES'] = [OV.sleeve(True)]
+    assert g() is None
+    if chg.get('id') == 'EX15':
+        e.S['SLEEVES'] = [OV.sleeve(True), dict(OV.sleeve(True), id='EX15')]
+    else:
+        e.S['SLEEVES'] = [dict(OV.sleeve(True), **chg)]
+    assert g()
+
+
+def test_risk_guard_includes_upward_multipliers_and_equity():
+    e, E, R = a4_engine()
+    OV.install(e, pace=False)
+    sl = OV.sleeve(True); e.S['SLEEVES'] = [sl]
+    assert OV.risk_problem(e, sl, 4000.0) is None
+    e.governor_mult = lambda: 2.0                                         # governor can be > 1 (capped at 2)
+    assert 'risk' in OV.risk_problem(e, sl, 4000.0)
+    e.governor_mult = lambda: 1.0
+    e.kelly_mult = lambda s: 1.5
+    assert 'risk' in OV.risk_problem(e, sl, 4000.0)
+    e.kelly_mult = lambda s: 1.0
+    assert 'risk' in OV.risk_problem(e, sl, 4400.0)                      # compounding above the $4,000 basis
+    assert OV.risk_problem(e, sl, 3500.0) is None                         # lower equity: smaller risk is fine
+    e.S['MAX_LEVERAGE'] = 20
+    assert 'notional' in OV.risk_problem(e, sl, 4000.0)
+    assert OV.risk_problem(e, sl, None) == 'sizing equity unknown'
+
+
+# ---------------------------------------------------------------- Codex review r1: failed reinstall downgrades
+def test_failed_reinstall_downgrades_an_active_registration_to_exits_only():
+    d = flip_frame('le')
+    e, E, R = a4_engine()
+    OV.install(e, pace=False)
+    assert S.STRATEGIES[R.KEY] is R._PAPER_ENTRY
+    del e.rules['ZRXUSDT']
+    with pytest.raises(OV.R6InstallError, match='ZRXUSDT'): OV.install(e, pace=False)
+    assert S.STRATEGIES[R.KEY] is R._EXITS_ONLY and R._PAPER_ENTRY is None and R._CTX['fetch_1h'] is None
+    out = S.signals(R.KEY, d, dict(btc_down=np.zeros(len(d), bool)), mask_sides=False)
+    assert not out['le'].any() and not out['se'].any()
+    np.testing.assert_array_equal(out['lx'], R.raw_signals(d)['lx'].values)
+
+
+# ---------------------------------------------------------------- Codex review r1: submission window at the order
+def test_open_lot_wrapper_refuses_late_entry_before_any_order_and_records():
+    e, E, R = a4_engine()
+    OV.install(e, pace=False)
+    sl = OV.sleeve(True); e.S['SLEEVES'] = [sl]
+    eq = e.equity()
+    n_open = e.trade.calls.count('open')
+    sg = dict(close=100.0, atr=2.0, time=fresh_time(ago=R.ENTRY_WINDOW_S + 30), le=True, se=False, lx=False, sx=False)
+    assert e.open_lot(sl, 'AAVEUSDT', 'LONG', sg, None, eq) is False
+    assert 'late entry' in e.last_skip and e.trade.calls.count('open') == n_open and not e.state['lots']
+    sg = dict(sg, time=fresh_time(ago=30))
+    assert e.open_lot(sl, 'AAVEUSDT', 'LONG', sg, None, eq) is True
+    lot = next(iter(e.state['lots'].values()))
+    assert lot['r6_entry_bar'] == (pd.Timestamp(sg['time']) + R.STEP).isoformat()
+    rows = [json.loads(x) for x in open(os.path.join(e.dir, 'r6_entries.jsonl'), encoding='utf-8')]
+    assert [r['result'] for r in rows] == ['refused', 'filled']
+    assert rows[1]['slippage_bps'] == 0.0 and 25 <= rows[1]['latency_s'] <= 120 and rows[1]['risk_usd'] == 8.0
+    e.governor_mult = lambda: 2.0                                         # rechecked at the order, with the engine's eq
+    e.state['lots'].clear()
+    assert e.open_lot(sl, 'ZRXUSDT', 'LONG', sg, None, eq) is False and 'risk' in e.last_skip
+
+
+def test_open_lot_wrapper_leaves_manual_and_other_slots_alone():
+    e, E, R = a4_engine()
+    OV.install(e, pace=False)
+    other = E.sleeve('EX01', 'ema_mom', 1 / 12, 0.024, 1, ['BTCUSDT'])
+    e.S['SLEEVES'] = [other, OV.sleeve(True)]
+    stale = dict(close=100.0, atr=2.0, time='2020-01-01 00:00:00', le=True, se=False, lx=False, sx=False)
+    assert e.open_lot(other, 'BTCUSDT', 'LONG', stale, None, e.equity()) is True        # not EX14: untouched
+    assert not os.path.exists(os.path.join(e.dir, 'r6_entries.jsonl'))
+
+
+def test_window_rechecked_after_a_slow_d01_fetch():
+    d = flip_frame('le')
+    R = mod()
+    end = pd.Timestamp(d.t.iloc[-1]) + pd.Timedelta(hours=4)
+    now = [end.timestamp() + 60]
+
+    def slow(s, a, b):
+        now[0] += R.ENTRY_WINDOW_S                                        # the fetch (pacer) took 20 minutes
+        return h1(a, b - pd.Timedelta(hours=1))
+    ctx_for(R, d, fetch=slow, clock=lambda: now[0])
+    assert not sig(R, d)['le'][-1] and 'late entry' in R.LAST_GATE['AAVEUSDT']['reason']
+
+
+def test_overlap_recorded_not_blocked():
+    e, E, R = a4_engine()
+    e.S['SLEEVES'] = [E.sleeve('EX13', 'exp_trend', 1 / 12, 0.024, 3, ['AAVEUSDT', 'ZRXUSDT', 'BTCUSDT']),
+                      E.sleeve('EX01', 'ema_mom', 1 / 12, 0.024, 1, ['BTCUSDT'])]
+    rep = OV.install(e, pace=False)
+    ov = rep['notes']['overlap']
+    assert list(ov['slots']) == ['EX13'] and ov['slots']['EX13']['coins'] == 2 and ov['slots']['EX13']['risk_usd'] == 8.0
+    assert ov['worst_combined_risk_usd_one_coin'] == 16.0
+
+
+def test_paper_signal_and_exits_only_both_apply_the_canonical_deadline():
+    R = mod()
+    entry = pd.Timestamp('2026-06-01 04:00')
+    d = frame_rows(entry + 120 * R.STEP)
+    d['c'] = np.linspace(300.0, 100.0, len(d))                           # a falling coin: the frozen rule keeps the short
+    R.register_for_paper('paper', 'https://demo-fapi.binance.com', lambda x: 'AAVEUSDT', lambda *a: None,
+                         lot_entry=lambda s: ('SHORT', entry))
+    raw = R.raw_signals(d)
+    assert not raw['sx'].iloc[-1]                                         # only the deadline can close it here
+    out = sig(R, d)
+    assert out['sx'][-1] and np.array_equal(out['lx'], raw['lx'].values)
+    R.register_exits_only('test downgrade')
+    out = sig(R, d)
+    assert out['sx'][-1] and not out['le'].any() and not out['se'].any()
+    d2 = d.iloc[:-1].reset_index(drop=True)
+    assert not sig(R, d2)['sx'][-1]                                       # one row before the deadline: still held
+
+
+def test_guard_itself_refuses_on_upward_multiplier():
+    e, E, R = a4_engine()
+    OV.install(e, pace=False)
+    e.S['SLEEVES'] = [OV.sleeve(True)]
+    e.equity()
+    g = OV.entry_guard(e)
+    assert g() is None
+    e.governor_mult = lambda: 1.5
+    assert 'risk' in g()
+
+
+def test_wrapper_checks_risk_at_the_eq_the_engine_sizes_with():
+    e, E, R = a4_engine()
+    OV.install(e, pace=False)
+    sl = OV.sleeve(True); e.S['SLEEVES'] = [sl]
+    e.equity()                                                            # last_eq 4000: the guard alone would pass
+    sg = dict(close=100.0, atr=2.0, time=fresh_time(), le=True, se=False, lx=False, sx=False)
+    assert e.open_lot(sl, 'AAVEUSDT', 'LONG', sg, None, 4400.0) is False and 'risk' in e.last_skip
+
+
+def test_install_refuses_a_bad_saved_r6_slot_and_keeps_exits():
+    e, E, R = a4_engine()
+    e.S['SLEEVES'] = [dict(OV.sleeve(False), max_pos=3)]
+    with pytest.raises(OV.R6InstallError, match='max_pos'): OV.install(e, pace=False)
+    assert S.STRATEGIES[R.KEY] is R._EXITS_ONLY

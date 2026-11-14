@@ -28,24 +28,31 @@ def main(argv=None):
         e.data = e.trade; e.trade.balance = a.balance; e.trade.base = 'https://demo-fapi.binance.com'
         for s in R.SYMBOLS: e.trade.mark.setdefault(s, 100.0)
         e.connect()
+        e.confirm_install()                    # the DISPOSABLE temp copy only: AUD-05 would otherwise refuse every open
+        e.S['ENTRIES_PAUSED'] = False
         out = dict(engine_sha256=__import__('hashlib').sha256(open(os.path.join(a.source, 'engine.py'), 'rb').read()).hexdigest(),
                    settings=dict(CAPITAL_CAP=e.S.get('CAPITAL_CAP'), MAX_LEVERAGE=e.S.get('MAX_LEVERAGE'), COMPOUND=e.S.get('COMPOUND'),
                                  PAPER_BOOKS=e.S.get('PAPER_BOOKS'), TRUE_BOOKS=e.S.get('TRUE_BOOKS'),
                                  sleeves=[(x['id'], x['key'], x['enabled'], round(x['share'], 6), x['risk'], x['max_pos']) for x in e.S['SLEEVES']]))
         try:
-            OV.install(e, pace=False)
+            OV.install(e, pace=False)          # fake exchange is both clients here; the real data client is paced
         except OV.R6InstallError as ex:
             out['install'] = f'REFUSED: {ex}'; print(json.dumps(out, indent=1)); return 2
         sl = OV.sleeve(True); e.S['SLEEVES'] = [x for x in e.S['SLEEVES'] if x['id'] != sl['id']] + [sl]
         eq = e.equity(); out['sizing_equity'] = eq; out['cases'] = []
+        import time as _t
+        dec = str(__import__('pandas').Timestamp(int(_t.time()) - 14400 - 60, unit='s'))   # a decision bar closed 60 s ago
         for atr in (2.0, 0.01):
             e.state['lots'].clear()
-            ok = e.open_lot(sl, a.symbol, 'LONG', dict(close=100.0, atr=atr, time='receipt'), None, eq)
+            ok = e.open_lot(sl, a.symbol, 'LONG', dict(close=100.0, atr=atr, time=dec), None, eq)
             lot = next(iter(e.state['lots'].values()), None)
             out['cases'].append(dict(px=100.0, atr=atr, opened=bool(ok), skip=e.last_skip if not ok else '',
                                      risk_usd=lot and lot['risk_usd'], qty=lot and lot['qty'],
                                      notional=lot and round(lot['qty'] * lot['avg'], 2), book=lot and lot.get('book')))
-        print(json.dumps(out, indent=1)); return 0
+        bad = [c for c in out['cases'] if not c['opened'] or c['risk_usd'] is None or c['risk_usd'] > OV.RISK_USD_MAX + 1e-9
+               or c['notional'] > OV.NOTIONAL_CAP_MAX or c['book']]
+        out['verdict'] = 'FAIL' if bad else 'PASS'
+        print(json.dumps(out, indent=1)); return 1 if bad else 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

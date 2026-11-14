@@ -15,7 +15,7 @@ confirmation PR #349. These are results on data that has already been used, not 
 | `r6_regime_flip.py` | Strategy. Import registers nothing. Frozen R1 core is copied verbatim; D01 admission; fail-closed live gate; `register_for_paper` only for mode `paper` at an exact testnet HTTPS origin; `unregister` cleans up. |
 | `r6_paper_overlay.py` | Account-4 overlay, called from a launcher **after** `engine.connect()`. Changes no deployed file. |
 | `tools/r6_sizing_receipt.py` | Read-only receipt. Runs the real `open_lot` of a given source tree on a copy of a real settings.json with a fake exchange. |
-| `tests/test_r6_regime_flip.py` | 61 targeted tests. |
+| `tests/test_r6_regime_flip.py` | 95 targeted tests. |
 
 ## Rule (frozen, unchanged)
 
@@ -26,13 +26,16 @@ confirmation PR #349. These are results on data that has already been used, not 
   - A 4h row sees a day once that day has closed. Flips therefore happen only on the 20:00 UTC row (tested).
 - **Entry:** long on the first rising row, short on the first falling row. The engine enters on the next bar.
 - **Exit:** the regime leaves the state, checked at the row close. The initial stop is 3 ATR (ATR of the decision bar).
-- **Time exit:** the research exits when `i - i_entry >= 120`, that is at the close of bar entry+120.
-  - The engine instead counts wall-clock bars since the lot opened. That moment is a little after the entry bar's open.
-  - With `max_bars: 120`, the engine would exit **one bar early** (at the close of entry+119) whenever the later cycle runs
-    as late as the entry cycle did. The adversarial review found this, and the test reproduces it.
-  - The PAPER entry therefore uses `max_bars: 120.5`. That lands on the close of entry+120 for any cycle delay under 2 hours (tested at 120.0, 120.4, 120.6 and 121.0 bars).
-  - This is the same rule, expressed in the engine's units.
-- **Nothing else:** no take-profit, break-even, trailing, pyramid, DCA or runner. `merge_mgmt` gives exactly `{stop_atr: 3.0, max_bars: 120.5}`.
+- **Time exit (Codex r1):** the research exits when `i - i_entry >= 120`, at the close of the row that opens at entry bar + 120 × 4h.
+  - The engine's own `max_bars` counts wall-clock bars since the fill, and that count drifts with cycle delays. The
+    review found it can exit one bar early, or late after a delayed cycle.
+  - The canonical deadline is therefore an R6 exit signal (`deadline_exits`). It is computed from the lot's recorded
+    entry bar (`r6_entry_bar`, written at entry). Without that record, it falls back to the 4h bar the fill fell in.
+  - A late or restarted cycle exits at its first chance.
+  - The engine's `max_bars` is set to **124** and serves only as a protective backstop for a lot whose signal cannot be
+    computed. An entry is submitted at most 20 minutes after its bar opens, so 124 wall-clock bars can never come before the deadline (tested).
+  - The paper `exits-only` entry applies the same deadline.
+- **Nothing else:** no take-profit, break-even, trailing, pyramid, DCA or runner. `merge_mgmt` gives exactly `{stop_atr: 3.0, max_bars: 124}` (the backstop).
 
 ## Admission (Codex fit D01, frozen 163)
 
@@ -66,17 +69,53 @@ confirmation PR #349. These are results on data that has already been used, not 
    `EX13 enabled:false`.
    - The overlay therefore wraps `validate_sleeve` and `clean_symbols` in-process. They accept **exactly** the frozen list,
      and only while validating slot EX14 of this strategy.
+   - **Codex r1:** the strategy is reserved to slot EX14 in the frozen first-canary shape. Every panel save refuses R6 on
+     another id, a second R6 slot, EX14 with another strategy, a changed list, share, risk, max_pos, sides or mgmt, and
+     extra fields (kelly, hours, trail_entry and others). The entry guard re-checks the same shape at every decision, which
+     covers settings edited outside the panel.
    - The tests show the stock panel refuses the list. They also show these are still refused: 162 coins plus ICP, the
      first 81 coins, the list in reversed order, the list on another slot id, and the list with another strategy.
    - `restore_panel` puts the originals back.
 2. **Data cost of a switched-off slot.** `Engine.cycle` and the panel preview fetch candles for every slot's coins,
    enabled or not (tested). EX14 adds 163 4h requests of weight 10 each, about 1,630 weight per 4h close, on the IP that all
    four accounts share. Binance allows 2,400 per minute.
-   - The overlay's pacer wraps only account 4's public data client, and is installed only when EX14 is added. Once
-     Binance reports `X-MBX-USED-WEIGHT-1M ≥ 1200`, the next request waits for the next minute.
+   - The overlay's pacer wraps only account 4's public data client. **Codex r1:** it is installed by `install()`, before
+     any slot can become visible through any path. It refuses when the data client is the order client. Once Binance
+     reports `X-MBX-USED-WEIGHT-1M ≥ 1200`, the next request waits for the next minute.
    - The order and stop clients are untouched.
    - Cost: the 4h cycle of account 4 runs about 1–2 minutes longer, under the engine lock.
    - **The data behaviour still needs a live measurement before any slot is added** (see the open items).
+
+## Risk guard (Codex r1)
+
+Before every entry (at signal time with `last_eq`, and immediately before the order with the eq the engine sizes with)
+the guard computes the actual first-entry risk: `eq × share × risk × Kelly × governor × control factor`.
+
+- It refuses above $8.00, or when `MAX_LEVERAGE × eq × share` is above $3,333.34.
+- The governor can be above 1, up to 2.
+- Compounding above the $4,000 basis is refused. A lower equity gives a smaller risk, which is allowed.
+
+## Submission window (Codex r1 decision: accepted as a disclosed ceiling)
+
+There are 20 minutes from the decision close to order **submission**. This is not next-open fill parity.
+
+- The window is checked at signal time, again after the D01 fetch, and again in an instance-level `open_lot` wrapper immediately before the order.
+- The wrapper applies to EX14 automatic entries only. Manual trades, other slots, adds, exits and stops are untouched.
+- Every EX14 entry decision is written to `r6_entries.jsonl` in the data folder:
+  - decision close;
+  - submit time and latency;
+  - result;
+  - fill and quantity;
+  - risk;
+  - slippage in bps against the signal close.
+
+## Overlap with EX13 (Codex r1 decision: accepted, recorded)
+
+`install()` reports, under `notes.overlap`:
+- every other slot that can trade a frozen coin;
+- the worst combined first-entry risk on one coin (EX13 $8 + EX14 $8 = $16 on the slot basis).
+
+Nothing blocks the overlap. #339 stays off.
 
 ## Sizing receipt
 
@@ -96,6 +135,9 @@ python tools/r6_sizing_receipt.py --source F:\ZackBot2_data\EXPLORATION-account4
 ```
 
 The tool copies the settings to a temp folder and drops any key, secret or token fields. It uses a fake exchange and sends nothing.
+- **Codex r1:** it confirms the disposable temp installation (AUD-05) so that the opens are real attempts.
+- It goes through the R6 wrapper with a fresh decision bar.
+- It exits **1** on any refused open or on any risk, cap or book breach.
 
 ## Missing-key fail-safe
 
@@ -103,7 +145,8 @@ The engine calls `strategies.signals(slot.key)` for every slot, enabled or not, 
 EX14 slot (or lot) refers to `r6_regime_flip_4h` while the key is not registered, **every 4h slot stops getting signals and
 exits**, and the panel cannot remove the slot either. The adversarial review found this. Three protections:
 
-- If `install()` fails while a slot or lot refers to the key, it registers an **exits-only** entry first. That entry never
+- If `install()` fails while a slot or lot refers to the key, **or while a PAPER entry is already registered (Codex r1:
+  a failed reinstall)**, the key is **downgraded to exits-only**: no entry path, and the frozen exits plus the deadline stay. That entry never
   enters and keeps the frozen exits. The test covers save, unregister, a reloaded engine, a failed install and the exits-only entry.
 - `uninstall()` refuses while anything refers to the key.
 - Rollback order: switch off, wait until flat, remove the slot, then uninstall.
@@ -115,10 +158,8 @@ exits**, and the panel cannot remove the slot either. The adversarial review fou
    - A 1h hole inside an old 4h bar (more than 31 days back) could still make R1 differ in a rare case.
 2. **No catch-up entries.** If the engine misses the decision bar's 20-minute window (PC asleep, slow fetch), the entry is skipped. The research would have entered.
 3. **Fills.** The entry fills at market just after the close (research: next open + 2 bp). Funding is the real rate.
-4. **Time exit.** It uses the lot's wall-clock age; see the 120.5 note above.
-5. **Overlap with EX13.** EX14 can hold the same coin as EX13 (exp_trend, 31 coins that are also in the 163). The engine
-   blocks the same coin only within a slot, and the duplicate coin/side policy (#339) is OFF. Research ignored other
-   slots. **Codex decision needed:** accept this, or require EX14 to skip coins another slot holds.
+4. **Time exit.** Canonical deadline from the entry bar (see above); a missed cycle exits at the next one.
+5. **Overlap with EX13.** EX14 can hold the same coin as EX13. Codex accepted this for the max1 / $8 canary; see above.
 6. **Possible risk scaling.** CTRL direction bias, governor or Kelly multipliers can only scale risk down. That keeps it at $8 or less.
 
 ## Canary steps (staged, NOT run; Codex exact-head and protection acceptance first)
@@ -138,11 +179,13 @@ exits**, and the panel cannot remove the slot either. The adversarial review fou
 
 ## Tests (sandbox Linux, non-official)
 
-- `tests/test_r6_regime_flip.py`: 61 passed. They also pass under a CP1252 default-encoding shim (76 with `test_h5_hourly_long.py`).
+- `tests/test_r6_regime_flip.py`: 95 passed (r1). They also pass under a CP1252 default-encoding shim (110 with `test_h5_hourly_long.py`).
 - Parity and causality:
   - The rule equals the verbatim research copy and Codex's formulation on all 40 repo 4h coins.
   - Prefix causality holds at 6 cut points.
 - Mutation check, after the review fixes: **35 of 35 key-line mutants killed.**
+- Mutation check on the Codex r1 code: **23 of 24 killed**. The one survivor is equivalent: it removes the
+  reserved-id check in `slots_problem`, which `slot_problem`'s own id comparison repeats.
   - Two earlier mutants are equivalent and were dropped:
     - `RUN_MIN_HOURS 719`: 30 complete prior days plus a gap-free current day already imply a run of at least 721.
     - R1 warm-up `<118`: the slope is already NaN there.
