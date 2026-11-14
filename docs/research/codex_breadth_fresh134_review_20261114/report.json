@@ -1,0 +1,88 @@
+{
+  "head": "6907a9e5e8280a42b7ad377aefd3507275680235",
+  "source": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+  "inputs_verified": 135,
+  "signals_matched": 7895,
+  "eligible_signals": 4192,
+  "missing": 0,
+  "extra": 0,
+  "orders": 40,
+  "medians": {
+    "n": 36.0,
+    "meanR15": 0.009070201000505112,
+    "meanR23": 0.001179213204921612,
+    "meanR15_early": 0.05383474730847043,
+    "meanR15_late": -0.012660216523493598,
+    "meanR15_ex_best": -0.08198460236442581
+  },
+  "median_differences": {
+    "n": 0.0,
+    "meanR15": 8.673617379884035e-18,
+    "meanR23": 7.806255641895632e-18,
+    "meanR15_early": 0.0,
+    "meanR15_late": 0.0,
+    "meanR15_ex_best": 0.0
+  },
+  "order0_trades": 37,
+  "order0_max_abs_differences": {
+    "pnl": 1.7763568394002505e-15,
+    "R": 2.220446049250313e-16,
+    "turnover": 1.4210854715202004e-14,
+    "pnl15": 1.7763568394002505e-15,
+    "pnl23": 1.7763568394002505e-15
+  },
+  "cash_samples": [
+    {
+      "sym": "1000SHIBUSDT",
+      "i_in": 89,
+      "difference": 0.0
+    },
+    {
+      "sym": "1000SHIBUSDT",
+      "i_in": 100,
+      "difference": 4.440892098500626e-16
+    },
+    {
+      "sym": "1000LUNCUSDT",
+      "i_in": 161,
+      "difference": 0.0
+    },
+    {
+      "sym": "1000LUNCUSDT",
+      "i_in": 193,
+      "difference": 0.0
+    },
+    {
+      "sym": "1INCHUSDT",
+      "i_in": 229,
+      "difference": 5.551115123125783e-17
+    },
+    {
+      "sym": "1000LUNCUSDT",
+      "i_in": 262,
+      "difference": -1.7763568394002505e-15
+    },
+    {
+      "sym": "1000LUNCUSDT",
+      "i_in": 327,
+      "difference": 4.440892098500626e-16
+    },
+    {
+      "sym": "1000LUNCUSDT",
+      "i_in": 431,
+      "difference": 1.7763568394002505e-15
+    },
+    {
+      "sym": "1000FLOKIUSDT",
+      "i_in": 478,
+      "difference": 0.0
+    },
+    {
+      "sym": "1000FLOKIUSDT",
+      "i_in": 524,
+      "difference": 0.0
+    }
+  ],
+  "verdict": "FAIL; negative later and ex-best, insufficient primary sample; no rescue",
+  "scope": "Independent raw-data breadth/signal/eligibility construction; native reviewed engine for all40 admissions. Cash sample arithmetic independently reconstructs fees/slippage/funding. No copied research alpha/runner imports. Secondary max3 not rerun."
+}

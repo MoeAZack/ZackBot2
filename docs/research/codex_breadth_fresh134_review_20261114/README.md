@@ -1,0 +1,11 @@
+# BREADTH-FRESH134-D01 independent review
+
+PR #348 exact head `6907a9e5e8280a42b7ad377aefd3507275680235`; alpha source `646ab3fa1be92614998905e6ab3497ab03a7d382`. **Primary FAIL independently confirmed.** No rescue, activation or account change. The secondary's published failure remains on record but was not independently rerun in this review.
+
+The separate implementation reconstructs complete daily candles, breadth EMA20/threshold transition, coin EMA21 filter and D01 liquidity from all 135 actual pinned CSVs. It imports no submitted research signal or runner code. It reproduces all **7,895 raw signal/eligibility tuples**, including4,192 eligible, with zero missing/extra. The native admission engine is byte-identical at646ab3fa and previously reviewed9cb4341f; this engine is reused rather than writing another unvalidated execution engine.
+
+All40 primary orderings were rerun using independent signals. Median closes36; meanR15 +0.0090702010; R23 +0.0011792132; early +0.0538347473; later -0.0126602165; ex-best -0.0819846024. Maximum difference against the published medians is8.68e-18. Trade count, later, ex-best and order0-per-half gates fail unchanged.
+
+Order0 has37 closes. All entry/exit identifiers and reasons match, with maximum P&L difference1.78e-15 dollars. Ten separate cash samples reconstruct quantities held at each daily close, entry/exit slippage, fees, funding and partial-exit quantities from fill references; maximum difference1.78e-15. This is independent signal construction and cash arithmetic, with reviewed native portfolio admission, not a second independently authored portfolio engine. All135 raw hashes and the actual manifest hash were verified. Native Windows/CP1252 execution passed.
+
+The current result supports parking new DAILY-TF-01 #343 build/fix work in the active queue. Preserve its bounded findings and earlier extra31 research, but do not spend the strategy lane on deploying this failed wider transfer. Accounts1–4 and the existing EX13/H5 canaries remain unchanged. Historical funding/filter proxies, consumed calendar, cross-sectional universe change and large-equity sizing limitations remain. No maximum-position, coin, gate, parameter or cost rescue.
