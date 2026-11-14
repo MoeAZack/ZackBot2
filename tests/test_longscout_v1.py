@@ -141,3 +141,26 @@ def test_v5_signals_use_no_future_bars(key):
         part = _sig(key, coin.iloc[:cut].reset_index(drop=True), btc.iloc[:cut].reset_index(drop=True))
         for k in ('le', 'se', 'lx', 'sx'):
             assert (part[k] == full[k][:cut]).all(), (key, k, cut)
+
+
+import longscout_v6 as L6
+L6.register()
+
+
+@pytest.mark.parametrize('key', sorted(L6.CANDIDATES))
+def test_v6_signals_use_no_future_bars(key):
+    coin, btc = _mk(2600, '4h', 55), _mk(2600, '4h', 56)
+    full = _sig(key, coin, btc)
+    for cut in (1300, 2563, 2599):
+        part = _sig(key, coin.iloc[:cut].reset_index(drop=True), btc.iloc[:cut].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:cut]).all(), (key, k, cut)
+        if 'atr' in full:
+            np.testing.assert_allclose(part['atr'], full['atr'][:cut], equal_nan=True)
+
+
+@pytest.mark.parametrize('key', sorted(L6.CANDIDATES))
+def test_v6_signals_fire_on_synthetic_data(key):
+    coin, btc = _mk(2600, '4h', 55), _mk(2600, '4h', 56)
+    s = _sig(key, coin, btc)
+    assert (np.asarray(s['le']).sum() + np.asarray(s['se']).sum()) > 0, key
