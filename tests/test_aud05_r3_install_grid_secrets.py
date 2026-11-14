@@ -354,7 +354,7 @@ def test_send_passes_client_ids_only_to_functions_that_declare_them(monkeypatch)
     e, _ = mk_engine()
     real_cls = BC.Futures
     c = real_cls.__new__(real_cls); got = {}
-    c._order = lambda params: got.update(params) or {}
+    c._order = lambda params, **k: got.update(params) or {}   # (CLOCK-1021: open() also passes adds_risk)
     e._send(c.open, 'BTCUSDT', 'LONG', '0.001', cid='zbX')
     assert got['newClientOrderId'] == 'zbX'
     class Harness:
