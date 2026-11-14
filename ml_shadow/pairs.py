@@ -54,7 +54,7 @@ COST_REV_FIELDS = ('fees_actual', 'funding_actual', 'pnl_gross', 'pnl_fill_adj',
 COST_MODEL_ID = AC.MEASURED_COST_MODEL_ID             # defined once in actual_costs (shared with ai_scan)
 FEATURE_SCHEMA = SCHEMA_VERSION                       # decision features as persisted by the ml_shadow.v2 decision row
 FEATURE_NAMES_SHA256 = sha256_hex(canonical_json(list(FEATURE_NAMES)))
-TF_HOURS = {'5m': 5 / 60, '15m': 0.25, '1h': 1.0, '4h': 4.0}
+TF_HOURS = {'5m': 5 / 60, '15m': 0.25, '1h': 1.0, '4h': 4.0, '1d': 24.0}
 # Section 1.6: the modules that produce a pair, exactly as installer.ps1 packages them (tests pin the lists equal).
 BUNDLE_MODULES = ('engine.py', 'actual_costs.py', 'ml_shadow/__init__.py', 'ml_shadow/common.py', 'ml_shadow/context.py',
                   'ml_shadow/features.py', 'ml_shadow/labels.py', 'ml_shadow/ledger.py', 'ml_shadow/pairs.py',

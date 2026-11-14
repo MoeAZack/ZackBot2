@@ -30,7 +30,9 @@ LEGACY_BYTES = {
         "da162f97aace876c39ec97e36704f2baf463816ba667d3d99d61b5fd4fd64b13",
     "tools/research/run_atr_shock_snapback_candidate.py":
         "2dba8fa8f1a5a5952ede18bf95cf900abe513ef23cc304244442338934a0e9b3",
-    "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+    # DAILY-TF-01 re-pin (needs Codex acceptance): the only change from 0d416c8c... is build_context adding the shared
+    # panel_c closes frame; every strategy function and every other context field is byte/value identical.
+    "strategies.py": "577c35e6eb12bf6ff8452f88e8a268bf3467b6f1d7e570668ff34ccad721f729",
 }
 
 

@@ -598,7 +598,7 @@ def _fin(v, d=4):
     try: v = float(v)
     except (TypeError, ValueError): return None
     return round(v, d) if math.isfinite(v) else None
-TF_SEC = {'15m': 900, '1h': 3600, '4h': 14400}
+TF_SEC = {'15m': 900, '1h': 3600, '4h': 14400, '1d': 86400}   # 1d: UTC-midnight daily candles (DAILY-TF-01)
 FEE_EST = 0.0005        # taker fee estimate per fill, used for net PnL in the trade history
 BE_BUF = 0.0015         # breakeven stops sit just past the average entry so fees are covered
 MANUAL_MAX_RISK = 0.05  # manual trades: at most 5% of bot capital at risk
