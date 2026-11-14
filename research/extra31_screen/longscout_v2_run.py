@@ -52,7 +52,7 @@ def main():
     coins = sorted(fresh + RS.EXTRA31)
     out = os.path.join(a.out, a.case); os.makedirs(out, exist_ok=True)
     src = RS.export(CASES['cases'][a.case]['source'], out)
-    subprocess.run([sys.executable, os.path.abspath(__file__), data, out, '--case', a.case, '--orders', str(a.orders),
+    subprocess.run([sys.executable, os.path.abspath(__file__), data, out, out, '--case', a.case, '--orders', str(a.orders),
                     '--worker', src, '--universe', ','.join(coins)], check=True)
     rp = os.path.join(out, f'{a.case}_result.json'); r = json.load(open(rp, encoding='utf-8'))
     sg = subset_gate(out, a.case, fresh)
