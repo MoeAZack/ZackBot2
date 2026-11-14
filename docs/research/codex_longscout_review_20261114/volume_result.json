@@ -1,0 +1,43 @@
+{
+  "head": "0a54ad4c92f699dcf15635859dfd4766d4c25276",
+  "method": "Own raw CSV daily aggregation, EMA/ATR, BTC R1, D01 eligibility, chronological max-one admission, sizing, filters, gap/stop/target/time execution and cash/fees/funding. No imports from repository code.",
+  "inputs_verified": 32,
+  "raw_signals": 504,
+  "eligible_signals": 429,
+  "signal_matched": 504,
+  "signal_missing": 0,
+  "signal_extra": 0,
+  "trades_own": 64,
+  "trades_ref": 64,
+  "matched": 64,
+  "missing": 0,
+  "extra": 0,
+  "max_abs_differences": {
+    "pnl": 3.552713678800501e-15,
+    "pnl7": 3.552713678800501e-15,
+    "pnl15": 3.552713678800501e-15,
+    "pnl23": 3.552713678800501e-15,
+    "R": 4.440892098500626e-16,
+    "turnover": 1.4210854715202004e-14
+  },
+  "net15": 170.18184390009944,
+  "meanR15": 0.3323864138673817,
+  "early": 36,
+  "late": 28,
+  "attempts": 65,
+  "skipped": 0,
+  "unclosed_position": {
+    "sym": "GALAUSDT",
+    "i": 1524,
+    "qty": 19868.0,
+    "px": 0.0026565312,
+    "stop": 0.0022538759190710526,
+    "target": 0.003864497042786842,
+    "risk": 8.000140576871683,
+    "fees": 0.026389980940799997,
+    "fund": 0.0149665644,
+    "net": -0.041356545340799994,
+    "turn": 52.769408
+  },
+  "known_limits": "Uses frozen historical testnet filter snapshot; no terminal mark in compared closed-trade result. 1e7 sizing device replicated, not a real 4000 shared-account test. Research only."
+}

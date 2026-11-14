@@ -1,0 +1,55 @@
+{
+  "sha256_files_checked": 32,
+  "sha256_file_mismatches": [],
+  "path_trade_rows": 12858,
+  "orders": 40,
+  "source_rows": 25716,
+  "label_disagreement_counts": {
+    "coin": 0,
+    "btc": 0
+  },
+  "disagreement_examples": {
+    "coin": [],
+    "btc": []
+  },
+  "order0_closes": 323,
+  "order0_net_pnl15": 304.4558253287107,
+  "short_coin_regime_medians": {
+    "falling": {
+      "median_n": 100.0,
+      "median_sumR15": 1.8292097658626036,
+      "orders": 40
+    },
+    "rising": {
+      "median_n": 27.0,
+      "median_sumR15": 18.743234249732833,
+      "orders": 40
+    },
+    "sideways": {
+      "median_n": 24.0,
+      "median_sumR15": 10.102684475533469,
+      "orders": 40
+    },
+    "unknown": {
+      "median_n": 12.0,
+      "median_sumR15": 4.41061255227402,
+      "orders": 40
+    }
+  },
+  "method": "4 complete unique 1h bars per 4h bin; 6 complete bins per UTC day; daily close available at next UTC midnight; SMA100 minus its value 20 completed days earlier; classify at t_in.",
+  "published_aggregate_values_checked": 112,
+  "aggregate_disagreements": [],
+  "source_path_rows_match_tolerance": true,
+  "R15_max_abs_error_vs_pnl15_over_8": 4.440892098500626e-16,
+  "signals": {
+    "published_rows": 1542,
+    "independent_rows": 1542,
+    "published_unique": 1542,
+    "independent_unique": 1542,
+    "missing": 0,
+    "extra": 0,
+    "missing_examples": [],
+    "extra_examples": [],
+    "independent_eligible": 1320
+  }
+}

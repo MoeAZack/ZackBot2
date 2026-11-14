@@ -1,0 +1,178 @@
+{
+  "frozen_blobs": {
+    "research/longscout_v1.py": {
+      "freeze": "a4e3b7591dcb7538ff9eb5aeeb1a07d82b6276e2",
+      "sha256": "20f432edfddd63afdf5419fc38b03597bfd4eaffc0937c993dc7bbbf69f90500",
+      "unchanged": true
+    },
+    "research/extra31_screen/longscout_v1_cases.json": {
+      "freeze": "465808a2289863beca314766f3cd55038004174b",
+      "sha256": "2da84a41f321a5a45403c7d81bf83d2ae4db61ed3856e25a01d5399e909a8def",
+      "unchanged": true
+    }
+  },
+  "gate_tables": {
+    "lc_dual_regime_breakout_1d": {
+      "medians": {
+        "n": 30.0,
+        "meanR15": -0.3194672111228915,
+        "meanR23": -0.32946183801940276,
+        "early": 0.1395536899467895,
+        "late": -0.7604040718537838,
+        "ex_best": -0.5819777661377792
+      },
+      "gates": {
+        "trades": false,
+        "meanR15": false,
+        "meanR23": false,
+        "early": true,
+        "late": false,
+        "ex_best_coin": false,
+        "order0_30_per_half": false
+      },
+      "pass_all": false
+    },
+    "lc_rs_rsi2_dip_4h": {
+      "medians": {
+        "n": 561.0,
+        "meanR15": -0.05435351653239598,
+        "meanR23": -0.07326118246609722,
+        "early": -0.034051272598423714,
+        "late": -0.0823504553902473,
+        "ex_best": -0.06406350116060561
+      },
+      "gates": {
+        "trades": true,
+        "meanR15": false,
+        "meanR23": false,
+        "early": false,
+        "late": false,
+        "ex_best_coin": false,
+        "order0_30_per_half": true
+      },
+      "pass_all": false
+    },
+    "lc_washout_reclaim_1d": {
+      "medians": {
+        "n": 38.0,
+        "meanR15": -0.015089231839943613,
+        "meanR23": -0.026750127789774907,
+        "early": 0.3178792701957632,
+        "late": -0.388804950434441,
+        "ex_best": -0.10720427378968722
+      },
+      "gates": {
+        "trades": false,
+        "meanR15": false,
+        "meanR23": false,
+        "early": true,
+        "late": false,
+        "ex_best_coin": false,
+        "order0_30_per_half": false
+      },
+      "pass_all": false
+    },
+    "lc_mss_higher_low_4h": {
+      "medians": {
+        "n": 143.0,
+        "meanR15": -0.024808368030301793,
+        "meanR23": -0.04714367373323657,
+        "early": 0.0069768361453919105,
+        "late": -0.0693790922986266,
+        "ex_best": -0.0870807037755859
+      },
+      "gates": {
+        "trades": true,
+        "meanR15": false,
+        "meanR23": false,
+        "early": true,
+        "late": false,
+        "ex_best_coin": false,
+        "order0_30_per_half": true
+      },
+      "pass_all": false
+    },
+    "lc_volume_accum_1d": {
+      "medians": {
+        "n": 65.0,
+        "meanR15": 0.3106714770634887,
+        "meanR23": 0.299407701489391,
+        "early": 0.28024787436363136,
+        "late": 0.35634267214624604,
+        "ex_best": 0.22650542204043056
+      },
+      "gates": {
+        "trades": false,
+        "meanR15": true,
+        "meanR23": true,
+        "early": true,
+        "late": true,
+        "ex_best_coin": true,
+        "order0_30_per_half": false
+      },
+      "pass_all": false
+    },
+    "lc_trend_pullback_1d": {
+      "medians": {
+        "n": 64.0,
+        "meanR15": 0.05663515048333109,
+        "meanR23": 0.04645080682877682,
+        "early": -0.0890109957908613,
+        "late": 0.29893595247316107,
+        "ex_best": -0.0289201972314007
+      },
+      "gates": {
+        "trades": false,
+        "meanR15": true,
+        "meanR23": true,
+        "early": false,
+        "late": true,
+        "ex_best_coin": false,
+        "order0_30_per_half": false
+      },
+      "pass_all": false
+    },
+    "rs_regime_gated_trend_4h": {
+      "medians": {
+        "n": 224.5,
+        "meanR15": 0.04095425882556432,
+        "meanR23": 0.016176359680281256,
+        "early": 0.08044874821467513,
+        "late": -0.007641565459293382,
+        "ex_best": 0.005878203176204748
+      },
+      "gates": {
+        "trades": true,
+        "meanR15": true,
+        "meanR23": true,
+        "early": true,
+        "late": false,
+        "ex_best_coin": true,
+        "order0_30_per_half": true
+      },
+      "pass_all": false
+    },
+    "ss_ma_rejection_short_1d": {
+      "medians": {
+        "n": 80.0,
+        "meanR15": -0.057480580220897234,
+        "meanR23": -0.07743537002936451,
+        "early": -0.1437078787283832,
+        "late": -0.002729902346175882,
+        "ex_best": -0.1255729422404029
+      },
+      "gates": {
+        "trades": false,
+        "meanR15": false,
+        "meanR23": false,
+        "early": false,
+        "late": false,
+        "ex_best_coin": false,
+        "order0_30_per_half": true
+      },
+      "pass_all": false
+    }
+  },
+  "passed": 0,
+  "limits": "Gate arithmetic checked on supplied cash tables for all eight; independent raw-price replay only LC5, regime review separately. Not independent economics validation of all eight."
+}

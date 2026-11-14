@@ -1,0 +1,10 @@
+{
+  "artifact_checks.json": "6a5576dc4d561d5fe309eedc4be05c28cdf40d2f56eb81e9df2003ab6e136ac5",
+  "artifact_checks.py": "94704a84d13f7c5351e150af93d81cbafd4cdeb2b8d43431272f497a12283f51",
+  "README.md": "5d217b68c84374993dedf5f99d07c93325cbb2b2b78402727e342f523be92336",
+  "regime_report.json": "c1ee9502cd6262a5d6ab997fa00b6cc16a24098d218cc706e8aadaa72028ec54",
+  "regime_reproduce.py": "744a510e22a02553294065653c1e33a24dd3b11d8c5af6e9c891d83002b6d870",
+  "volume_own_trades.csv": "4cfc216ed639493205a71fb8b61ddb6ba4180eb261c011c86e6fcfe186e8f7dc",
+  "volume_result.json": "dcdaa5b7d7a1be98ab59062744206eeeff67ec29db3dc232e37bb2074c477c40",
+  "volume_review.py": "fd3921ff0bc0a04f3025ac77015cd255234bf3dfcc46bbafdc4d1a8801eb2919"
+}
