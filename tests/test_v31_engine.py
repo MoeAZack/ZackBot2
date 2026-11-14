@@ -141,7 +141,7 @@ class Book:
         self._cancel = x.cancel; x.cancel = self.cancel
     def req(self, method, path, params=None, **k):
         m = self.x.mark[params['symbol']]; return {'bidPrice': str(m - 0.1), 'askPrice': str(m + 0.1)}
-    def order(self, p):
+    def order(self, p, adds_risk=False):
         if self.reject: self.reject -= 1; raise BC.BinanceError(-5022, 'post only rejected')
         self.x.calls.append('limit')
         self.orders[p['newClientOrderId']] = dict(p, status='NEW', executedQty='0', avgPrice='0', clientOrderId=p['newClientOrderId'])
@@ -215,7 +215,7 @@ def test_maker_post_only_reject_reprices():
 
 def test_maker_lost_answer_is_polled_by_id_never_resent():
     e, bk = maker_engine(); orig = bk.order
-    def lost(p): orig(p); raise BC.AmbiguousOrder('lost', 'c:' + p['newClientOrderId'])
+    def lost(p, **k): orig(p); raise BC.AmbiguousOrder('lost', 'c:' + p['newClientOrderId'])
     e.trade._order = lost
     e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity()); e.trade._order = orig
     rec = next(iter(e.state['resting_entries'].values()))
