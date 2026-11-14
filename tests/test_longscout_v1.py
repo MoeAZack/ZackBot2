@@ -876,3 +876,67 @@ def test_v29_weekly_entry_not_repeated_after_a_broken_week():
     nxt = t.values[i + 42]                                       # the following Monday 00:00
     j = int(np.flatnonzero(pd.to_datetime(drop.t).values == nxt)[0])
     assert not L29._weekly_rsi(drop, p)[j]
+
+
+import longscout_v30 as L30
+L30.register()
+
+
+def _v30_coin(seed, crash=False):
+    c = _mk(2600, '4h', seed)
+    if crash:                                                  # every 25th day block: 3 days down ~6%/day, last on 3x volume
+        day = np.arange(len(c)) // 6; ph = day % 25
+        f = np.ones(len(c))
+        for i in np.flatnonzero((ph >= 20) & (ph <= 22) & (np.arange(len(c)) % 6 == 5)): f[i:] *= 0.94
+        for i in np.flatnonzero((ph < 20) & (np.arange(len(c)) % 6 == 5)): f[i:] *= 1.012       # drift up between crashes
+        c = c.assign(**{k: c[k] * f for k in ('o', 'h', 'l', 'c')}, v=np.where(ph == 22, c.v * 3, c.v))
+    return _ms(c)
+
+
+@pytest.mark.parametrize('key', sorted(L30.CANDIDATES))
+def test_v30_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _v30_coin(56, 'capitulation' in key), _ms(_mk(2600, '4h', 55))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v30_helper_values_match_on_every_prefix():
+    c = S.indicators(_v30_coin(56, True))
+    P = {k: v['params'] for k, v in L30.CANDIDATES.items()}
+    fns = [lambda x: L30._monthly(x, P['l30_monthly_close_breakout_4h']),
+           lambda x: L30._capitulation(x, P['l30_capitulation_dip_4h'])] + \
+          [lambda x, u=u: L30._macd_flip(x, P['r30_daily_macd_flip_4h'], u) for u in (True, False)]
+    full = [f(c) for f in fns]
+    assert all(x.sum() > 0 for x in full)
+    for cut in range(700, 2600, 19):
+        part = c.iloc[:cut].reset_index(drop=True)
+        for f, x in zip(fns, full):
+            np.testing.assert_array_equal(f(part), x[:cut])
+
+
+def test_v30_monthly_matches_independent_resample():
+    c = S.indicators(_v30_coin(56)); t = pd.to_datetime(c.t)
+    got = L30._monthly(c, dict(months=6))
+    s = pd.Series(c.c.values, index=t); cnt = s.resample('MS').count()
+    M = s.resample('MS').last()[cnt.values == cnt.index.days_in_month * 6]
+    ok = M[M > M.rolling(6).max().shift()]
+    exp = np.isin(t.values, (ok.index + pd.offsets.MonthBegin(1)).values)
+    assert got.sum() > 0 and (got == exp).all()
+
+
+def test_v30_monthly_entry_not_repeated_after_a_broken_day():
+    c = S.indicators(_v30_coin(56)); t = pd.to_datetime(c.t)
+    full = L30._monthly(c, dict(months=6))
+    i = int(np.flatnonzero(full)[0])
+    mon = t.dt.to_period('M').values == t.dt.to_period('M').values[i]
+    nxt = int(np.flatnonzero(~mon & (np.arange(len(t)) > i))[0])          # first bar of the following month
+    hit = [k for k in np.flatnonzero(mon & (t.dt.hour.values == 4)) if k >= i]
+    drop = c.drop(index=hit).reset_index(drop=True)            # every day of the entry month incomplete
+    j = int(np.flatnonzero(pd.to_datetime(drop.t).values == t.values[nxt])[0])
+    assert not L30._monthly(drop, dict(months=6))[j]
