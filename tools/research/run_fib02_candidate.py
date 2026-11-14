@@ -45,6 +45,7 @@ for _p in (ROOT, HERE):
 
 import backtest as BT                                                                       # noqa: E402
 import run_breadth_candidate as B                                                           # noqa: E402
+import xvol_paths as XP                                                                     # noqa: E402
 
 KEY = 'fib_pullback_02'
 TF, TF_MS = '1h', 3_600_000
@@ -71,7 +72,7 @@ def load_rules(path) -> tuple[dict, dict]:
         raise Fib02Error('fib02: exchange rules must be the verified direct-fetch mainnet snapshot')
     if not isinstance(snap.get('symbols'), dict) or not snap['symbols']:
         raise Fib02Error('fib02: exchange-rule snapshot holds no symbols')
-    ident = {'path': os.path.relpath(os.path.abspath(path), ROOT).replace(os.sep, '/'),
+    ident = {'path': XP.path_identity(path, ROOT),     # WINPATH-01: same-volume bytes unchanged
              'sha256': hashlib.sha256(raw).hexdigest(), 'environment': snap['environment'],
              'fetched_at': snap.get('fetched_at'), 'raw_sha256': snap.get('raw_sha256'), 'schema': snap.get('schema')}
     return snap, ident

@@ -69,6 +69,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import costs as C                                                                           # noqa: E402
 import manifest as M                                                                        # noqa: E402
+import xvol_paths as XP                                                                     # noqa: E402
 
 sys.path.insert(0, M.REPO)
 import backtest as BT                                                                       # noqa: E402
@@ -88,7 +89,7 @@ LEDGER_KINDS = ('variant', 'variant', 'variant', 'variant', 'baseline', 'baselin
 STAGE_IDS = ('S1', 'S1-T', 'S2', 'S3')
 CODE_MODULES = ('backtest.py', 'feasibility.py', 'strategies.py', 'tools/research/costs.py',
                 'tools/research/manifest.py', 'tools/research/edge05_runner.py', 'tools/research/edge05_coverage.py',
-                'tools/research/splits.py', 'tools/research/bpyr_runner.py')
+                'tools/research/splits.py', 'tools/research/bpyr_runner.py', 'tools/research/xvol_paths.py')
 HOUR = 3_600_000
 TF = 4 * HOUR
 DAY_MS = 24 * HOUR
@@ -1543,6 +1544,12 @@ class ProspectiveRules:
         if not isinstance(expect_sha256, str) or not E5.HEX64.match(expect_sha256):
             raise RunnerError('--prospective-rules needs --expect-prospective-rules-sha256 (64 lowercase hex)')
         ap = os.path.realpath(path)
+        try:                                                  # WINPATH-01: another drive is outside the repo
+            inside = XP.is_within(ap, os.path.realpath(repo))
+        except ValueError:
+            inside = False
+        if not inside:
+            raise RunnerError('prospective rules snapshot must be a file inside the repo')
         rel = os.path.relpath(ap, os.path.realpath(repo)).replace(os.sep, '/')
         if rel == '..' or rel.startswith('../') or os.path.isabs(rel):
             raise RunnerError('prospective rules snapshot must be a file inside the repo')
@@ -1930,7 +1937,7 @@ def execute(outdir: str, src, pf: Preflight, *, symbols, rules, authorization: E
     src_id = source_identity(src)
     rules_id = rules_identity(rules)
     ledger_dir = os.path.abspath(os.path.join(REPO, *LEDGER_REL[:-1]))
-    if os.path.commonpath([os.path.abspath(outdir), ledger_dir]) == ledger_dir:
+    if _maybe_ledger(outdir, ledger_dir):         # WINPATH-01: another drive is never the ledger directory
         raise WriteRefused('the run directory may not be the ledger directory')
     ident = {'format': RUN_FORMAT, 'candidate_id': CANDIDATE, 'prereg_sha256': pf.prereg_sha256, 'code': pf.code,
              'sources': pf.sources, 'symbols': plan, 'windows': [w.dev_start, w.last_entry, w.sealed, list(w.slices)],
@@ -2068,13 +2075,22 @@ def authorization_identity(tok: EvalAuthorization) -> dict:
             'artifact_sha256': tok.artifact_sha256, 'code_commit': tok.code_commit, 'scope': list(tok.scope)}
 
 
+def _maybe_ledger(path: str, ledger_dir: str) -> bool:
+    """WINPATH-01: True when `path` is (or cannot be proven not to be) inside the ledger directory. A path on another
+    plain drive letter is not; an unresolvable spelling (long-path / device / UNC alias of a drive) is treated as reserved."""
+    try:
+        return XP.is_within(path, ledger_dir)
+    except ValueError:
+        return True
+
+
 def write_result(result: dict, path: str, *, authorization: EvalAuthorization | None = None) -> str:
     """The only write path. Refuses without an Integration EvalAuthorization bound to this signed contract, and
     never writes a verdict, a ledger row or a registry line."""
     _require_authorization(authorization, result.get('prereg_sha256'), 'write_result()')
     ap = os.path.abspath(path)
     ledger_dir = os.path.abspath(os.path.join(REPO, *LEDGER_REL[:-1]))
-    if os.path.commonpath([ap, ledger_dir]) == ledger_dir or 'verdict' in os.path.basename(ap).lower() \
+    if _maybe_ledger(ap, ledger_dir) or 'verdict' in os.path.basename(ap).lower() \
             or 'verdict' in result or 'REGISTRY' in os.path.basename(ap):
         raise WriteRefused('verdict / ledger / registry writes are Integration-only')
     if result.get('decided') is not False:
