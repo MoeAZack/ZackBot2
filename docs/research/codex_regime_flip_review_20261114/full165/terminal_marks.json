@@ -1,0 +1,282 @@
+[
+  {
+    "order": 0,
+    "symbol": "1000SHIBUSDT",
+    "terminal_liquidation_mark15": 4.242042785158417,
+    "closed_pnl15": 306.5941292577513,
+    "reported_4000_equity15": 4310.83617204291
+  },
+  {
+    "order": 1,
+    "symbol": "1000SHIBUSDT",
+    "terminal_liquidation_mark15": 4.242227800981217,
+    "closed_pnl15": 482.2873181869652,
+    "reported_4000_equity15": 4486.529545987946
+  },
+  {
+    "order": 2,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.90033648763837,
+    "closed_pnl15": 533.7653937459653,
+    "reported_4000_equity15": 4558.665730233603
+  },
+  {
+    "order": 3,
+    "symbol": "NEARUSDT",
+    "terminal_liquidation_mark15": 15.090417060000004,
+    "closed_pnl15": 98.24915533516089,
+    "reported_4000_equity15": 4113.339572395161
+  },
+  {
+    "order": 4,
+    "symbol": "NEARUSDT",
+    "terminal_liquidation_mark15": 15.090417060000004,
+    "closed_pnl15": 553.3313504293611,
+    "reported_4000_equity15": 4568.421767489361
+  },
+  {
+    "order": 5,
+    "symbol": "NEARUSDT",
+    "terminal_liquidation_mark15": 15.090417060000004,
+    "closed_pnl15": 308.9402342563824,
+    "reported_4000_equity15": 4324.030651316382
+  },
+  {
+    "order": 6,
+    "symbol": "1000SHIBUSDT",
+    "terminal_liquidation_mark15": 4.242042785158417,
+    "closed_pnl15": 304.5026938224901,
+    "reported_4000_equity15": 4308.7447366076485
+  },
+  {
+    "order": 7,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.90078555445481,
+    "closed_pnl15": 715.4433072354217,
+    "reported_4000_equity15": 4740.344092789876
+  },
+  {
+    "order": 8,
+    "symbol": "INJUSDT",
+    "terminal_liquidation_mark15": -1.7645457434499936,
+    "closed_pnl15": 471.2786965163373,
+    "reported_4000_equity15": 4469.514150772888
+  },
+  {
+    "order": 9,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.900780893424116,
+    "closed_pnl15": 715.6917585289153,
+    "reported_4000_equity15": 4740.5925394223395
+  },
+  {
+    "order": 10,
+    "symbol": "1000SHIBUSDT",
+    "terminal_liquidation_mark15": 4.242227800981217,
+    "closed_pnl15": 344.27810757299477,
+    "reported_4000_equity15": 4348.520335373975
+  },
+  {
+    "order": 11,
+    "symbol": "TIAUSDT",
+    "terminal_liquidation_mark15": 9.957787003579991,
+    "closed_pnl15": 313.1223837841872,
+    "reported_4000_equity15": 4323.080170787767
+  },
+  {
+    "order": 12,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.899157556478627,
+    "closed_pnl15": 60.02346019221201,
+    "reported_4000_equity15": 4084.9226177486908
+  },
+  {
+    "order": 13,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.899082117867668,
+    "closed_pnl15": 27.995371144919176,
+    "reported_4000_equity15": 4052.894453262787
+  },
+  {
+    "order": 14,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.899160773327413,
+    "closed_pnl15": 61.1059499625688,
+    "reported_4000_equity15": 4086.0051107358963
+  },
+  {
+    "order": 15,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.900420582400404,
+    "closed_pnl15": 569.3726576105851,
+    "reported_4000_equity15": 4594.273078192986
+  },
+  {
+    "order": 16,
+    "symbol": "TAOUSDT",
+    "terminal_liquidation_mark15": 13.318626902519016,
+    "closed_pnl15": 412.16857993476845,
+    "reported_4000_equity15": 4425.487206837288
+  },
+  {
+    "order": 17,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.900317705645623,
+    "closed_pnl15": 524.8793069013153,
+    "reported_4000_equity15": 4549.779624606961
+  },
+  {
+    "order": 18,
+    "symbol": "1000SHIBUSDT",
+    "terminal_liquidation_mark15": 4.242227800981217,
+    "closed_pnl15": 362.50536205969536,
+    "reported_4000_equity15": 4366.747589860676
+  },
+  {
+    "order": 19,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.899864851088743,
+    "closed_pnl15": 344.1018875417199,
+    "reported_4000_equity15": 4369.001752392809
+  },
+  {
+    "order": 20,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.89954357383799,
+    "closed_pnl15": 217.3426258402097,
+    "reported_4000_equity15": 4242.242169414048
+  },
+  {
+    "order": 21,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.90008161149372,
+    "closed_pnl15": 432.23071225135664,
+    "reported_4000_equity15": 4457.130793862851
+  },
+  {
+    "order": 22,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.900595637105475,
+    "closed_pnl15": 636.6543797697371,
+    "reported_4000_equity15": 4661.5549754068425
+  },
+  {
+    "order": 23,
+    "symbol": "1000SHIBUSDT",
+    "terminal_liquidation_mark15": 4.242412816804017,
+    "closed_pnl15": 831.7809293202429,
+    "reported_4000_equity15": 4836.023342137047
+  },
+  {
+    "order": 24,
+    "symbol": "NEARUSDT",
+    "terminal_liquidation_mark15": 15.090417060000004,
+    "closed_pnl15": 350.61328623863596,
+    "reported_4000_equity15": 4365.703703298635
+  },
+  {
+    "order": 25,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.900088255633143,
+    "closed_pnl15": 434.7685633200707,
+    "reported_4000_equity15": 4459.668651575704
+  },
+  {
+    "order": 26,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.89966491406538,
+    "closed_pnl15": 266.19701518404986,
+    "reported_4000_equity15": 4291.096680098115
+  },
+  {
+    "order": 27,
+    "symbol": "TIAUSDT",
+    "terminal_liquidation_mark15": 9.957787003579991,
+    "closed_pnl15": 232.75029533355098,
+    "reported_4000_equity15": 4242.708082337131
+  },
+  {
+    "order": 28,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.900162978553347,
+    "closed_pnl15": 463.500385946966,
+    "reported_4000_equity15": 4488.40054892552
+  },
+  {
+    "order": 29,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.900076205012255,
+    "closed_pnl15": 430.4454028604621,
+    "reported_4000_equity15": 4455.345479065474
+  },
+  {
+    "order": 30,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.900802732240784,
+    "closed_pnl15": 724.2611735248541,
+    "reported_4000_equity15": 4749.1619762570945
+  },
+  {
+    "order": 31,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.89929768224311,
+    "closed_pnl15": 118.27003424437007,
+    "reported_4000_equity15": 4143.169331926613
+  },
+  {
+    "order": 32,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.900835858449504,
+    "closed_pnl15": 736.7906265262955,
+    "reported_4000_equity15": 4761.691462384745
+  },
+  {
+    "order": 33,
+    "symbol": "NEARUSDT",
+    "terminal_liquidation_mark15": 15.090417060000004,
+    "closed_pnl15": 477.2372865514948,
+    "reported_4000_equity15": 4492.327703611494
+  },
+  {
+    "order": 34,
+    "symbol": "INJUSDT",
+    "terminal_liquidation_mark15": -1.7645457434499936,
+    "closed_pnl15": 198.9150758128984,
+    "reported_4000_equity15": 4197.150530069448
+  },
+  {
+    "order": 35,
+    "symbol": "TAOUSDT",
+    "terminal_liquidation_mark15": 13.318626902519016,
+    "closed_pnl15": 89.38083947392994,
+    "reported_4000_equity15": 4102.699466376449
+  },
+  {
+    "order": 36,
+    "symbol": "INJUSDT",
+    "terminal_liquidation_mark15": -1.7645457434499936,
+    "closed_pnl15": 562.0216660268518,
+    "reported_4000_equity15": 4560.2571202834015
+  },
+  {
+    "order": 37,
+    "symbol": "NEARUSDT",
+    "terminal_liquidation_mark15": 15.090417060000004,
+    "closed_pnl15": 244.25824024271856,
+    "reported_4000_equity15": 4259.3486573027185
+  },
+  {
+    "order": 38,
+    "symbol": "ICPUSDT",
+    "terminal_liquidation_mark15": 24.900072356111533,
+    "closed_pnl15": 430.2370963657472,
+    "reported_4000_equity15": 4455.137168721858
+  },
+  {
+    "order": 39,
+    "symbol": "1000SHIBUSDT",
+    "terminal_liquidation_mark15": 4.242227800981217,
+    "closed_pnl15": 423.69033620138987,
+    "reported_4000_equity15": 4427.932564002371
+  }
+]

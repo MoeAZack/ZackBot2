@@ -1,0 +1,10 @@
+{
+  "url": "https://demo-fapi.binance.com/fapi/v1/exchangeInfo",
+  "observed_utc": "2026-11-14T08:49:01.009129+00:00",
+  "requested": 165,
+  "covered": 163,
+  "missing": [
+    "ICPUSDT",
+    "TLMUSDT"
+  ]
+}

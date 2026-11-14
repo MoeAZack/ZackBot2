@@ -1,0 +1,17 @@
+{
+  "fit_note.md": "3ae9ef24a4596bdb6c320ed839aada43a399bd2158d5e40837259a8075dc3644",
+  "independent_cash_replay.py": "0eff9fbabc291f2d97f2d0cc07ddfb14ea4c9155dcf158d2e030ba88207bdd9e",
+  "independent_review.json": "8367229bc6b57c92ac45af105f295e258fef7ea6281780140dfb5b9ff30a7026",
+  "independent_review.py": "efd387c7aa045a4659be7c7a2e2715b4b671dd17605d013674e4c6cbb7d42608",
+  "public_testnet_coverage.json": "1cd2b6d928926f007d83d60e88bc886a29e249dd6845f6f462df22ba0e2fb60e",
+  "README.md": "131af6b10c8432e3ea32b06f60df4018ea25aea231398369cbdd98fd9d41d3fd",
+  "SIGNAL_TIMING_REVIEW.md": "25cee1096c73f254c79da0002210607fd8a60e865a7fc6890cb85ffb99841697",
+  "fit163/order0_own_trades.csv": "ddc4c861c5239144e3c702c87fb5b263a79b4aa7ac3dd1ce6cb735bf15881e38",
+  "fit163/per_order_stats.json": "bad8334a2c5fb95656614bd260e112badb76800efe6a581a73e8b23fe0b31fa6",
+  "fit163/report.json": "023fccb347dbd30a1435920ea31aa5c1c02d20c37439ba8c681388d448105d4c",
+  "fit163/terminal_marks.json": "9597be024752a4884b526af3d4bfa8e018435a1cb8cea46f304d61a563f5802b",
+  "full165/order0_own_trades.csv": "16f5bd1da3b75477d21576561e8a7cbda7eaab4f8505f6b98b0a916afff73d81",
+  "full165/per_order_stats.json": "4e6b8bae201c649658a581d94691aaa8fec40b29e0fb6e12f8e2ab2f729d353e",
+  "full165/report.json": "9a106c5dd685a853ffb50020a31423c831482362963e2b8bd21ca9c0f8d711e7",
+  "full165/terminal_marks.json": "97f1b6dbaa7469cc2364177dd2037f08ad4d69f93998340f71c41eebe03dcefd"
+}

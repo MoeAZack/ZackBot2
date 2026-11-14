@@ -1,0 +1,49 @@
+{
+  "head": "10486f35dd513c51b375b3b72cfe5864763a7b39",
+  "source": "acc8d0eea5fbc964d45d582923732e2bbb5ba322",
+  "inputs_verified": 164,
+  "signals_matched": 5993,
+  "eligible": 3676,
+  "missing": 0,
+  "extra": 0,
+  "order0_trades_matched": 0,
+  "order0_max_abs_differences": {},
+  "orders_independently_replayed": 40,
+  "medians": {
+    "n": 150.5,
+    "meanR15": 0.32863185546854057,
+    "meanR23": 0.3102315466279819,
+    "meanR15_early": 0.40518822953444367,
+    "meanR15_late": 0.29199788565479873,
+    "meanR15_ex_best": 0.18720086771944577,
+    "fresh_R15": 0.24473129657435055,
+    "extra_R15": 0.6167502939459096
+  },
+  "verdict": "FIT_PASS",
+  "method": "Own 1h aggregation, R1 daily availability, ATR, signals, liquidity, native-capacity convention, floor sizing, stop/gap/signal/time fills, fees/slippage/funding and cash. Imports no submitted strategy, runner or native execution engine. Historical filter snapshot/proxy and 10m sizing device preserved for parity.",
+  "terminal_open_orders_count": 40,
+  "terminal_mark15_min": -1.7645457434499936,
+  "terminal_mark15_max": 15.090417060000004,
+  "trial": "R6-TNET163-FIT-D01",
+  "symbols": 163,
+  "excluded_unavailable": [
+    "ICPUSDT",
+    "TLMUSDT"
+  ],
+  "scope": "Deployment-fit variant, not direct165 trade-file comparison; same independently verified alpha/execution code, current testnet filters and predeclared venue163 only.",
+  "order0_half_counts": [
+    86,
+    64
+  ],
+  "gates": {
+    "trades": true,
+    "R15": true,
+    "R23": true,
+    "early": true,
+    "late": true,
+    "ex_best": true,
+    "half_samples": true,
+    "fresh": true,
+    "extra": true
+  }
+}
