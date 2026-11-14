@@ -164,3 +164,43 @@ def test_v6_signals_fire_on_synthetic_data(key):
     coin, btc = _mk(2600, '4h', 55), _mk(2600, '4h', 56)
     s = _sig(key, coin, btc)
     assert (np.asarray(s['le']).sum() + np.asarray(s['se']).sum()) > 0, key
+
+
+import longscout_v7 as L7
+L7.register()
+
+
+@pytest.mark.parametrize('key', sorted(L7.CANDIDATES))
+def test_v7_signals_use_no_future_bars(key):
+    coin, btc = _mk(2600, '4h', 55), _mk(2600, '4h', 56)
+    full = _sig(key, coin, btc)
+    for cut in (1300, 2563, 2599):
+        part = _sig(key, coin.iloc[:cut].reset_index(drop=True), btc.iloc[:cut].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:cut]).all(), (key, k, cut)
+        if 'atr' in full:
+            np.testing.assert_allclose(part['atr'], full['atr'][:cut], equal_nan=True)
+
+
+@pytest.mark.parametrize('key', sorted(L7.CANDIDATES))
+def test_v7_signals_fire_on_synthetic_data(key):
+    coin, btc = _mk(2600, '4h', 55), _mk(2600, '4h', 56)
+    if key == 's7_blowoff_fade_short_4h':                  # needs a +50% week then a sharp red bar: scale all prices
+        f = np.ones(len(coin)); f[1500:1542] = np.linspace(1, 1.8, 42); f[1542:] = 1.8; f[1532:] *= 0.92
+        coin = coin.assign(o=coin.o * np.r_[f[0], f[:-1]], h=coin.h * f * 1.0, l=coin.l * np.minimum(f, np.r_[f[0], f[:-1]]), c=coin.c * f)
+        coin = coin.assign(h=np.maximum(coin.h, coin[['o', 'c']].max(axis=1)), l=np.minimum(coin.l, coin[['o', 'c']].min(axis=1)))
+    s = _sig(key, coin, btc)
+    assert (np.asarray(s['le']).sum() + np.asarray(s['se']).sum()) > 0, key
+
+
+@pytest.mark.parametrize('key', sorted(L6.CANDIDATES) + sorted(L7.CANDIDATES))
+def test_v6_v7_dense_prefix_cuts(key):
+    """Many cuts: a one-bar lookahead only shows when a signal sits on the cut's last bar, so three cuts can miss it."""
+    coin, btc = _mk(2600, '4h', 55), _mk(2600, '4h', 56)
+    full = _sig(key, coin, btc)
+    for cut in range(1250, 2600, 15):
+        part = _sig(key, coin.iloc[:cut].reset_index(drop=True), btc.iloc[:cut].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:cut]).all(), (key, k, cut)
+        if 'atr' in full:
+            np.testing.assert_allclose(part['atr'], full['atr'][:cut], equal_nan=True)
