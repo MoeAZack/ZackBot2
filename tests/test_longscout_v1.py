@@ -739,3 +739,51 @@ def test_v26_stale_day_after_a_gap_does_not_fire_twice():
         nxt = t.values[i + 6]                                      # first bar of the following day
         j = int(np.flatnonzero(pd.to_datetime(drop.t).values == nxt)[0])
         assert not fn(drop, p, True)[j], fn.__name__
+
+
+import longscout_v27 as L27
+L27.register()
+
+
+def _v27_coin(seed, dry=False):
+    c = _ms(_mk(2600, '4h', seed))
+    if dry:                                                    # days 17-19 of every 20-day block trade on 20% volume
+        q = ((np.arange(len(c)) // 6) % 20) >= 17
+        c = c.assign(v=np.where(q, c.v * 0.2, c.v))
+    return c
+
+
+@pytest.mark.parametrize('key', sorted(L27.CANDIDATES))
+def test_v27_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _v27_coin(56, 'dryup' in key), _ms(_mk(2600, '4h', 55))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v27_helper_values_match_on_every_prefix():
+    c = S.indicators(_v27_coin(56, True))
+    fns = [(L27._staircase, dict(days=3), True), (L27._staircase, dict(days=3), False),
+           (L27._close_loc, dict(days=10, hi=0.65), True), (L27._close_loc, dict(days=10, hi=0.65), False)]
+    full = [f(c, p, u) for f, p, u in fns]
+    dp = L27.CANDIDATES['l27_volume_dryup_near_high_4h']['params']; fd = L27._dryup(c, dp)
+    assert all(x.sum() > 0 for x in full) and fd.sum() > 0
+    for cut in range(700, 2600, 19):
+        part = c.iloc[:cut].reset_index(drop=True)
+        for (f, p, u), x in zip(fns, full):
+            np.testing.assert_array_equal(f(part, p, u), x[:cut])
+        np.testing.assert_array_equal(L27._dryup(part, dp), fd[:cut])
+
+
+def test_v27_stale_day_after_a_gap_does_not_fire_twice():
+    c = S.indicators(_v27_coin(56)); t = pd.to_datetime(c.t)
+    full = L27._staircase(c, dict(days=3), True)
+    i = int(np.flatnonzero(full)[3])
+    drop = c.drop(index=i + 1).reset_index(drop=True)
+    j = int(np.flatnonzero(pd.to_datetime(drop.t).values == t.values[i + 6])[0])
+    assert not L27._staircase(drop, dict(days=3), True)[j]
