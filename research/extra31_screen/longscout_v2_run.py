@@ -8,7 +8,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import run_screen as RS, sieve_v1 as SV, sieve_v1_panel as SP, longscout_run as LR
 
-CASES_PATH = os.path.join(HERE, 'longscout_v2_cases.json')
+CASES_PATH = os.path.join(HERE, os.environ.get('LONGSCOUT_CASES', 'longscout_v2_cases.json'))   # v3+: same runner, its own frozen table
 CASES = json.load(open(CASES_PATH, encoding='utf-8'))
 SP.CASES = CASES; LR.CASES = CASES
 RS.CONTRACT['sources'].update(CASES['sources'])
