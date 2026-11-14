@@ -592,3 +592,34 @@ def test_v23_cut_right_after_signals_and_prefixes(key):
         part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
         for k in ('le', 'se', 'lx', 'sx'):
             assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+import longscout_v24 as L24
+L24.register()
+
+
+@pytest.mark.parametrize('key', sorted(L24.CANDIDATES))
+def test_v24_cut_right_after_signals_and_prefixes(key):
+    coin, btc = _mk(2600, '4h', 55), _mk(2600, '4h', 56)
+    if 'day' in key:                                           # every 15th day: a +/-12% day on 4x volume
+        f = np.ones(len(coin)); ev = (np.arange(len(coin)) // 6) % 15 == 7
+        step = 1.02 if key.startswith('l24') else 0.98
+        for i in np.flatnonzero(ev): f[i:] *= step
+        coin = coin.assign(**{k: coin[k] * f for k in ('o', 'h', 'l', 'c')}, v=np.where(ev, coin.v * 4, coin.v))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    ex = np.flatnonzero(np.diff(np.asarray(full['lx']).astype(int)) | np.diff(np.asarray(full['sx']).astype(int))) + 1
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ex[ex >= 300][:20]) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v24_return_rank_values_match_on_every_prefix():
+    coin = S.indicators(_mk(2600, '4h', 55)); p = L24.CANDIDATES['r24_return_rank_4h']['params']
+    full = L24._rank(coin, p).values
+    for cut in range(2200, 2600, 13):
+        part = L24._rank(coin.iloc[:cut].reset_index(drop=True), p).values
+        np.testing.assert_array_equal(part, full[:cut])
