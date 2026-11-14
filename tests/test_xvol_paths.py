@@ -210,3 +210,21 @@ def test_fib02_same_volume_identity_bytes_unchanged(W, tmp_path):
     committed = os.path.join(W.ROOT, W.RULES)
     if os.path.exists(committed):
         assert W.load_rules(committed)[1]['path'] == W.RULES                    # the frozen default identity
+
+
+def test_bpyr_code_identity_binds_the_xvol_paths_bytes(tmp_path):
+    """Codex P2 on #346: the helper decides authority-sensitive paths, so its bytes are part of the module identity."""
+    from tests.test_bpyr_runner import R, CLEAN
+    rel = 'tools/research/xvol_paths.py'
+    assert rel in R.CODE_MODULES
+    repo = tmp_path / 'repo'
+    for m in R.CODE_MODULES:
+        d = repo.joinpath(*m.split('/'))
+        d.parent.mkdir(parents=True, exist_ok=True)
+        d.write_bytes((ROOT.joinpath(*m.split('/'))).read_bytes())
+    a = R.code_identity(repo=str(repo), git=CLEAN)
+    assert a['modules'][rel] == hashlib.sha256((ROOT / rel).read_bytes()).hexdigest()
+    repo.joinpath(*rel.split('/')).write_bytes((ROOT / rel).read_bytes() + b'# mutated\n')
+    b = R.code_identity(repo=str(repo), git=CLEAN)
+    assert b['modules'][rel] != a['modules'][rel]
+    assert {k: v for k, v in b['modules'].items() if k != rel} == {k: v for k, v in a['modules'].items() if k != rel}

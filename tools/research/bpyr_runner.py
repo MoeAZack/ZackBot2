@@ -89,7 +89,7 @@ LEDGER_KINDS = ('variant', 'variant', 'variant', 'variant', 'baseline', 'baselin
 STAGE_IDS = ('S1', 'S1-T', 'S2', 'S3')
 CODE_MODULES = ('backtest.py', 'feasibility.py', 'strategies.py', 'tools/research/costs.py',
                 'tools/research/manifest.py', 'tools/research/edge05_runner.py', 'tools/research/edge05_coverage.py',
-                'tools/research/splits.py', 'tools/research/bpyr_runner.py')
+                'tools/research/splits.py', 'tools/research/bpyr_runner.py', 'tools/research/xvol_paths.py')
 HOUR = 3_600_000
 TF = 4 * HOUR
 DAY_MS = 24 * HOUR
