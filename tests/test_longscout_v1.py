@@ -574,3 +574,21 @@ def test_v22_cut_right_after_signals_and_prefixes(key):
         part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
         for k in ('le', 'se', 'lx', 'sx'):
             assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+import longscout_v23 as L23
+L23.register()
+
+
+@pytest.mark.parametrize('key', sorted(L23.CANDIDATES))
+def test_v23_cut_right_after_signals_and_prefixes(key):
+    a, b = (56, 55) if key.startswith('l23') else (55, 56)       # longs need a mostly rising coin
+    coin, btc = _mk(2600, '4h', a), _mk(2600, '4h', b)
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
