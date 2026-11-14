@@ -17,7 +17,10 @@ FRESH_MANIFEST = 'fb0c0572b6c2bc5f569c64d89bd0ee2ca1dd9e3cf96b1ed8bd1110c341ed2f
 
 def subset_gate(out, case, fresh):
     import numpy as np, pandas as pd
-    t = pd.read_csv(os.path.join(out, f'{case}_all_orders_trades.csv.gz'))
+    try:
+        t = pd.read_csv(os.path.join(out, f'{case}_all_orders_trades.csv.gz'))
+    except pd.errors.EmptyDataError:                 # no closed trade in any order
+        return dict(fresh134=None, extra31=None, pass_=False, note='no trades', **{'pass': False})
     t = t[t.scen == 'path']
     res = {}
     for name, keep in (('fresh134', t.sym.isin(fresh)), ('extra31', t.sym.isin(RS.EXTRA31))):
