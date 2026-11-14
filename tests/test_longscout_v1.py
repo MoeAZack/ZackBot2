@@ -72,3 +72,28 @@ def test_frozen_cases_match_registered_rules():
     for k, v in L.CANDIDATES.items():
         c = cases[k]
         assert c['management'] == v['mgmt'] and c['params'] == v['params'] and c['tf'] == v['tf'] and c['side'] == v['sides']
+
+
+import longscout_v2 as L2
+L2.register()
+
+
+@pytest.mark.parametrize('key', sorted(L2.CANDIDATES))
+def test_v2_signals_use_no_future_bars(key):
+    tf = L2.CANDIDATES[key]['tf']
+    n, freq = (2600, '4h') if tf == '4h' else (900, '1D')
+    coin, btc = _mk(n, freq, 11), _mk(n, freq, 12)
+    full = _sig(key, coin, btc)
+    for cut in (n // 2, n - 37, n - 1):
+        part = _sig(key, coin.iloc[:cut].reset_index(drop=True), btc.iloc[:cut].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:cut]).all(), (key, k, cut)
+
+
+def test_v2_frozen_cases_match_registered_rules():
+    p = os.path.join(ROOT, 'research', 'extra31_screen', 'longscout_v2_cases.json')
+    with open(p, encoding='utf-8') as f:
+        cases = json.load(f)['cases']
+    for k, v in L2.CANDIDATES.items():
+        c = cases[k]
+        assert c['management'] == v['mgmt'] and c['params'] == v['params'] and c['tf'] == v['tf'] and c['side'] == v['sides']
