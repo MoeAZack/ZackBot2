@@ -1,0 +1,1053 @@
+{
+ "trial": "R6-CAPACITY3-D01",
+ "label": "DEPENDENT_SECONDARY_CAPACITY_VARIANT",
+ "parent": "R6-TNET163-FIT-D01",
+ "wrapper_sha256": "fad19bd963f2df21643e2cca99388294134e8378082bf34327eeaad587c6debf",
+ "freeze_sha256": "50f6e767df1c5111b30cb96f94b76566731552cd4febc311b96711eb059c53d9",
+ "rules_sha256": "a34e79503f4b96f855fa7f7181340ddbee181335e702c5e7a064c475e91a4140",
+ "runs": {
+  "mp1": {
+   "status": "FIT_CONTROL_PASS",
+   "gates": {
+    "trades": true,
+    "meanR15": true,
+    "early": true,
+    "late": true,
+    "ex_best_coin": true,
+    "meanR23": true,
+    "order0_30_per_half": true
+   },
+   "subset_gate": {
+    "fresh132": {
+     "median_meanR15": 0.24473129657435055
+    },
+    "extra31": {
+     "median_meanR15": 0.6167502939459096
+    },
+    "pass": true
+   },
+   "medians": {
+    "n": 150.5,
+    "meanR7": 0.3469662133094018,
+    "meanR15": 0.32863185546854057,
+    "meanR23": 0.3102315466279819,
+    "meanR15_early": 0.40518822953444367,
+    "meanR15_late": 0.29199788565479873,
+    "meanR15_ex_best": 0.18720086771944577
+   },
+   "worst_path": {
+    "medians": {
+     "n": 150.5,
+     "meanR7": 0.3469662133094018,
+     "meanR15": 0.32863185546854057,
+     "meanR23": 0.3102315466279819,
+     "meanR15_early": 0.40518822953444367,
+     "meanR15_late": 0.29199788565479873,
+     "meanR15_ex_best": 0.18720086771944577
+    },
+    "gates": {
+     "trades": true,
+     "meanR15": true,
+     "early": true,
+     "late": true,
+     "ex_best_coin": true,
+     "meanR23": true,
+     "order0_30_per_half": true
+    }
+   },
+   "meanR15_p10": 0.1294362899311435,
+   "meanR15_min": 0.02997199839854371,
+   "meanR15_max": 0.7932979213588219,
+   "order0": {
+    "n": 150,
+    "n_early": 86,
+    "n_late": 64,
+    "meanR7": 0.18274277558590776,
+    "meanR15": 0.16477678345336366,
+    "meanR23": 0.14681079132081956,
+    "meanR15_early": 0.2264899713697644,
+    "meanR15_late": 0.08184968719070018,
+    "best_coin": "GRTUSDT",
+    "n_ex_best": 147,
+    "meanR15_ex_best": 0.06597055770104206,
+    "sumR15": 24.71651751800455,
+    "meanR_actual": 0.18274263954235573,
+    "coins_traded": 88,
+    "coins_positive": 29,
+    "order": 0,
+    "feasibility": {
+     "attempts": 151,
+     "executed": 151,
+     "rule_blocked": 0,
+     "skipped": {}
+    },
+    "max_concurrent_closed_trades": 1,
+    "maxdd_R15_closed": 18.145696966437328,
+    "why": {
+     "signal": 57,
+     "stop": 54,
+     "time": 39
+    },
+    "long_n": 73,
+    "short_n": 77,
+    "long_sumR15": 15.128308247864807,
+    "short_sumR15": 9.588209270139751,
+    "per_coin": {
+     "1000BONKUSDT": {
+      "n": 6,
+      "sumR15": 5.623
+     },
+     "1000FLOKIUSDT": {
+      "n": 3,
+      "sumR15": -0.658
+     },
+     "1000LUNCUSDT": {
+      "n": 5,
+      "sumR15": 0.632
+     },
+     "1000PEPEUSDT": {
+      "n": 3,
+      "sumR15": -2.003
+     },
+     "1000RATSUSDT": {
+      "n": 1,
+      "sumR15": 1.147
+     },
+     "1000SATSUSDT": {
+      "n": 2,
+      "sumR15": 0.964
+     },
+     "1000SHIBUSDT": {
+      "n": 6,
+      "sumR15": 0.178
+     },
+     "1000XECUSDT": {
+      "n": 2,
+      "sumR15": -1.276
+     },
+     "1INCHUSDT": {
+      "n": 2,
+      "sumR15": -1.137
+     },
+     "AAVEUSDT": {
+      "n": 2,
+      "sumR15": -1.442
+     },
+     "ACEUSDT": {
+      "n": 1,
+      "sumR15": 3.628
+     },
+     "ACHUSDT": {
+      "n": 4,
+      "sumR15": -0.186
+     },
+     "ALGOUSDT": {
+      "n": 3,
+      "sumR15": -2.502
+     },
+     "ALICEUSDT": {
+      "n": 2,
+      "sumR15": -0.262
+     },
+     "ANKRUSDT": {
+      "n": 1,
+      "sumR15": -1.032
+     },
+     "APEUSDT": {
+      "n": 1,
+      "sumR15": -0.514
+     },
+     "API3USDT": {
+      "n": 2,
+      "sumR15": 0.658
+     },
+     "APTUSDT": {
+      "n": 2,
+      "sumR15": -2.118
+     },
+     "ARBUSDT": {
+      "n": 3,
+      "sumR15": 6.954
+     },
+     "ARKMUSDT": {
+      "n": 2,
+      "sumR15": 2.139
+     },
+     "ARKUSDT": {
+      "n": 2,
+      "sumR15": -1.578
+     },
+     "ARUSDT": {
+      "n": 2,
+      "sumR15": 2.37
+     },
+     "ASTRUSDT": {
+      "n": 1,
+      "sumR15": -1.055
+     },
+     "AUCTIONUSDT": {
+      "n": 3,
+      "sumR15": -1.752
+     },
+     "AXSUSDT": {
+      "n": 1,
+      "sumR15": -1.005
+     },
+     "BANDUSDT": {
+      "n": 1,
+      "sumR15": 4.802
+     },
+     "BCHUSDT": {
+      "n": 3,
+      "sumR15": -1.395
+     },
+     "BELUSDT": {
+      "n": 3,
+      "sumR15": 5.51
+     },
+     "CAKEUSDT": {
+      "n": 2,
+      "sumR15": -1.136
+     },
+     "CELRUSDT": {
+      "n": 1,
+      "sumR15": 2.635
+     },
+     "CFXUSDT": {
+      "n": 1,
+      "sumR15": -1.053
+     },
+     "CHRUSDT": {
+      "n": 1,
+      "sumR15": 1.887
+     },
+     "CHZUSDT": {
+      "n": 2,
+      "sumR15": 1.165
+     },
+     "CKBUSDT": {
+      "n": 1,
+      "sumR15": -1.054
+     },
+     "COTIUSDT": {
+      "n": 2,
+      "sumR15": -2.081
+     },
+     "CRVUSDT": {
+      "n": 2,
+      "sumR15": -1.118
+     },
+     "CTSIUSDT": {
+      "n": 2,
+      "sumR15": -1.814
+     },
+     "CYBERUSDT": {
+      "n": 1,
+      "sumR15": 0.94
+     },
+     "DASHUSDT": {
+      "n": 2,
+      "sumR15": -0.34
+     },
+     "DOTUSDT": {
+      "n": 2,
+      "sumR15": -1.375
+     },
+     "DYDXUSDT": {
+      "n": 1,
+      "sumR15": -0.104
+     },
+     "EDUUSDT": {
+      "n": 1,
+      "sumR15": -0.828
+     },
+     "EGLDUSDT": {
+      "n": 1,
+      "sumR15": -1.037
+     },
+     "ENSUSDT": {
+      "n": 1,
+      "sumR15": 0.226
+     },
+     "ETCUSDT": {
+      "n": 1,
+      "sumR15": -1.041
+     },
+     "FETUSDT": {
+      "n": 1,
+      "sumR15": -1.036
+     },
+     "GASUSDT": {
+      "n": 1,
+      "sumR15": -1.047
+     },
+     "GMTUSDT": {
+      "n": 2,
+      "sumR15": -0.693
+     },
+     "GRTUSDT": {
+      "n": 3,
+      "sumR15": 15.019
+     },
+     "GTCUSDT": {
+      "n": 1,
+      "sumR15": 1.968
+     },
+     "IDUSDT": {
+      "n": 1,
+      "sumR15": -1.054
+     },
+     "INJUSDT": {
+      "n": 1,
+      "sumR15": -1.028
+     },
+     "JTOUSDT": {
+      "n": 2,
+      "sumR15": -1.539
+     },
+     "KASUSDT": {
+      "n": 2,
+      "sumR15": -1.348
+     },
+     "KAVAUSDT": {
+      "n": 1,
+      "sumR15": -0.64
+     },
+     "KNCUSDT": {
+      "n": 1,
+      "sumR15": -0.24
+     },
+     "LPTUSDT": {
+      "n": 1,
+      "sumR15": -0.354
+     },
+     "LTCUSDT": {
+      "n": 2,
+      "sumR15": 0.078
+     },
+     "LUNA2USDT": {
+      "n": 1,
+      "sumR15": 1.034
+     },
+     "MANAUSDT": {
+      "n": 1,
+      "sumR15": -1.049
+     },
+     "MASKUSDT": {
+      "n": 1,
+      "sumR15": -0.398
+     },
+     "MINAUSDT": {
+      "n": 1,
+      "sumR15": -0.3
+     },
+     "MTLUSDT": {
+      "n": 1,
+      "sumR15": -1.014
+     },
+     "OPUSDT": {
+      "n": 1,
+      "sumR15": -1.063
+     },
+     "ORDIUSDT": {
+      "n": 2,
+      "sumR15": -1.391
+     },
+     "PENDLEUSDT": {
+      "n": 1,
+      "sumR15": 0.144
+     },
+     "PEOPLEUSDT": {
+      "n": 1,
+      "sumR15": -1.063
+     },
+     "PYTHUSDT": {
+      "n": 1,
+      "sumR15": 0.839
+     },
+     "ROSEUSDT": {
+      "n": 1,
+      "sumR15": -0.03
+     },
+     "RSRUSDT": {
+      "n": 1,
+      "sumR15": -0.208
+     },
+     "SNXUSDT": {
+      "n": 1,
+      "sumR15": 2.765
+     },
+     "SSVUSDT": {
+      "n": 1,
+      "sumR15": -1.034
+     },
+     "STEEMUSDT": {
+      "n": 2,
+      "sumR15": 3.213
+     },
+     "STRKUSDT": {
+      "n": 1,
+      "sumR15": -1.063
+     },
+     "STXUSDT": {
+      "n": 1,
+      "sumR15": -0.265
+     },
+     "SUIUSDT": {
+      "n": 1,
+      "sumR15": -1.04
+     },
+     "TAOUSDT": {
+      "n": 2,
+      "sumR15": -0.433
+     },
+     "TIAUSDT": {
+      "n": 2,
+      "sumR15": -1.469
+     },
+     "TRBUSDT": {
+      "n": 1,
+      "sumR15": 8.009
+     },
+     "TRXUSDT": {
+      "n": 1,
+      "sumR15": -0.849
+     },
+     "TUSDT": {
+      "n": 1,
+      "sumR15": -0.289
+     },
+     "UMAUSDT": {
+      "n": 1,
+      "sumR15": -0.317
+     },
+     "UNIUSDT": {
+      "n": 2,
+      "sumR15": 4.28
+     },
+     "WOOUSDT": {
+      "n": 1,
+      "sumR15": -0.962
+     },
+     "XMRUSDT": {
+      "n": 1,
+      "sumR15": -0.306
+     },
+     "XVSUSDT": {
+      "n": 1,
+      "sumR15": -0.097
+     },
+     "ZECUSDT": {
+      "n": 2,
+      "sumR15": 2.143
+     },
+     "ZROUSDT": {
+      "n": 3,
+      "sumR15": 0.281
+     }
+    },
+    "closes_per_week": 0.7004669779853235
+   },
+   "diag_median": {
+    "trades_per_week": 0.7028018679119412,
+    "closed_sumR15": 48.80453378354541,
+    "maxdd_closed_R15": 14.029752145876776,
+    "maxdd_marked_R_base": 16.69840349559672,
+    "terminal_open_mark_R_base": 1.2724707051418056,
+    "ex_top3_meanR15": -0.024389135579894822,
+    "ex_top5_meanR15": -0.11101481169966118,
+    "filter_skipped": 0.0,
+    "cap_shrunk_entries": 0.0
+   },
+   "diag_max": {
+    "maxdd_closed_R15": 24.16963901499951,
+    "maxdd_marked_R_base": 32.68920172774233
+   },
+   "ex_top3_orders_positive": 18,
+   "max_abs_diff_vs_pr349": 0
+  },
+  "mp3": {
+   "status": "CAPACITY3_PASS",
+   "gates": {
+    "trades": true,
+    "meanR15": true,
+    "early": true,
+    "late": true,
+    "ex_best_coin": true,
+    "meanR23": true,
+    "order0_30_per_half": true
+   },
+   "subset_gate": {
+    "fresh132": {
+     "median_meanR15": 0.17445992250497133
+    },
+    "extra31": {
+     "median_meanR15": 0.3362049717914786
+    },
+    "pass": true
+   },
+   "medians": {
+    "n": 465.0,
+    "meanR7": 0.24371089611386043,
+    "meanR15": 0.2239771907133717,
+    "meanR23": 0.20424348531288297,
+    "meanR15_early": 0.28169055511323116,
+    "meanR15_late": 0.1841220240345512,
+    "meanR15_ex_best": 0.16016029580208566
+   },
+   "worst_path": {
+    "medians": {
+     "n": 465.0,
+     "meanR7": 0.24371089611386043,
+     "meanR15": 0.2239771907133717,
+     "meanR23": 0.20424348531288297,
+     "meanR15_early": 0.28169055511323116,
+     "meanR15_late": 0.1841220240345512,
+     "meanR15_ex_best": 0.16016029580208566
+    },
+    "gates": {
+     "trades": true,
+     "meanR15": true,
+     "early": true,
+     "late": true,
+     "ex_best_coin": true,
+     "meanR23": true,
+     "order0_30_per_half": true
+    }
+   },
+   "meanR15_p10": 0.13175097836888452,
+   "meanR15_min": 0.08315967690946027,
+   "meanR15_max": 0.4072642086164215,
+   "order0": {
+    "n": 431,
+    "n_early": 247,
+    "n_late": 184,
+    "meanR7": 0.3043982094885832,
+    "meanR15": 0.28506469431143855,
+    "meanR23": 0.26573117913429384,
+    "meanR15_early": 0.2918891519197124,
+    "meanR15_late": 0.2759036017612014,
+    "best_coin": "ARKMUSDT",
+    "n_ex_best": 427,
+    "meanR15_ex_best": 0.20926890542632903,
+    "sumR15": 122.86288324823,
+    "meanR_actual": 0.30438801000398913,
+    "coins_traded": 119,
+    "coins_positive": 51,
+    "order": 0,
+    "feasibility": {
+     "attempts": 434,
+     "executed": 434,
+     "rule_blocked": 0,
+     "skipped": {}
+    },
+    "max_concurrent_closed_trades": 3,
+    "maxdd_R15_closed": 28.42119219253898,
+    "why": {
+     "signal": 183,
+     "stop": 136,
+     "time": 112
+    },
+    "long_n": 196,
+    "short_n": 235,
+    "long_sumR15": 92.09013808817926,
+    "short_sumR15": 30.77274516005076,
+    "per_coin": {
+     "1000BONKUSDT": {
+      "n": 12,
+      "sumR15": 9.993
+     },
+     "1000FLOKIUSDT": {
+      "n": 6,
+      "sumR15": -2.995
+     },
+     "1000LUNCUSDT": {
+      "n": 8,
+      "sumR15": 1.116
+     },
+     "1000PEPEUSDT": {
+      "n": 12,
+      "sumR15": 18.287
+     },
+     "1000RATSUSDT": {
+      "n": 4,
+      "sumR15": -1.131
+     },
+     "1000SATSUSDT": {
+      "n": 10,
+      "sumR15": -1.581
+     },
+     "1000SHIBUSDT": {
+      "n": 13,
+      "sumR15": -1.086
+     },
+     "1000XECUSDT": {
+      "n": 3,
+      "sumR15": -2.371
+     },
+     "1INCHUSDT": {
+      "n": 6,
+      "sumR15": 4.382
+     },
+     "AAVEUSDT": {
+      "n": 10,
+      "sumR15": -3.833
+     },
+     "ACEUSDT": {
+      "n": 3,
+      "sumR15": 2.108
+     },
+     "ACHUSDT": {
+      "n": 10,
+      "sumR15": -3.145
+     },
+     "AGLDUSDT": {
+      "n": 1,
+      "sumR15": 2.856
+     },
+     "ALGOUSDT": {
+      "n": 10,
+      "sumR15": -6.491
+     },
+     "ALICEUSDT": {
+      "n": 5,
+      "sumR15": 3.021
+     },
+     "ANKRUSDT": {
+      "n": 5,
+      "sumR15": -4.081
+     },
+     "APEUSDT": {
+      "n": 4,
+      "sumR15": 1.637
+     },
+     "API3USDT": {
+      "n": 4,
+      "sumR15": 1.926
+     },
+     "APTUSDT": {
+      "n": 5,
+      "sumR15": -3.124
+     },
+     "ARBUSDT": {
+      "n": 4,
+      "sumR15": 5.909
+     },
+     "ARKMUSDT": {
+      "n": 4,
+      "sumR15": 33.505
+     },
+     "ARKUSDT": {
+      "n": 3,
+      "sumR15": -2.314
+     },
+     "ARUSDT": {
+      "n": 4,
+      "sumR15": 1.342
+     },
+     "ASTRUSDT": {
+      "n": 3,
+      "sumR15": -2.095
+     },
+     "ATOMUSDT": {
+      "n": 5,
+      "sumR15": 1.129
+     },
+     "AUCTIONUSDT": {
+      "n": 6,
+      "sumR15": -3.615
+     },
+     "AXSUSDT": {
+      "n": 4,
+      "sumR15": -2.86
+     },
+     "BANDUSDT": {
+      "n": 4,
+      "sumR15": 5.588
+     },
+     "BATUSDT": {
+      "n": 3,
+      "sumR15": 3.083
+     },
+     "BCHUSDT": {
+      "n": 15,
+      "sumR15": -5.927
+     },
+     "BEAMXUSDT": {
+      "n": 1,
+      "sumR15": 4.461
+     },
+     "BELUSDT": {
+      "n": 6,
+      "sumR15": 3.966
+     },
+     "BICOUSDT": {
+      "n": 2,
+      "sumR15": -0.54
+     },
+     "BLURUSDT": {
+      "n": 2,
+      "sumR15": 2.797
+     },
+     "C98USDT": {
+      "n": 5,
+      "sumR15": -3.522
+     },
+     "CAKEUSDT": {
+      "n": 8,
+      "sumR15": -4.063
+     },
+     "CELOUSDT": {
+      "n": 2,
+      "sumR15": 1.62
+     },
+     "CELRUSDT": {
+      "n": 2,
+      "sumR15": 2.3
+     },
+     "CFXUSDT": {
+      "n": 3,
+      "sumR15": 3.591
+     },
+     "CHRUSDT": {
+      "n": 2,
+      "sumR15": 0.789
+     },
+     "CHZUSDT": {
+      "n": 7,
+      "sumR15": 2.961
+     },
+     "CKBUSDT": {
+      "n": 4,
+      "sumR15": -2.218
+     },
+     "COMPUSDT": {
+      "n": 3,
+      "sumR15": 0.873
+     },
+     "COTIUSDT": {
+      "n": 3,
+      "sumR15": -0.455
+     },
+     "CRVUSDT": {
+      "n": 3,
+      "sumR15": 2.29
+     },
+     "CTSIUSDT": {
+      "n": 2,
+      "sumR15": -1.814
+     },
+     "CYBERUSDT": {
+      "n": 1,
+      "sumR15": 0.94
+     },
+     "DASHUSDT": {
+      "n": 8,
+      "sumR15": 1.14
+     },
+     "DOTUSDT": {
+      "n": 7,
+      "sumR15": -0.267
+     },
+     "DYDXUSDT": {
+      "n": 4,
+      "sumR15": -2.476
+     },
+     "EDUUSDT": {
+      "n": 1,
+      "sumR15": -0.828
+     },
+     "EGLDUSDT": {
+      "n": 2,
+      "sumR15": 0.745
+     },
+     "ENAUSDT": {
+      "n": 1,
+      "sumR15": 0.45
+     },
+     "ENSUSDT": {
+      "n": 1,
+      "sumR15": 0.226
+     },
+     "ETCUSDT": {
+      "n": 3,
+      "sumR15": -2.83
+     },
+     "FETUSDT": {
+      "n": 3,
+      "sumR15": -0.289
+     },
+     "FILUSDT": {
+      "n": 1,
+      "sumR15": -0.012
+     },
+     "FLOWUSDT": {
+      "n": 2,
+      "sumR15": -1.207
+     },
+     "GALAUSDT": {
+      "n": 1,
+      "sumR15": -0.768
+     },
+     "GASUSDT": {
+      "n": 4,
+      "sumR15": -1.339
+     },
+     "GMTUSDT": {
+      "n": 3,
+      "sumR15": -1.056
+     },
+     "GRTUSDT": {
+      "n": 3,
+      "sumR15": 15.019
+     },
+     "GTCUSDT": {
+      "n": 2,
+      "sumR15": 2.838
+     },
+     "HOTUSDT": {
+      "n": 2,
+      "sumR15": -1.843
+     },
+     "IDUSDT": {
+      "n": 1,
+      "sumR15": -1.054
+     },
+     "IMXUSDT": {
+      "n": 1,
+      "sumR15": 4.418
+     },
+     "INJUSDT": {
+      "n": 1,
+      "sumR15": -1.028
+     },
+     "JASMYUSDT": {
+      "n": 1,
+      "sumR15": -0.56
+     },
+     "JTOUSDT": {
+      "n": 3,
+      "sumR15": 0.344
+     },
+     "KASUSDT": {
+      "n": 4,
+      "sumR15": -2.136
+     },
+     "KAVAUSDT": {
+      "n": 2,
+      "sumR15": -1.679
+     },
+     "KNCUSDT": {
+      "n": 2,
+      "sumR15": -1.287
+     },
+     "KSMUSDT": {
+      "n": 1,
+      "sumR15": -1.077
+     },
+     "LDOUSDT": {
+      "n": 2,
+      "sumR15": 0.313
+     },
+     "LPTUSDT": {
+      "n": 4,
+      "sumR15": 1.381
+     },
+     "LTCUSDT": {
+      "n": 5,
+      "sumR15": -1.862
+     },
+     "LUNA2USDT": {
+      "n": 2,
+      "sumR15": 3.618
+     },
+     "MANAUSDT": {
+      "n": 1,
+      "sumR15": -1.049
+     },
+     "MASKUSDT": {
+      "n": 4,
+      "sumR15": -1.003
+     },
+     "MEMEUSDT": {
+      "n": 2,
+      "sumR15": -1.605
+     },
+     "MINAUSDT": {
+      "n": 2,
+      "sumR15": -1.397
+     },
+     "MOVRUSDT": {
+      "n": 2,
+      "sumR15": -2.078
+     },
+     "MTLUSDT": {
+      "n": 3,
+      "sumR15": -3.108
+     },
+     "NEARUSDT": {
+      "n": 3,
+      "sumR15": -1.329
+     },
+     "NEOUSDT": {
+      "n": 1,
+      "sumR15": 1.773
+     },
+     "NMRUSDT": {
+      "n": 2,
+      "sumR15": 0.19
+     },
+     "OPUSDT": {
+      "n": 5,
+      "sumR15": 6.259
+     },
+     "ORDIUSDT": {
+      "n": 3,
+      "sumR15": -1.769
+     },
+     "PENDLEUSDT": {
+      "n": 2,
+      "sumR15": -0.63
+     },
+     "PEOPLEUSDT": {
+      "n": 3,
+      "sumR15": -3.189
+     },
+     "PYTHUSDT": {
+      "n": 1,
+      "sumR15": 0.839
+     },
+     "QNTUSDT": {
+      "n": 1,
+      "sumR15": 1.58
+     },
+     "QTUMUSDT": {
+      "n": 1,
+      "sumR15": -1.091
+     },
+     "RIFUSDT": {
+      "n": 1,
+      "sumR15": -0.897
+     },
+     "ROSEUSDT": {
+      "n": 1,
+      "sumR15": -0.03
+     },
+     "RSRUSDT": {
+      "n": 1,
+      "sumR15": -0.208
+     },
+     "SEIUSDT": {
+      "n": 1,
+      "sumR15": 16.303
+     },
+     "SNXUSDT": {
+      "n": 3,
+      "sumR15": 1.323
+     },
+     "SSVUSDT": {
+      "n": 1,
+      "sumR15": -1.034
+     },
+     "STEEMUSDT": {
+      "n": 2,
+      "sumR15": 3.213
+     },
+     "STRKUSDT": {
+      "n": 1,
+      "sumR15": -1.064
+     },
+     "STXUSDT": {
+      "n": 1,
+      "sumR15": -0.265
+     },
+     "SUIUSDT": {
+      "n": 4,
+      "sumR15": -4.21
+     },
+     "SUPERUSDT": {
+      "n": 1,
+      "sumR15": -0.884
+     },
+     "SUSHIUSDT": {
+      "n": 2,
+      "sumR15": -1.273
+     },
+     "TAOUSDT": {
+      "n": 3,
+      "sumR15": -1.483
+     },
+     "TIAUSDT": {
+      "n": 4,
+      "sumR15": -2.294
+     },
+     "TRBUSDT": {
+      "n": 2,
+      "sumR15": 7.586
+     },
+     "TRXUSDT": {
+      "n": 6,
+      "sumR15": 5.029
+     },
+     "TUSDT": {
+      "n": 2,
+      "sumR15": -0.74
+     },
+     "UMAUSDT": {
+      "n": 3,
+      "sumR15": -0.19
+     },
+     "UNIUSDT": {
+      "n": 5,
+      "sumR15": 15.369
+     },
+     "WOOUSDT": {
+      "n": 2,
+      "sumR15": -1.524
+     },
+     "XLMUSDT": {
+      "n": 9,
+      "sumR15": -5.083
+     },
+     "XMRUSDT": {
+      "n": 8,
+      "sumR15": 8.809
+     },
+     "XVGUSDT": {
+      "n": 2,
+      "sumR15": -0.563
+     },
+     "XVSUSDT": {
+      "n": 1,
+      "sumR15": -0.097
+     },
+     "ZECUSDT": {
+      "n": 7,
+      "sumR15": 24.296
+     },
+     "ZROUSDT": {
+      "n": 3,
+      "sumR15": 0.281
+     }
+    },
+    "closes_per_week": 2.0126751167444965
+   },
+   "diag_median": {
+    "trades_per_week": 2.171447631754503,
+    "closed_sumR15": 105.45975300704796,
+    "maxdd_closed_R15": 31.149212398500097,
+    "maxdd_marked_R_base": 32.712475301348604,
+    "terminal_open_mark_R_base": 3.7452192382036884,
+    "ex_top3_meanR15": 0.0703957172241237,
+    "ex_top5_meanR15": 0.004231840758799338,
+    "filter_skipped": 0.0,
+    "cap_shrunk_entries": 0.0
+   },
+   "diag_max": {
+    "maxdd_closed_R15": 54.03923475327255,
+    "maxdd_marked_R_base": 50.52591544901952
+   },
+   "ex_top3_orders_positive": 34
+  }
+ }
+}
