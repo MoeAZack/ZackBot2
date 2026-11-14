@@ -219,3 +219,45 @@ def test_v8_dense_prefix_cuts_and_fires(key):
         part = _sig(key, coin.iloc[:cut].reset_index(drop=True), btc.iloc[:cut].reset_index(drop=True))  # shows only at cut-1
         for k in ('le', 'se', 'lx', 'sx'):
             assert (part[k] == full[k][:cut]).all(), (key, k, cut)
+
+
+import longscout_v9 as L9
+L9.register()
+
+
+@pytest.mark.parametrize('key', sorted(L9.CANDIDATES))
+def test_v9_dense_prefix_cuts_and_fires(key):
+    a, b = (56, 55) if key == 'l9_decoupled_strength_4h' else (55, 56)   # needs coin rising while BTC falls
+    coin, btc = _mk(2600, '4h', a), _mk(2600, '4h', b)
+    full = _sig(key, coin, btc)
+    assert (np.asarray(full['le']).sum() + np.asarray(full['se']).sum()) > 0, key
+    for cut in list(range(1250, 2300, 15)) + list(range(2300, 2600)):
+        part = _sig(key, coin.iloc[:cut].reset_index(drop=True), btc.iloc[:cut].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:cut]).all(), (key, k, cut)
+
+
+def test_v9_weekly_range_uses_only_closed_monday_bars():
+    t = pd.date_range('2024-01-01', periods=12, freq='4h')          # 2024-01-01 is a Monday
+    d = pd.DataFrame(dict(t=t, o=1.0, h=[1, 1, 5, 1, 1, 1, 4, 6, 4, 7, 4, 4], l=0.5, c=[1, 1, 1, 1, 1, 1, 4, 6, 4, 7, 4, 4], v=1.0))
+    up = pd.Series(1.0, index=d.index)
+    import unittest.mock as um
+    with um.patch.object(L9.L1, 'coin_regime', lambda _d: up.values):
+        s = L9.sig_weekly_range_breakout(d, {}, None)
+    assert list(np.flatnonzero(s['le'])) == [7]                    # Monday high 5; first close above it on Tuesday = bar 7
+
+
+@pytest.mark.parametrize('key', sorted(L9.CANDIDATES) + ['r6_regime_flip_4h'])
+def test_signal_bars_survive_a_cut_right_after_them(key):
+    """Cut right after every bar where an entry fires (and a sample of exit flips): a one-bar lookahead drops it."""
+    a, b = (56, 55) if key == 'l9_decoupled_strength_4h' else (55, 56)
+    coin, btc = _mk(2600, '4h', a), _mk(2600, '4h', b)
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    ex = np.flatnonzero(np.diff(np.asarray(full['lx']).astype(int)) | np.diff(np.asarray(full['sx']).astype(int))) + 1
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ex[ex >= 300][:20]))
+    assert bars, key
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
