@@ -97,3 +97,17 @@ def test_v2_frozen_cases_match_registered_rules():
     for k, v in L2.CANDIDATES.items():
         c = cases[k]
         assert c['management'] == v['mgmt'] and c['params'] == v['params'] and c['tf'] == v['tf'] and c['side'] == v['sides']
+
+
+import longscout_v3 as L3
+L3.register()
+
+
+@pytest.mark.parametrize('key', sorted(L3.CANDIDATES))
+def test_v3_signals_use_no_future_bars(key):
+    coin, btc = _mk(2600, '4h', 21), _mk(2600, '4h', 22)
+    full = _sig(key, coin, btc)
+    for cut in (1300, 2563, 2599):
+        part = _sig(key, coin.iloc[:cut].reset_index(drop=True), btc.iloc[:cut].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:cut]).all(), (key, k, cut)
