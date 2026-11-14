@@ -1,0 +1,207 @@
+{
+ "cache_dir": "outside the repo (not committed); files named <SYMBOL>_<interval>.csv",
+ "fetch": {
+  "end_exclusive": "2026-09-28T00:00:00Z",
+  "pacing": {
+   "min_gap_s": 1.0,
+   "weight_per_min": 600
+  },
+  "requests": 26,
+  "start": "2024-09-07T08:00:00Z",
+  "warmup_bars": 220
+ },
+ "files": {
+  "1000PEPEUSDT": {
+   "bytes": 392991,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 4504,
+   "fetched": "this run",
+   "file": "1000PEPEUSDT_4h.csv",
+   "first": "2024-09-07T08:00:00Z",
+   "last": "2026-09-27T20:00:00Z",
+   "missing": 0,
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "4h",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-09-07T08:00:00Z"
+   },
+   "requests": 4,
+   "rows": 4504,
+   "sha256": "c9847a9d2f13bd8197cbbaa5e1568c74c1c70dd04d1c3bedc64815e4edb671f5",
+   "status": "complete"
+  },
+  "BTCUSDT": {
+   "bytes": 340772,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 4504,
+   "fetched": "this run",
+   "file": "BTCUSDT_4h.csv",
+   "first": "2024-09-07T08:00:00Z",
+   "last": "2026-09-27T20:00:00Z",
+   "missing": 0,
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "4h",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-09-07T08:00:00Z"
+   },
+   "requests": 4,
+   "rows": 4504,
+   "sha256": "f97d65b5690b11c8809aada183f2174a538dbae8eb41248c5f5d0ee66e605cd9",
+   "status": "complete"
+  },
+  "ENAUSDT": {
+   "bytes": 321028,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 4504,
+   "fetched": "this run",
+   "file": "ENAUSDT_4h.csv",
+   "first": "2024-09-07T08:00:00Z",
+   "last": "2026-09-27T20:00:00Z",
+   "missing": 0,
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "4h",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-09-07T08:00:00Z"
+   },
+   "requests": 4,
+   "rows": 4504,
+   "sha256": "ee0d1d565da6a5561e1553486d095957ac892f7a2a9159a95c9f793696351fc9",
+   "status": "complete"
+  },
+  "LSKUSDT": {
+   "bytes": 299770,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 4504,
+   "fetched": "this run",
+   "file": "LSKUSDT_4h.csv",
+   "first": "2024-09-07T08:00:00Z",
+   "last": "2026-09-27T20:00:00Z",
+   "missing": 0,
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "4h",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-09-07T08:00:00Z"
+   },
+   "requests": 4,
+   "rows": 4504,
+   "sha256": "d18be55c08961dbfd3f26e607d1b5eeae9eb9b99dc6e0ba43fc02c4cc5e962fd",
+   "status": "complete"
+  },
+  "PUMPUSDT": {
+   "bytes": 217985,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 4504,
+   "fetched": "this run",
+   "file": "PUMPUSDT_4h.csv",
+   "first": "2025-07-10T04:00:00Z",
+   "last": "2026-09-27T20:00:00Z",
+   "missing": 1835,
+   "missing_runs": [
+    [
+     "2024-09-07T08:00:00Z",
+     "2025-07-10T00:00:00Z",
+     1835
+    ]
+   ],
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "4h",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-09-07T08:00:00Z"
+   },
+   "requests": 2,
+   "rows": 2669,
+   "sha256": "d0987e0335a4e8e9d851db9d71b03663846c8f099704299f8f60aeef3a767e09",
+   "status": "INCOMPLETE"
+  },
+  "QNTUSDT": {
+   "bytes": 273197,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 4504,
+   "fetched": "this run",
+   "file": "QNTUSDT_4h.csv",
+   "first": "2024-09-07T08:00:00Z",
+   "last": "2026-09-27T20:00:00Z",
+   "missing": 0,
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "4h",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-09-07T08:00:00Z"
+   },
+   "requests": 4,
+   "rows": 4504,
+   "sha256": "9f511cd6122fd51560c14bb615968589afdad4a0f2cb94c74894805435322651",
+   "status": "complete"
+  },
+  "WLDUSDT": {
+   "bytes": 312552,
+   "dropped_at_or_after_end": 0,
+   "duplicates": 0,
+   "expected": 4504,
+   "fetched": "this run",
+   "file": "WLDUSDT_4h.csv",
+   "first": "2024-09-07T08:00:00Z",
+   "last": "2026-09-27T20:00:00Z",
+   "missing": 0,
+   "nan_qv": 0,
+   "off_grid": 0,
+   "request": {
+    "endTime_exclusive": "2026-09-28T00:00:00Z",
+    "interval": "4h",
+    "limit": 1500,
+    "path": "/fapi/v1/klines",
+    "startTime": "2024-09-07T08:00:00Z"
+   },
+   "requests": 4,
+   "rows": 4504,
+   "sha256": "8b28db84d47764c0ae8b8a353af9e4a3577daaa5a55ffe7c91c0be71ce302fb0",
+   "status": "complete"
+  }
+ },
+ "format": "zb-klines-research/1",
+ "format_cols": "app._get_candles CSV: t(ms),o,h,l,c,v,qv",
+ "incomplete": [
+  "PUMPUSDT"
+ ],
+ "interval": "4h",
+ "source": "https://fapi.binance.com/fapi/v1/klines (public Binance USD-M futures trade klines, no API key)",
+ "stopped": null,
+ "tool": {
+  "collect_klines_research.py": "b6a2a70a59d805f67541be42019e393a6677a954e0be889bfb06eb1f66a46856"
+ },
+ "window": {
+  "end": "2026-09-28T00:00:00Z",
+  "end_exclusive": true,
+  "sealed_cutoff": "2026-09-28T00:00:00Z",
+  "start": "2024-10-14T00:00:00Z"
+ }
+}
