@@ -489,3 +489,26 @@ def test_v18_cut_right_after_signals_and_prefixes(key):
 def test_v18_sunday_last_bar_is_the_2000_utc_bar():
     d = pd.DataFrame(dict(t=pd.date_range('2024-01-06', periods=12, freq='4h'), o=1.0, h=1.0, l=1.0, c=1.0, v=1.0))
     assert list(np.flatnonzero(L18._sunday_last(d))) == [11]       # 2024-01-07 is a Sunday; bar 11 opens 20:00
+
+
+import longscout_v19 as L19
+L19.register()
+
+
+@pytest.mark.parametrize('key', sorted(L19.CANDIDATES))
+def test_v19_cut_right_after_signals_and_prefixes(key):
+    a, b = (56, 55) if key.startswith('l19') else (55, 56)       # longs need a mostly rising coin
+    coin, btc = _mk(2600, '4h', a), _mk(2600, '4h', b)
+    if 'hammer' in key or 'star' in key:                     # long wicks on every 23rd bar so the pattern exists
+        m = np.arange(len(coin)) % 23 == 0
+        coin = coin.assign(l=np.where(m, coin.l * 0.94, coin.l), h=np.where(m, coin.h * 1.06, coin.h))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+        if 'atr' in full:
+            np.testing.assert_allclose(part['atr'], full['atr'][:i + 1], equal_nan=True)
