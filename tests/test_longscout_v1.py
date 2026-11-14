@@ -512,3 +512,24 @@ def test_v19_cut_right_after_signals_and_prefixes(key):
             assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
         if 'atr' in full:
             np.testing.assert_allclose(part['atr'], full['atr'][:i + 1], equal_nan=True)
+
+
+import longscout_v20 as L20
+L20.register()
+
+
+@pytest.mark.parametrize('key', sorted(L20.CANDIDATES))
+def test_v20_cut_right_after_signals_and_prefixes(key):
+    a, b = (56, 55) if key.startswith('l20') else (55, 56)       # longs need a mostly rising coin
+    coin, btc = _mk(2600, '4h', a), _mk(2600, '4h', b)
+    if 'quiet' in key:                                         # quiet stretches, then normal volume again
+        q = (np.arange(len(coin)) % 200) >= 150
+        coin = coin.assign(v=np.where(q, coin.v * 0.2, coin.v * np.where(np.arange(len(coin)) % 200 < 10, 3.0, 1.0)))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
