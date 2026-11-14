@@ -623,3 +623,52 @@ def test_v24_return_rank_values_match_on_every_prefix():
     for cut in range(2200, 2600, 13):
         part = L24._rank(coin.iloc[:cut].reset_index(drop=True), p).values
         np.testing.assert_array_equal(part, full[:cut])
+
+
+import longscout_v25 as L25
+L25.register()
+
+
+@pytest.mark.parametrize('key', sorted(L25.CANDIDATES))
+def test_v25_cut_right_after_signals_and_prefixes(key):
+    a, b = (55, 56) if key.startswith('s25') else (56, 55)       # longs need a mostly rising coin
+    coin, btc = _mk(2600, '4h', a), _mk(2600, '4h', b)
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v25_weekly_matches_independent_resample_and_prefixes():
+    c = S.indicators(_mk(2600, '4h', 56)); t = pd.to_datetime(c.t)
+    got = L25._weekly(c, dict(weeks=12), True)
+    s = pd.Series(c.c.values, index=t); cnt = s.resample('W-SUN').count(); W = s.resample('W-SUN').last()[cnt == 42]
+    ok = W[W > W.rolling(12).max().shift()]
+    exp = np.isin(t.values, (ok.index + pd.Timedelta(days=1)).values)
+    assert got.sum() > 5 and (got == exp).all()
+    for cut in range(1500, 2600, 23):
+        part = L25._weekly(c.iloc[:cut].reset_index(drop=True), dict(weeks=12), True)
+        np.testing.assert_array_equal(part, got[:cut])
+
+
+def test_v25_heikin_flip_values_match_on_every_prefix():
+    c = S.indicators(_mk(2600, '4h', 56))
+    for up in (True, False):
+        full = L25._ha_flip(c, dict(run=3), up)
+        assert full.sum() > 5
+        for cut in range(600, 2600, 17):
+            np.testing.assert_array_equal(L25._ha_flip(c.iloc[:cut].reset_index(drop=True), dict(run=3), up), full[:cut])
+
+
+def test_v25_incomplete_previous_day_blocks_day_entries():
+    c = S.indicators(_mk(2600, '4h', 56)); t = pd.to_datetime(c.t)
+    full = L25._ha_flip(c, dict(run=3), True)
+    i = int(np.flatnonzero(full)[2])
+    drop = c.drop(index=i - 2).reset_index(drop=True)          # previous day loses a bar -> not complete
+    out = L25._ha_flip(drop, dict(run=3), True)
+    j = int(np.flatnonzero(pd.to_datetime(drop.t).values == t.values[i])[0])
+    assert not out[j]
