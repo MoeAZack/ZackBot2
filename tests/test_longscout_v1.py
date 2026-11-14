@@ -261,3 +261,28 @@ def test_signal_bars_survive_a_cut_right_after_them(key):
         part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
         for k in ('le', 'se', 'lx', 'sx'):
             assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+import longscout_v10 as L10
+L10.register()
+
+
+def _v10_data(key):
+    coin, btc = _mk(2600, '4h', 55), _mk(2600, '4h', 56)
+    if 'base' in key:                                       # calmer path so tight 15-day ranges occur
+        coin = coin.assign(**{k: 100 * (coin[k] / 100) ** 0.3 for k in ('o', 'h', 'l', 'c')})
+    return coin, btc
+
+
+@pytest.mark.parametrize('key', sorted(L10.CANDIDATES))
+def test_v10_cut_right_after_signals_and_prefixes(key):
+    coin, btc = _v10_data(key)
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    ex = np.flatnonzero(np.diff(np.asarray(full['lx']).astype(int)) | np.diff(np.asarray(full['sx']).astype(int))) + 1
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ex[ex >= 300][:20]) | {1300, 2563, 2599})
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
