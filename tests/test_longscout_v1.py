@@ -419,3 +419,30 @@ def test_v15_pivots_reach_bars_only_after_the_day_closes():
                           c=np.r_[np.full(6, 9.0), np.full(6, 50.0)], v=1.0))
     r1, s1 = L15._pivots(d)
     assert np.isnan(r1[:5]).all() and np.allclose(r1[5:11], 2 * 9 - 6) and np.allclose(s1[5:11], 2 * 9 - 12)
+
+
+import longscout_v16 as L16
+L16.register()
+
+
+@pytest.mark.parametrize('key', sorted(L16.CANDIDATES))
+def test_v16_cut_right_after_signals_and_prefixes(key):
+    a, b = (56, 55) if key.startswith('l16_inside') else (55, 56)   # needs a mostly rising coin
+    coin, btc = _mk(2600, '4h', a), _mk(2600, '4h', b)
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    ex = np.flatnonzero(np.diff(np.asarray(full['lx']).astype(int)) | np.diff(np.asarray(full['sx']).astype(int))) + 1
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ex[ex >= 300][:20]) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v16_inside_day_needs_the_previous_calendar_day():
+    t = pd.Series(pd.date_range('2024-01-01', periods=24, freq='4h')).drop(index=range(6, 12)).reset_index(drop=True)
+    h = np.r_[np.full(6, 10.0), np.full(6, 9.0), np.full(6, 8.0)]; l = np.r_[np.full(6, 1.0), np.full(6, 2.0), np.full(6, 3.0)]
+    d = pd.DataFrame(dict(t=t, o=5.0, h=h, l=l, c=5.0, v=1.0))   # days 1, 3, 4 (day 2 missing)
+    ins, H, _ = L16._inside_day(d)
+    assert not ins[:17].any() and ins[17]          # day 4 inside day 3 is known only when day 4 closes; day 3 vs day 1 never
