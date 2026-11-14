@@ -1,0 +1,67 @@
+{
+  "s5_high_beta_btc_down_4h": {
+    "medians": {
+      "n": 57.0,
+      "n_early": 22.0,
+      "n_late": 35.0,
+      "meanR15": 0.025536301810825293,
+      "meanR23": 0.003598747793413506,
+      "early": -0.043792175599346964,
+      "late": 0.06600524995883378,
+      "ex_best": -0.05117621448260393,
+      "fresh": -0.08223538352973617,
+      "extra": 0.13022564204630735
+    },
+    "gates": {
+      "trades": false,
+      "meanR15": true,
+      "meanR23": true,
+      "early": false,
+      "late": true,
+      "ex_best": false,
+      "fresh": false,
+      "extra": true,
+      "order0_30_each": false
+    },
+    "failed": [
+      "trades",
+      "early",
+      "ex_best",
+      "fresh",
+      "order0_30_each"
+    ],
+    "orders": 40
+  },
+  "r5_ichimoku_cloud_4h": {
+    "medians": {
+      "n": 608.5,
+      "n_early": 346.5,
+      "n_late": 261.0,
+      "meanR15": 0.01388707503987986,
+      "meanR23": -0.010953905011159506,
+      "early": 0.037183041617684195,
+      "late": -0.0335737713239272,
+      "ex_best": -0.007938652566999296,
+      "fresh": -0.011283126759176951,
+      "extra": 0.07999388141698513
+    },
+    "gates": {
+      "trades": true,
+      "meanR15": true,
+      "meanR23": false,
+      "early": true,
+      "late": false,
+      "ex_best": false,
+      "fresh": false,
+      "extra": true,
+      "order0_30_each": true
+    },
+    "failed": [
+      "meanR23",
+      "late",
+      "ex_best",
+      "fresh"
+    ],
+    "orders": 40
+  }
+}
