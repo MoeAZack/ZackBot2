@@ -1,0 +1,41 @@
+{
+  "head": "615e14b394400a2bbe188d3b4d7dee5991e7e1d6",
+  "mode": "buildcheck",
+  "passed": true,
+  "build": "20261114-064350",
+  "exe_sha256": "e3a8f13c340590f28a761ff8b93755bc667b2e07a53ac1faa5aee45b499c2eb1",
+  "exe_path": "F:\\ZackBot2_data\\WINPATH-01-REVIEW-20261114-evidence\\final_615e14b3\\buildcheck_appdata\\ZackBot\\staging_buildcheck\\dist\\ZackBot.exe",
+  "exe_retained_after_cleanup": true,
+  "selftest": {
+    "version": "3.2",
+    "build": "20261114-064350",
+    "ok": true,
+    "code_sha": "acdf4b69f0965057"
+  },
+  "safety_test_summary": "11112 passed, 53 skipped, 44 deselected, 13 xfailed, 4 warnings in 4099.59s (1:08:19)",
+  "receipt": {
+    "kind": "buildcheck",
+    "head": "615e14b394400a2bbe188d3b4d7dee5991e7e1d6",
+    "command": [
+      "cmd",
+      "/d",
+      "/c",
+      "F:\\ZackBot2_data\\WINPATH-01-REVIEW-20261114\\build_app.bat",
+      "buildcheck"
+    ],
+    "started_cairo": "2026-11-14T06:43:43.431130+02:00",
+    "deadline_s": 14400,
+    "localappdata": "F:\\ZackBot2_data\\WINPATH-01-REVIEW-20261114-evidence\\final_615e14b3\\buildcheck_appdata",
+    "no_install": true,
+    "pid": 21908,
+    "timed_out": false,
+    "exit_code": 0,
+    "seconds": 4277.51,
+    "finished_cairo": "2026-11-14T07:55:00.941130+02:00",
+    "clean_at_end": true
+  },
+  "internal_log_sha256": "da1157c6b5adabc035bd148468a6112b14648fc4db739a53a05cc1fe4c35c42a",
+  "outer_log_sha256": "9acdc4135d11cc2eea7ee60d64f9e218ac637a27f8bdadad27872cfc7ad76fed",
+  "source_clean_at_end": true,
+  "no_install_or_account_action": true
+}

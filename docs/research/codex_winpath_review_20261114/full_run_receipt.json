@@ -1,0 +1,50 @@
+[
+  {
+    "kind": "tests",
+    "head": "615e14b394400a2bbe188d3b4d7dee5991e7e1d6",
+    "command": [
+      "C:\\Users\\princ\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "-rfE",
+      "-n",
+      "6",
+      "--junitxml=F:\\ZackBot2_data\\WINPATH-01-REVIEW-20261114-evidence\\final_615e14b3\\tests.xml",
+      "tests"
+    ],
+    "started_cairo": "2026-11-14T06:21:32.334957+02:00",
+    "deadline_s": 14400,
+    "localappdata": "F:\\ZackBot2_data\\WINPATH-01-REVIEW-20261114-evidence\\final_615e14b3\\tests_appdata",
+    "no_install": true,
+    "pid": 37488,
+    "timed_out": false,
+    "exit_code": 0,
+    "seconds": 1330.95,
+    "finished_cairo": "2026-11-14T06:43:43.291922+02:00",
+    "clean_at_end": true
+  },
+  {
+    "kind": "buildcheck",
+    "head": "615e14b394400a2bbe188d3b4d7dee5991e7e1d6",
+    "command": [
+      "cmd",
+      "/d",
+      "/c",
+      "F:\\ZackBot2_data\\WINPATH-01-REVIEW-20261114\\build_app.bat",
+      "buildcheck"
+    ],
+    "started_cairo": "2026-11-14T06:43:43.431130+02:00",
+    "deadline_s": 14400,
+    "localappdata": "F:\\ZackBot2_data\\WINPATH-01-REVIEW-20261114-evidence\\final_615e14b3\\buildcheck_appdata",
+    "no_install": true,
+    "pid": 21908,
+    "timed_out": false,
+    "exit_code": 0,
+    "seconds": 4277.51,
+    "finished_cairo": "2026-11-14T07:55:00.941130+02:00",
+    "clean_at_end": true
+  }
+]
