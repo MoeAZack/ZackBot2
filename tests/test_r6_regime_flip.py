@@ -836,7 +836,12 @@ def test_open_lot_wrapper_refuses_late_entry_before_any_order_and_records():
     assert lot['r6_entry_bar'] == (pd.Timestamp(sg['time']) + R.STEP).isoformat()
     rows = [json.loads(x) for x in open(os.path.join(e.dir, 'r6_entries.jsonl'), encoding='utf-8')]
     assert [r['result'] for r in rows] == ['refused', 'filled']
-    assert rows[1]['slippage_bps'] == 0.0 and 25 <= rows[1]['latency_s'] <= 120 and rows[1]['risk_usd'] == 8.0
+    assert rows[1]['slippage_bps'] == 0.0 and 25 <= rows[1]['attempt_latency_s'] <= 120 and rows[1]['risk_usd'] == 8.0
+    assert 'submit_utc' not in rows[1] and 'latency_s' not in rows[1]
+    assert rows[0]['send_utc'] is None and rows[0]['fill_utc'] is None           # refused: nothing was sent
+    att, snd, fil = (pd.Timestamp(rows[1][k]) for k in ('attempt_utc', 'send_utc', 'fill_utc'))
+    assert att <= snd and snd.floor('s') <= fil                          # attempt, then exchange send, then the fill
+    assert rows[1]['attempt_latency_s'] <= rows[1]['send_latency_s']
     e.governor_mult = lambda: 2.0                                         # rechecked at the order, with the engine's eq
     e.state['lots'].clear()
     assert e.open_lot(sl, 'ZRXUSDT', 'LONG', sg, None, eq) is False and 'risk' in e.last_skip
@@ -918,3 +923,66 @@ def test_install_refuses_a_bad_saved_r6_slot_and_keeps_exits():
     e.S['SLEEVES'] = [dict(OV.sleeve(False), max_pos=3)]
     with pytest.raises(OV.R6InstallError, match='max_pos'): OV.install(e, pace=False)
     assert S.STRATEGIES[R.KEY] is R._EXITS_ONLY
+
+
+# ---------------------------------------------------------------- Codex review r2: fresh-process failed install
+@pytest.mark.parametrize('side', ['LONG', 'SHORT'])
+@pytest.mark.parametrize('recorded', [True, False])
+def test_fresh_failed_install_keeps_the_canonical_deadline(side, recorded):
+    """Fresh process: nothing registered, a saved EX14 lot, one unrelated frozen symbol without a testnet rule. install()
+    must refuse, register exits-only AND give it the read-only deadline context: the lot closes at entry + 120 bars
+    (not at the 124-bar backstop) while the frozen regime still holds it, and never earlier."""
+    R = mod()
+    assert R._CTX['resolve'] is None and R._CTX['lot_entry'] is None and R.KEY not in S.STRATEGIES
+    e, E, R = a4_engine()
+    entry = pd.Timestamp('2026-06-01 04:00')
+    lot = dict(sleeve='EX14', key_strategy=R.KEY, symbol='AAVEUSDT', side=side, qty=1.0, avg=100.0,
+               opened=(entry + pd.Timedelta(minutes=7)).isoformat() + '+00:00')
+    if recorded: lot['r6_entry_bar'] = entry.isoformat()
+    e.state['lots']['EX14|AAVEUSDT|' + side] = lot
+    del e.rules['ZRXUSDT']                                              # unrelated to the held coin
+    with pytest.raises(OV.R6InstallError, match='ZRXUSDT'): OV.install(e, pace=False)
+    assert S.STRATEGIES[R.KEY] is R._EXITS_ONLY and R._PAPER_ENTRY is None
+    assert R._CTX['fetch_1h'] is None and R._CTX['guard'] is None          # no entry path
+    assert callable(R._CTX['resolve']) and callable(R._CTX['lot_entry'])
+    ex, other = ('lx', 'sx') if side == 'LONG' else ('sx', 'lx')
+    for k, due in ((118, False), (119, False), (120, True), (121, True)):
+        d = frame_rows(entry + k * R.STEP)
+        d['c'] = np.linspace(100.0, 300.0, len(d)) if side == 'LONG' else np.linspace(300.0, 100.0, len(d))
+        e._kc[('AAVEUSDT', '4h')] = (d, 0.0)                              # the engine's own cached frame object
+        raw = R.raw_signals(d)
+        assert not raw[ex].iloc[-1]                                     # the regime still holds the lot
+        out = sig(R, d)
+        assert bool(out[ex][-1]) == due, k
+        assert not out['le'].any() and not out['se'].any()
+        np.testing.assert_array_equal(out[other], raw[other].values)       # the other side is the frozen rule only
+        want = raw[ex].values | (pd.to_datetime(d.t).values >= np.datetime64(entry + R.MAX_BARS * R.STEP))
+        np.testing.assert_array_equal(out[ex], want)                    # deadline rows only, never an earlier one
+    e._kc.clear()
+    assert not sig(R, d)[ex][-1]                                         # an unresolvable frame: backstop only, no guess
+
+
+def test_fresh_failed_install_without_any_r6_reference_registers_nothing():
+    R = mod()
+    e, E, R = a4_engine()
+    del e.rules['ZRXUSDT']
+    with pytest.raises(OV.R6InstallError, match='ZRXUSDT'): OV.install(e, pace=False)
+    assert R.KEY not in S.STRATEGIES and R._CTX['resolve'] is None and R._CTX['lot_entry'] is None
+
+
+def test_exits_only_context_is_replaced_only_by_given_callables():
+    R = mod()
+    a, b = (lambda d: 'A'), (lambda s: None)
+    first = R.register_exits_only('first', resolve=a, lot_entry=b)
+    assert R._CTX['resolve'] is a and R._CTX['lot_entry'] is b
+    R.register_exits_only('again')                                       # nothing given: kept
+    assert R._CTX['resolve'] is a and R._CTX['lot_entry'] is b
+    c = lambda d: 'C'
+    assert R.register_exits_only('again', resolve=c) is first is S.STRATEGIES[R.KEY]   # the same entry, not rebuilt
+    assert R._CTX['resolve'] is c and R._CTX['lot_entry'] is b and R._CTX['fetch_1h'] is None
+    R.unregister()
+    S.STRATEGIES[R.KEY] = foreign = dict(name='someone else')
+    try:
+        assert R.register_exits_only('x', resolve=a) is foreign and R._CTX['resolve'] is None   # foreign: untouched
+    finally:
+        del S.STRATEGIES[R.KEY]

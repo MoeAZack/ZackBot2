@@ -315,16 +315,22 @@ def register_for_paper(mode, base, resolve, fetch_1h, clock=time.time, guard=Non
 _EXITS_ONLY = None
 
 
-def register_exits_only(reason):
+def register_exits_only(reason, resolve=None, lot_entry=None):
     """Fail-safe when a saved EX14 slot or lot refers to KEY but the PAPER install did not happen / failed: without a
     registered key the engine's compute_signals raises KeyError and EVERY 4h slot stops getting signals and exits. This
-    entry never enters (le/se False) and keeps the frozen exits. Needs no origin: it cannot add risk."""
+    entry never enters (le/se False) and keeps the frozen exits. Needs no origin: it cannot add risk.
+    resolve / lot_entry: the READ-ONLY context the canonical deadline exit needs (frame -> symbol, symbol -> lot entry
+    bar). Given ones replace the current ones (a fresh process has none); omitted ones keep what is there. They never
+    enable a fetch or an entry: fetch_1h and guard are always cleared."""
     global _EXITS_ONLY, _PAPER_ENTRY
     cur = S.STRATEGIES.get(KEY)
-    if cur is not None and cur is _EXITS_ONLY: return cur
-    if cur is not None and cur is not _PAPER_ENTRY: return cur          # a foreign entry is never replaced here
+    if cur is not None and cur is not _EXITS_ONLY and cur is not _PAPER_ENTRY:
+        return cur                                                       # a foreign entry is never replaced here
     _PAPER_ENTRY = None                                                  # an owned PAPER entry is DOWNGRADED
-    _CTX.update(fetch_1h=None, guard=None)                               # no entry path; resolve/lot_entry kept for exits
+    _CTX.update(fetch_1h=None, guard=None)                               # no entry path
+    if callable(resolve): _CTX['resolve'] = resolve                      # deadline context for exits only
+    if callable(lot_entry): _CTX['lot_entry'] = lot_entry
+    if cur is not None and cur is _EXITS_ONLY: return cur
 
     def exits_only(d, p, ctx):
         raw = raw_signals(d)

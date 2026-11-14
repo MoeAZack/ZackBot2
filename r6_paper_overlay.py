@@ -278,6 +278,18 @@ def wrap_open_lot(engine, clock=time.time):
     if getattr(engine, '_r6_open_wrapped', False): return
     orig = engine.open_lot
     guard = entry_guard(engine)
+    sent = threading.local()                           # write-ahead time of THIS call's EX14 entry order (send time)
+    orig_ue = engine._remember_unconfirmed
+
+    def remember_unconfirmed(plan, cid, *a, **k):
+        key = orig_ue(plan, cid, *a, **k)              # raises = nothing sent; then nothing is recorded here
+        try:
+            if getattr(sent, 'on', False) and ((plan or {}).get('sl') or {}).get('id') == R.SLEEVE_ID:
+                sent.t = engine.state['unconfirmed_entries'][key]['t']
+        except Exception:
+            pass
+        return key
+    engine._remember_unconfirmed = remember_unconfirmed
 
     def open_lot(sl, sym, side, sg, df, eq, *a, **k):
         if not (isinstance(sl, dict) and sl.get('id') == R.SLEEVE_ID and not k.get('manual') and not (len(a) > 1 and a[1])):
@@ -285,21 +297,38 @@ def wrap_open_lot(engine, clock=time.time):
         now = clock()
         dec = pd.Timestamp(str((sg or {}).get('time')))
         why = R.window_problem(dec, now) or guard() or risk_problem(engine, sl, eq)
+        close_ts = (dec + R.STEP).timestamp()
+        iso = lambda t: pd.Timestamp(t, unit='s').isoformat() if t is not None else None
+        lat = lambda t: round(t - close_ts, 1) if t is not None else None
+        # attempt_* = this wrapper's window/guard/risk check, BEFORE orig(open_lot) does its own work; send_* = the engine's
+        # write-ahead record made immediately before the market order goes to the exchange (None = no order sent);
+        # fill_* = when the engine recorded the filled lot (after the exchange answered).
         row = dict(event='entry', symbol=sym, side=side, decision_open=str(dec), decision_close=str(dec + R.STEP),
-                   submit_utc=pd.Timestamp(now, unit='s').isoformat(), latency_s=round(now - (dec + R.STEP).timestamp(), 1),
-                   signal_close=(sg or {}).get('close'))
+                   attempt_utc=iso(now), attempt_latency_s=lat(now), send_utc=None, send_latency_s=None,
+                   fill_utc=None, fill_latency_s=None, signal_close=(sg or {}).get('close'))
         if why:
             engine.last_skip = f'R6: {why}'; row.update(result='refused', reason=why); _record(engine, row)
             log.warning(f'R6 {sym} {side}: entry refused before submission - {why}')
             return False
         before = set(engine.state['lots'])
-        ok = orig(sl, sym, side, sg, df, eq, *a, **k)
+        sent.on, sent.t = True, None
+        try:
+            ok = orig(sl, sym, side, sg, df, eq, *a, **k)
+        finally:
+            sent.on = False
+        row.update(send_utc=iso(sent.t), send_latency_s=lat(sent.t))
         new = [kk for kk in engine.state['lots'] if kk not in before and engine.state['lots'][kk].get('sleeve') == R.SLEEVE_ID]
         if ok and new:
             lot = engine.state['lots'][new[-1]]
             lot['r6_entry_bar'] = (dec + R.STEP).isoformat()
             sd = 1 if side == 'LONG' else -1
             c = float((sg or {}).get('close') or 0)
+            try:
+                ft = pd.Timestamp(lot['opened'])
+                ft = (ft.tz_convert('UTC') if ft.tzinfo is not None else ft.tz_localize('UTC')).timestamp()
+            except Exception:
+                ft = None
+            row.update(fill_utc=iso(ft), fill_latency_s=lat(ft))
             row.update(result='filled', fill=lot.get('avg'), qty=lot.get('qty'), risk_usd=lot.get('risk_usd'),
                        slippage_bps=round(sd * (float(lot['avg']) - c) / c * 1e4, 2) if c else None)
         else:
@@ -333,7 +362,12 @@ def install(engine, app_module=None, pace=True):
         R.register_for_paper('paper', base, frame_resolver(engine), h1_fetcher(engine), guard=entry_guard(engine),
                              lot_entry=lot_entry(engine))
     except Exception as ex:
-        if _referenced(engine) or R._PAPER_ENTRY is not None: R.register_exits_only(str(ex))
+        if _referenced(engine) or R._PAPER_ENTRY is not None:
+            try:                                       # read-only deadline context; never a fetch or an entry path
+                res, le = frame_resolver(engine), lot_entry(engine)
+            except Exception:
+                res = le = None
+            R.register_exits_only(str(ex), resolve=res, lot_entry=le)
         raise
     rep.update(registered=R.KEY, base=base, paced=bool(getattr(engine.data, '_r6_paced', False)),
                panel_exact_list=app_module is not None, notes=notes(engine))

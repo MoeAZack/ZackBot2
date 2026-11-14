@@ -15,7 +15,7 @@ confirmation PR #349. These are results on data that has already been used, not 
 | `r6_regime_flip.py` | Strategy. Import registers nothing. Frozen R1 core is copied verbatim; D01 admission; fail-closed live gate; `register_for_paper` only for mode `paper` at an exact testnet HTTPS origin; `unregister` cleans up. |
 | `r6_paper_overlay.py` | Account-4 overlay, called from a launcher **after** `engine.connect()`. Changes no deployed file. |
 | `tools/r6_sizing_receipt.py` | Read-only receipt. Runs the real `open_lot` of a given source tree on a copy of a real settings.json with a fake exchange. |
-| `tests/test_r6_regime_flip.py` | 95 targeted tests. |
+| `tests/test_r6_regime_flip.py` | 101 targeted tests. |
 
 ## Rule (frozen, unchanged)
 
@@ -35,6 +35,10 @@ confirmation PR #349. These are results on data that has already been used, not 
   - The engine's `max_bars` is set to **124** and serves only as a protective backstop for a lot whose signal cannot be
     computed. An entry is submitted at most 20 minutes after its bar opens, so 124 wall-clock bars can never come before the deadline (tested).
   - The paper `exits-only` entry applies the same deadline.
+  - **Fresh-process failed install (Codex r2):** when `install()` refuses in a new process while a saved EX14 slot or lot
+    exists, the exits-only entry still receives the read-only deadline context (frame -> symbol by identity with the
+    engine's own cache, symbol -> lot entry bar). It gets no 1h fetch and no entry guard, so it cannot enter. Tested for
+    both sides, with and without a recorded entry bar: exit at entry + 120 bars, never earlier.
 - **Nothing else:** no take-profit, break-even, trailing, pyramid, DCA or runner. `merge_mgmt` gives exactly `{stop_atr: 3.0, max_bars: 124}` (the backstop).
 
 ## Admission (Codex fit D01, frozen 163)
@@ -97,13 +101,16 @@ the guard computes the actual first-entry risk: `eq × share × risk × Kelly ×
 
 ## Submission window (Codex r1 decision: accepted as a disclosed ceiling)
 
-There are 20 minutes from the decision close to order **submission**. This is not next-open fill parity.
+There are 20 minutes from the decision close to the wrapper's entry **attempt** check (the order is sent right after, within the same `open_lot` call; `send_latency_s` records the actual send). This is not next-open fill parity.
 
 - The window is checked at signal time, again after the D01 fetch, and again in an instance-level `open_lot` wrapper immediately before the order.
 - The wrapper applies to EX14 automatic entries only. Manual trades, other slots, adds, exits and stops are untouched.
 - Every EX14 entry decision is written to `r6_entries.jsonl` in the data folder:
   - decision close;
-  - submit time and latency;
+  - `attempt_utc` / `attempt_latency_s`: the wrapper's window, guard and risk check, before the engine's own `open_lot` work;
+  - `send_utc` / `send_latency_s`: the engine's write-ahead record made immediately before the market order goes to the exchange (`null` when nothing was sent);
+  - `fill_utc` / `fill_latency_s`: when the engine recorded the filled lot, after the exchange answered;
+  - latencies are seconds after the decision close;
   - result;
   - fill and quantity;
   - risk;
@@ -179,7 +186,7 @@ exits**, and the panel cannot remove the slot either. The adversarial review fou
 
 ## Tests (sandbox Linux, non-official)
 
-- `tests/test_r6_regime_flip.py`: 95 passed (r1). They also pass under a CP1252 default-encoding shim (110 with `test_h5_hourly_long.py`).
+- `tests/test_r6_regime_flip.py`: 101 passed (r2, sandbox, non-official). They also pass under a CP1252 default-encoding shim.
 - Parity and causality:
   - The rule equals the verbatim research copy and Codex's formulation on all 40 repo 4h coins.
   - Prefix causality holds at 6 cut points.
