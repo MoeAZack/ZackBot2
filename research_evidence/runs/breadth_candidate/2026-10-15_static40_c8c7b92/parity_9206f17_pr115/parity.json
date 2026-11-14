@@ -1,0 +1,219 @@
+{
+ "format": "zb-breadth-parity/1",
+ "ignored_fields": [
+  "commit",
+  "runner_sha256",
+  "packet_sha256"
+ ],
+ "packets": {
+  "breakout_pyramid_long_defaults.json": {
+   "base_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8",
+   "base_sha256": "ba219dae4f7df094d9a0aa55e0eb03ec28672b1b77d3da4820633c6d371414d1",
+   "differences": [],
+   "ignored_differ": [
+    "commit",
+    "packet_sha256"
+   ],
+   "n_differences": 0,
+   "new_commit": "9f1f16a32518b76b09ec6275d325e559abb51ea1",
+   "new_sha256": "75ce02f6e7981c73351e22fce1054d368c9a256e65e4617b20af4e9b68244f43",
+   "trades": [
+    456,
+    456
+   ]
+  },
+  "breakout_pyramid_short_defaults.json": {
+   "base_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8",
+   "base_sha256": "20b44a100b229df84a7aa772627685c46b1b3389df8fc8084e5a645bd4b5ab81",
+   "differences": [],
+   "ignored_differ": [
+    "commit",
+    "packet_sha256"
+   ],
+   "n_differences": 0,
+   "new_commit": "9f1f16a32518b76b09ec6275d325e559abb51ea1",
+   "new_sha256": "933604090df7eb041ae4a3cbc88620e91864c21c0b114696cdd9a6b21a3508ff",
+   "trades": [
+    459,
+    459
+   ]
+  },
+  "donchian_ens_long_defaults.json": {
+   "base_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8",
+   "base_sha256": "534fb1b248e24f84198d52441d490d32e0cfc3b1d5eea59835d0c85c383c265a",
+   "differences": [],
+   "ignored_differ": [
+    "commit",
+    "packet_sha256"
+   ],
+   "n_differences": 0,
+   "new_commit": "9f1f16a32518b76b09ec6275d325e559abb51ea1",
+   "new_sha256": "aa873cc17d7f07ffdfa438822b0f5ae1c3ff3a6aa910e4adb13e4acfcb0d6633",
+   "trades": [
+    367,
+    367
+   ]
+  },
+  "donchian_ens_short_defaults.json": {
+   "base_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8",
+   "base_sha256": "f92468fc32c83c3c1ea348b5a5d5b00f4b1edb6012e6d73eada4b100fd48ce28",
+   "differences": [],
+   "ignored_differ": [
+    "commit",
+    "packet_sha256"
+   ],
+   "n_differences": 0,
+   "new_commit": "9f1f16a32518b76b09ec6275d325e559abb51ea1",
+   "new_sha256": "ec9b1a57cb366dc87e0e46897b09137984f539f35928fa71e6494627ad852107",
+   "trades": [
+    287,
+    287
+   ]
+  },
+  "ema_mom_long_defaults.json": {
+   "base_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8",
+   "base_sha256": "7b1cea29835771bc4bd71de99dd0385e14db549c271ffd7a4d79cae5b3f0f67c",
+   "differences": [],
+   "ignored_differ": [
+    "commit",
+    "packet_sha256"
+   ],
+   "n_differences": 0,
+   "new_commit": "9f1f16a32518b76b09ec6275d325e559abb51ea1",
+   "new_sha256": "16e00f6094498aa3bb0b1f8d7cf2cbf91345b56c90dad8b31e9d155925c5aaa3",
+   "trades": [
+    239,
+    239
+   ]
+  },
+  "ema_st_long_defaults.json": {
+   "base_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8",
+   "base_sha256": "fb37477ded5636821d039a25faf74aafb92db2a0796308786bd17273a11f4d66",
+   "differences": [],
+   "ignored_differ": [
+    "commit",
+    "packet_sha256"
+   ],
+   "n_differences": 0,
+   "new_commit": "9f1f16a32518b76b09ec6275d325e559abb51ea1",
+   "new_sha256": "754704440669216cff7b500bb44f2b7972e4f2ded6aa17cced0897811b944719",
+   "trades": [
+    246,
+    246
+   ]
+  },
+  "exp_breakout_long_defaults.json": {
+   "base_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8",
+   "base_sha256": "3e858daeac49ac571f173e68a36026b21b99bdd429dac75ae45051a07b8f0ea8",
+   "differences": [],
+   "ignored_differ": [
+    "commit",
+    "packet_sha256"
+   ],
+   "n_differences": 0,
+   "new_commit": "9f1f16a32518b76b09ec6275d325e559abb51ea1",
+   "new_sha256": "6c362efd4f38dee82367ea46a74fdc0206e7866e0c7c33af7ae2ffa15811c5ca",
+   "trades": [
+    702,
+    702
+   ]
+  },
+  "exp_trend_long_defaults.json": {
+   "base_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8",
+   "base_sha256": "9e606a190343ea548b50ee5d5cf4daa5047f6a8e4bc2fdede00aa39139758540",
+   "differences": [],
+   "ignored_differ": [
+    "commit",
+    "packet_sha256"
+   ],
+   "n_differences": 0,
+   "new_commit": "9f1f16a32518b76b09ec6275d325e559abb51ea1",
+   "new_sha256": "66b9e20465412829b00b53ea377db10b85ff8efab8b8e97106d45805d8a439fc",
+   "trades": [
+    262,
+    262
+   ]
+  },
+  "hot_coin_long_defaults.json": {
+   "base_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8",
+   "base_sha256": "af354853d6767d4d2296ca6f19149ce95b955e5d83fe505f33aa3fd9e0c1e5d0",
+   "differences": [],
+   "ignored_differ": [
+    "commit",
+    "packet_sha256"
+   ],
+   "n_differences": 0,
+   "new_commit": "9f1f16a32518b76b09ec6275d325e559abb51ea1",
+   "new_sha256": "6b8bd656b2889e851c04d43f2be6be34aec20edde834dea6a44d658a74647000",
+   "trades": [
+    479,
+    479
+   ]
+  },
+  "pullback_rsi_long_defaults.json": {
+   "base_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8",
+   "base_sha256": "1a51508e3079ebf8f219c0b8accc9a93209b9c61612ed0cbeb62575239f63a6c",
+   "differences": [],
+   "ignored_differ": [
+    "commit",
+    "packet_sha256"
+   ],
+   "n_differences": 0,
+   "new_commit": "9f1f16a32518b76b09ec6275d325e559abb51ea1",
+   "new_sha256": "d33137715e6051136adc42ab05bcadb9d40e37130ca3bbfe1543a8713b3b7286",
+   "trades": [
+    345,
+    345
+   ]
+  },
+  "rotation_long_defaults.json": {
+   "base_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8",
+   "base_sha256": "681bbe901cd2b126ae74da0252c784ed61f487f2a701facd40160cbde6e5964d",
+   "differences": [],
+   "ignored_differ": [
+    "commit",
+    "packet_sha256"
+   ],
+   "n_differences": 0,
+   "new_commit": "9f1f16a32518b76b09ec6275d325e559abb51ea1",
+   "new_sha256": "001a4f59b0ad0a17d3678229ca5e9d2d995712faa96cac3b00a9a7406e87d1b1",
+   "trades": [
+    940,
+    940
+   ]
+  },
+  "squeeze_tp_long_defaults.json": {
+   "base_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8",
+   "base_sha256": "bcb1c8c3beefb73bfde582e5530d7bb398ded09a27d9410d154d56db40f313ae",
+   "differences": [],
+   "ignored_differ": [
+    "commit",
+    "packet_sha256"
+   ],
+   "n_differences": 0,
+   "new_commit": "9f1f16a32518b76b09ec6275d325e559abb51ea1",
+   "new_sha256": "dae2dbcbcbb43cdde9bffa593f6f8af5cebd724589c3e7ea22576dd61dd4d287",
+   "trades": [
+    361,
+    361
+   ]
+  },
+  "squeeze_tp_short_defaults.json": {
+   "base_commit": "c8c7b927ee575ba71a9724ce84d23f72774b07b8",
+   "base_sha256": "c44c9e1175a03419cd1f230584a3601ec06f0bc881e97e27fdf425024fa1d06c",
+   "differences": [],
+   "ignored_differ": [
+    "commit",
+    "packet_sha256"
+   ],
+   "n_differences": 0,
+   "new_commit": "9f1f16a32518b76b09ec6275d325e559abb51ea1",
+   "new_sha256": "b4e65c5297ff5c62aa78ed5645e500cf5552b3ee14e94d139cb43da197861fca",
+   "trades": [
+    392,
+    392
+   ]
+  }
+ },
+ "verdict": "PARITY: all 13 slices identical trade-by-trade and in every stat (ignoring commit / runner_sha256 / packet_sha256)"
+}
