@@ -1,0 +1,75 @@
+{
+  "head": "f1ee3f229511f7d60d8a2ccf7328eced631b5115",
+  "freeze_sha256": "8df402e3740419763bbcec0e177c8d6d54dfb0d2efd02c9003683b2b710fdcf5",
+  "rules_unchanged": true,
+  "arms": {
+    "fresh": {
+      "medians": {
+        "n": 85.0,
+        "meanR15": -0.03739505153078637,
+        "meanR23": -0.04694642087502597,
+        "meanR15_early": 0.11296550199879007,
+        "meanR15_late": -0.3045595554485762,
+        "meanR15_ex_best": -0.09515164213840839
+      },
+      "gates": {
+        "trades": false,
+        "meanR15": false,
+        "meanR23": false,
+        "early": true,
+        "late": false,
+        "ex_best_coin": false,
+        "order0_30_per_half": false
+      },
+      "meanR15_p10": -0.08498734817548304,
+      "order0_n": 91,
+      "order0_half_counts": [
+        62,
+        29
+      ],
+      "order0_coins": 56,
+      "order0_positive_coins": 16,
+      "order0_closed_dd_R": 20.216276489911902,
+      "failed_gates": [
+        "trades",
+        "meanR15",
+        "meanR23",
+        "late",
+        "ex_best_coin",
+        "order0_30_per_half"
+      ]
+    },
+    "pooled": {
+      "medians": {
+        "n": 90.5,
+        "meanR15": 0.10030951752137426,
+        "meanR23": 0.0904410248520835,
+        "meanR15_early": 0.11180393598133764,
+        "meanR15_late": 0.150617248408358,
+        "meanR15_ex_best": 0.04250624128229474
+      },
+      "gates": {
+        "trades": false,
+        "meanR15": true,
+        "meanR23": true,
+        "early": true,
+        "late": true,
+        "ex_best_coin": true,
+        "order0_30_per_half": true
+      },
+      "meanR15_p10": -0.03392779993917029,
+      "order0_n": 90,
+      "order0_half_counts": [
+        58,
+        32
+      ],
+      "order0_coins": 65,
+      "order0_positive_coins": 22,
+      "order0_closed_dd_R": 15.382273914972206,
+      "failed_gates": [
+        "trades"
+      ]
+    }
+  },
+  "scope": "Independent full order-0 signal/quantity/execution/cash replay on fresh coins in volume_result.json. All-order/pooled gate reconciliation here uses supplied trade tapes, not 40 new execution replays. Survivorship and consumed calendar remain disclosed."
+}

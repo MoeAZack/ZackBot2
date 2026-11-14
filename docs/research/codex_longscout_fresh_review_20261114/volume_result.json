@@ -1,0 +1,32 @@
+{
+  "head": "f1ee3f229511f7d60d8a2ccf7328eced631b5115",
+  "method": "Own raw CSV daily aggregation, EMA/ATR, BTC R1, D01 eligibility, chronological max-one admission, sizing, filters, gap/stop/target/time execution and cash/fees/funding. No imports from repository code.",
+  "inputs_verified": 135,
+  "raw_signals": 2183,
+  "eligible_signals": 1352,
+  "signal_matched": 2183,
+  "signal_missing": 0,
+  "signal_extra": 0,
+  "trades_own": 91,
+  "trades_ref": 91,
+  "matched": 91,
+  "missing": 0,
+  "extra": 0,
+  "max_abs_differences": {
+    "pnl": 3.552713678800501e-15,
+    "pnl7": 3.552713678800501e-15,
+    "pnl15": 3.552713678800501e-15,
+    "pnl23": 3.552713678800501e-15,
+    "R": 4.440892098500626e-16,
+    "turnover": 1.4210854715202004e-14
+  },
+  "net15": -88.48727652230232,
+  "meanR15": -0.12154845676140429,
+  "early": 62,
+  "late": 29,
+  "attempts": 91,
+  "skipped": 0,
+  "unclosed_position": null,
+  "known_limits": "Uses frozen historical testnet filter snapshot; no terminal mark in compared closed-trade result. 1e7 sizing device replicated, not a real 4000 shared-account test. Research only.",
+  "manifest_sha256": "fb0c0572b6c2bc5f569c64d89bd0ee2ca1dd9e3cf96b1ed8bd1110c341ed2f3e"
+}

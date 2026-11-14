@@ -1,0 +1,10 @@
+{
+  "id": "lc_volume_accum_1d",
+  "state": "RETIRED",
+  "rule_commit": "a4e3b7591dcb7538ff9eb5aeeb1a07d82b6276e2",
+  "result_head": "f1ee3f229511f7d60d8a2ccf7328eced631b5115",
+  "study": "LONGSCOUT-FRESH-V1",
+  "reason": "Fails fresh-coin economics and sample gates; late half and ex-best negative. Pooled secondary evidence does not rescue fresh FAIL.",
+  "prior_evidence": "LONGSCOUT-V1 extra31 positive but insufficient sample; retained, not withdrawn or erased.",
+  "changes": "Research disposition only. No registry, runnable rule, runtime, account or scheduler change. No tuning or weakened gate."
+}
