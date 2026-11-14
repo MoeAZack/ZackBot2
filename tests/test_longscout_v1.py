@@ -342,3 +342,36 @@ def test_v12_prior_week_levels_use_only_the_completed_week():
     d = pd.DataFrame(dict(t=t, o=1.0, h=h, l=1.0, c=1.0, v=1.0))
     wk, ph, pl = L12._prior_week(d)
     assert np.isnan(ph[:42]).all() and (ph[42:] == 10.0).all()     # week 2 sees week 1's high only, never its own 99
+
+
+import longscout_v13 as L13
+L13.register()
+
+
+@pytest.mark.parametrize('key', sorted(L13.CANDIDATES))
+def test_v13_cut_right_after_signals_and_prefixes(key):
+    coin, btc = _mk(2600, '4h', 55), _mk(2600, '4h', 56)
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    ex = np.flatnonzero(np.diff(np.asarray(full['lx']).astype(int)) | np.diff(np.asarray(full['sx']).astype(int))) + 1
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ex[ex >= 300][:20]) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v13_daily_levels_reach_bars_only_after_the_day_closes():
+    t = pd.date_range('2024-01-01', periods=18, freq='4h')
+    h = np.r_[np.full(6, 10.0), np.full(6, 20.0), np.full(6, 30.0)]
+    d = pd.DataFrame(dict(t=t, o=1.0, h=h, l=1.0, c=1.0, v=1.0))
+    _, ph, _ = L13._stairs(d, 1, False)
+    assert np.isnan(ph[:5]).all() and (ph[5:11] == 10).all() and (ph[11:17] == 20).all() and ph[17] == 30
+
+
+def test_v13_incomplete_days_are_not_used():
+    t = pd.Series(pd.date_range('2024-01-01', periods=12, freq='4h')).drop(index=[3]).reset_index(drop=True)
+    d = pd.DataFrame(dict(t=t, o=1.0, h=np.arange(11.0), l=1.0, c=1.0, v=1.0))
+    hi, lo = L13._daily_hl(d)
+    assert list(hi.index) == [pd.Timestamp('2024-01-02')]
