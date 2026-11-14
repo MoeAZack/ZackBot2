@@ -1,0 +1,73 @@
+{
+  "head": "71e93c98030f05ca5b1e9006201d91f9c03486dc",
+  "checked_cairo": "2026-11-14T12:34:21.027454+02:00",
+  "files": {
+    "r6_regime_flip.py": {
+      "git_blob_sha256": "f50acd53ee22279ec1c4cfd55667f08c84dcd13e9ebb165552dadddd6aa37a86",
+      "local_normalized_sha256": "f50acd53ee22279ec1c4cfd55667f08c84dcd13e9ebb165552dadddd6aa37a86"
+    },
+    "r6_paper_overlay.py": {
+      "git_blob_sha256": "697a455ae35358bdd2200e2329fb12785217caf7501cb1eb9999e86def0bd42d",
+      "local_normalized_sha256": "697a455ae35358bdd2200e2329fb12785217caf7501cb1eb9999e86def0bd42d"
+    },
+    "tools/r6_sizing_receipt.py": {
+      "git_blob_sha256": "1144db0b9504733d4eef68a0415cad0feb9a826b08b0d0dc0fca7b279e67187d",
+      "local_normalized_sha256": "1144db0b9504733d4eef68a0415cad0feb9a826b08b0d0dc0fca7b279e67187d"
+    },
+    "tests/test_r6_regime_flip.py": {
+      "git_blob_sha256": "28ea02d2373e6395df46476220d418fbb46bc93122be9c901e083a4f2edba56f",
+      "local_normalized_sha256": "28ea02d2373e6395df46476220d418fbb46bc93122be9c901e083a4f2edba56f"
+    },
+    "docs/r6_paper_01/README.md": {
+      "git_blob_sha256": "83169e297830e43c027b11dc08803f68dd0dee537d09b24b80dec8f2fe2f99ba",
+      "local_normalized_sha256": "83169e297830e43c027b11dc08803f68dd0dee537d09b24b80dec8f2fe2f99ba"
+    }
+  },
+  "receipt": {
+    "engine_sha256": "1515fb8faf6067ece8a7bf20abad617398b9158272a4bc06212a806535324ee4",
+    "sizing_equity": 4000.0,
+    "cases": [
+      {
+        "px": 100.0,
+        "atr": 2.0,
+        "opened": true,
+        "skip": "",
+        "risk_usd": 8.0,
+        "qty": 1.333,
+        "notional": 133.3,
+        "book": null
+      },
+      {
+        "px": 100.0,
+        "atr": 0.01,
+        "opened": true,
+        "skip": "",
+        "risk_usd": 8.0,
+        "qty": 33.333,
+        "notional": 3333.3,
+        "book": null
+      }
+    ],
+    "verdict": "PASS"
+  },
+  "targeted_tests": {
+    "passed": 101,
+    "seconds": 34.9
+  },
+  "fresh_failed_install_witness": {
+    "head": "71e93c98030f05ca5b1e9006201d91f9c03486dc",
+    "install_error": "R6 overlay: 1 frozen symbol(s) without a testnet rule: ZRXUSDT - not installed (no silent dropping)",
+    "exits_only": true,
+    "context_resolver_present": true,
+    "context_lot_entry_present": true,
+    "last_raw_short_exit": false,
+    "last_exit_after_deadline": true,
+    "decision_bars_after_entry": 121,
+    "expected_short_exit": true
+  },
+  "runtime_hashes": {
+    "runtime/ZackBot/settings.json": "1d487380997429fb24c363299915a4d22fc736457c96805f63db3015d47cc11a",
+    "runtime/ZackBot/install.json": "bca397c3cca7ddc526d5f9491a20a08a4585e1d4955aad74e586362c177aaa65",
+    "source/engine.py": "1515fb8faf6067ece8a7bf20abad617398b9158272a4bc06212a806535324ee4"
+  }
+}
