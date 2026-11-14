@@ -1,0 +1,126 @@
+{
+ "id": "LONGSCOUT-V3",
+ "status": "FROZEN before any backtest outcome of these six rules",
+ "approval": "moe 2026-11-14 07:54 UTC: keep scouting rounds going without pausing (relayed by the coordinator)",
+ "sources": {
+  "longscout3": {
+   "commit": "0cea0536f579bfd423f25b7980227dc86378f5c1",
+   "modules": [
+    "longscout_v1",
+    "longscout_v3"
+   ]
+  }
+ },
+ "universe": "165 coins = the 134 fresh coins (LONGSCOUT-FRESH-V1 data lock 28d7b7c8, manifest fb0c0572...) + extra31 (cache manifest 99af9bfb...); BTC context = the fresh-set BTCUSDT file (as in the pooled run); traded coins never include BTC or the original nine",
+ "rule": "Codex rule v1 unchanged (max one position, $8 risk, $3,333.33 cap, 40 coin orders seed 20261112, 15 bp; medians: n >= 100, meanR15 > 0, meanR23 >= 0, halves split 2025-01-01 > 0, ex-best-coin > 0, order 0 >= 30 per half)",
+ "extra_gate": "ALSO required for a pass: the median over the 40 orders of mean R15 restricted to trades on the 134 fresh coins > 0, and the same restricted to the 31 extra coins > 0 (both subsets must earn; neither may carry the other)",
+ "status_names": "WIDE165_PASS only when every rule-v1 gate and both subset gates hold; else FAIL",
+ "multiple_testing": "six candidates in this round (twenty across LONGSCOUT so far); a pass is a lead for Codex reproduction and a forward test, never an activation",
+ "never": "no gate weakened, no parameter tuned, no coin dropped; a changed rule is a new candidate",
+ "cases": {
+  "l3_dual_rising_ema50_pullback_4h": {
+   "source": "longscout3",
+   "commit": "0cea0536f579bfd423f25b7980227dc86378f5c1",
+   "key": "l3_dual_rising_ema50_pullback_4h",
+   "tf": "4h",
+   "side": "long",
+   "management": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 30
+   },
+   "params": {},
+   "eligible_coins": "fresh134+extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1_WIDE165"
+  },
+  "l3_rising_breakout_4h": {
+   "source": "longscout3",
+   "commit": "0cea0536f579bfd423f25b7980227dc86378f5c1",
+   "key": "l3_rising_breakout_4h",
+   "tf": "4h",
+   "side": "long",
+   "management": {
+    "stop_atr": 2.5,
+    "max_bars": 90
+   },
+   "params": {
+    "adx": 20.0
+   },
+   "eligible_coins": "fresh134+extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1_WIDE165"
+  },
+  "l3_impulse_continuation_4h": {
+   "source": "longscout3",
+   "commit": "0cea0536f579bfd423f25b7980227dc86378f5c1",
+   "key": "l3_impulse_continuation_4h",
+   "tf": "4h",
+   "side": "long",
+   "management": {
+    "stop_atr": 1.0,
+    "tp_r": 2.0,
+    "max_bars": 24
+   },
+   "params": {
+    "rng_atr": 2.5,
+    "top": 0.8,
+    "buf_atr": 0.1,
+    "min_atr": 1.0
+   },
+   "eligible_coins": "fresh134+extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1_WIDE165"
+  },
+  "r3_regime_ema_cross_4h": {
+   "source": "longscout3",
+   "commit": "0cea0536f579bfd423f25b7980227dc86378f5c1",
+   "key": "r3_regime_ema_cross_4h",
+   "tf": "4h",
+   "side": "both",
+   "management": {
+    "stop_atr": 2.5,
+    "tp_r": 3.0,
+    "max_bars": 120
+   },
+   "params": {},
+   "eligible_coins": "fresh134+extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1_WIDE165"
+  },
+  "r3_sideways_band_fade_4h": {
+   "source": "longscout3",
+   "commit": "0cea0536f579bfd423f25b7980227dc86378f5c1",
+   "key": "r3_sideways_band_fade_4h",
+   "tf": "4h",
+   "side": "both",
+   "management": {
+    "stop_atr": 2.0,
+    "max_bars": 20
+   },
+   "params": {
+    "rsi_lo": 30.0,
+    "rsi_hi": 70.0
+   },
+   "eligible_coins": "fresh134+extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1_WIDE165"
+  },
+  "s3_btc_up_laggard_breakdown_4h": {
+   "source": "longscout3",
+   "commit": "0cea0536f579bfd423f25b7980227dc86378f5c1",
+   "key": "s3_btc_up_laggard_breakdown_4h",
+   "tf": "4h",
+   "side": "short",
+   "management": {
+    "stop_atr": 2.5,
+    "tp_r": 3.0,
+    "max_bars": 60
+   },
+   "params": {},
+   "eligible_coins": "fresh134+extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1_WIDE165"
+  }
+ }
+}
