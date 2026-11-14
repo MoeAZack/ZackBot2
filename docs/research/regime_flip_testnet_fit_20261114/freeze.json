@@ -180,5 +180,6 @@
   "rules_sha256": "a34e79503f4b96f855fa7f7181340ddbee181335e702c5e7a064c475e91a4140",
   "rule": "Unchanged R1 flip both4h; stop3ATR, signal exit when leaves state, max120bars. Same D01, warmup220, window/split, $8 sizing proxy/$3333.33 cap, max1, 40 fixed orders, 7/15/23bp and funding. Only venue-covered trade set and actual current testnet filters differ.",
   "gates": "UNCHANGED rulev1: median n>=100, R15>0, R23>=0, both halves R15>0, ex-bestR15>0, order0>=30 per half; additionally both original extra31 and remaining fresh132 positive.",
-  "never": "No trial outcome has been calculated for this subset at freeze. No parameter/side rescue, no new filter thresholds. Failed fit stays failed; full165 study retained. No account/key/runtime/scheduler/trade/activation."
+  "never": "No trial outcome has been calculated for this subset at freeze. No parameter/side rescue, no new filter thresholds. Failed fit stays failed; full165 study retained. No account/key/runtime/scheduler/trade/activation.",
+  "runner_sha256": "0eff9fbabc291f2d97f2d0cc07ddfb14ea4c9155dcf158d2e030ba88207bdd9e"
 }
