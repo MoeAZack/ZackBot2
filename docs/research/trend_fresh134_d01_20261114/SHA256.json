@@ -1,0 +1,19 @@
+{
+  "contract.md": "b9981c5212e91f8772fc18ef24a075206ed8c4863185c75cdd202d553d60c59f",
+  "data_hashes.json": "c00726253857255c5e5dfb1ea382b6c9da1b626698d238208682822daf837e3f",
+  "economics_summary.json": "e7b253065fb2a5bad8a23b3e1e0cb14f9deec9f162d6608033e5beff1fe380ca",
+  "frozen_hashes.json": "b143baace9c20503e3a9d16a34d2dd30c98b2ac47b63ad650cc1883da155a187",
+  "raw_freeze_inputs.zip": "21c078dd75032055ad83bff62c5288c4648a43be33ea369a8aba7c1f4be52262",
+  "retirement_scope.json": "b43bb44c631fdcc5b561f486a13b3a31c84023394a7d780b9190cec89444fa52",
+  "selected.json": "1e6541e745b62559c9ff20527310e4a2aa7597c646d21f04eee038939bfc3496",
+  "TREND_FRESH134_RECEIPT.md": "6835a055e8c538c623d177ccbe0107fe9befc50e6f1dc76e3a359a133b5c1479",
+  "trend_wrapper.py": "45e590f4b6723317d42a93627392022289169cc463b16f6c7830acf2c12fc386",
+  "primary40/exp_trend_order0_path_trades.csv": "8dba150d154ed0a24398a66f1f7d9c57e6d57b503c001ccc45de4952fd70fb93",
+  "primary40/exp_trend_order0_worst_trades.csv": "8dba150d154ed0a24398a66f1f7d9c57e6d57b503c001ccc45de4952fd70fb93",
+  "primary40/exp_trend_result.json": "c28ed110ec75d553f924b89f547f57ab95c877eb9762b4c6b27a57428b0b1706",
+  "primary40/exp_trend_signals.csv": "7716dbccd2578003fadb5f2f1b5e446cc93c7a5a2842671c3b60ddd92f991e75",
+  "secondary40/exp_trend_mp3_order0_path_trades.csv": "eed4ace1e90d2441821a19e148125024b1871e0d4f1d2a5d2d0f100462a032c4",
+  "secondary40/exp_trend_mp3_order0_worst_trades.csv": "eed4ace1e90d2441821a19e148125024b1871e0d4f1d2a5d2d0f100462a032c4",
+  "secondary40/exp_trend_mp3_result.json": "224ec7f6e3cdf003316eff9f44fa9ee85adaac2d865e1004a817645a56d3b33f",
+  "secondary40/exp_trend_mp3_signals.csv": "7716dbccd2578003fadb5f2f1b5e446cc93c7a5a2842671c3b60ddd92f991e75"
+}

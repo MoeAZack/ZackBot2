@@ -1,0 +1,10 @@
+{
+  "head": "7cc838c6e0be16a5d7e4be4934573d2b7bfbf503",
+  "last_panel_open": "2020-10-26 00:00:00",
+  "review_expected_last_closed_daily_open": "2026-11-13 00:00:00 UTC",
+  "all_32_coins_present": true,
+  "panel_accepted": true,
+  "last_long_signal": true,
+  "last_short_signal": false,
+  "scope": "Pure strategy guard witness, not an exchange test or end-to-end live order. Engine.candles source only removes unclosed bars; it does not reject uniformly stale last closed bar. Require explicit live decision cutoff, preserving historical scoring."
+}

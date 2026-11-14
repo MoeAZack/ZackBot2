@@ -1,0 +1,158 @@
+{
+  "1": {
+    "gross_reference": 196.06106624207408,
+    "slippage": 23.165902892650934,
+    "fees": 57.91473762552071,
+    "implied_funding_proxy": 36.07680455304171,
+    "base_net_7bp": 78.90362117086073,
+    "incremental_cost_to_15bp": 92.66361157060373,
+    "net15": -13.759990399742975,
+    "incremental_cost_to_23bp": 185.32722314120753,
+    "net23": -106.42360197034678,
+    "terminal_marked_equity_base": 10000078.903621217,
+    "terminal_time": "2026-10-04 00:00:00",
+    "unclosed_fills": {},
+    "terminal_marks": {},
+    "unknown_filter_symbols": [
+      "ICPUSDT",
+      "TLMUSDT"
+    ],
+    "order0": {
+      "n": 472,
+      "n_early": 290,
+      "n_late": 182,
+      "meanR7": 0.0208960861151644,
+      "meanR15": -0.0036440652541692314,
+      "meanR23": -0.028184216623502845,
+      "meanR15_early": -0.027545294114306056,
+      "meanR15_late": 0.03444031040209273,
+      "best_coin": "SEIUSDT",
+      "n_ex_best": 470,
+      "meanR15_ex_best": -0.016109243282214556,
+      "sumR15": -1.7199987999678772,
+      "meanR_actual": 0.020896424875879952,
+      "coins_traded": 114,
+      "coins_positive": 41,
+      "order": 0,
+      "feasibility": {
+        "attempts": 472,
+        "executed": 472,
+        "rule_blocked": 0,
+        "skipped": {}
+      },
+      "max_concurrent_closed_trades": 1,
+      "maxdd_R15_closed": 22.45354402599289,
+      "why": {
+        "signal": 375,
+        "stop": 56,
+        "tp": 41
+      },
+      "long_n": 262,
+      "short_n": 210,
+      "long_sumR15": -21.23364039015268,
+      "short_sumR15": 19.513641590184804,
+      "closes_per_week": 2.2041360907271517
+    },
+    "medians": {
+      "n": 466.0,
+      "meanR7": 0.034017514543833435,
+      "meanR15": 0.009408383460514418,
+      "meanR23": -0.015214844798700165,
+      "meanR15_early": -0.012147360515358663,
+      "meanR15_late": 0.04577631321723648,
+      "meanR15_ex_best": -0.005758891361602051
+    },
+    "gates": {
+      "trades": true,
+      "meanR15": true,
+      "early": false,
+      "late": true,
+      "ex_best_coin": false,
+      "meanR23": false,
+      "order0_30_per_half": true
+    },
+    "signals": {
+      "raw": 7043,
+      "eligible": 3815
+    },
+    "replay_exact": true
+  },
+  "3": {
+    "gross_reference": 705.198744678393,
+    "slippage": 57.24191010136367,
+    "fees": 143.1047047335347,
+    "implied_funding_proxy": 90.16495904721745,
+    "base_net_7bp": 414.68717079627714,
+    "incremental_cost_to_15bp": 228.96764040545463,
+    "net15": 185.71953039082254,
+    "incremental_cost_to_23bp": 457.9352808109094,
+    "net23": -43.248110014632175,
+    "terminal_marked_equity_base": 10000414.687170882,
+    "terminal_time": "2026-10-04 00:00:00",
+    "unclosed_fills": {},
+    "terminal_marks": {},
+    "unknown_filter_symbols": [
+      "ICPUSDT",
+      "TLMUSDT"
+    ],
+    "order0": {
+      "n": 1166,
+      "n_early": 719,
+      "n_late": 447,
+      "meanR7": 0.044456171826359046,
+      "meanR15": 0.01990989819798697,
+      "meanR23": -0.00463637543038509,
+      "meanR15_early": 0.022708370999436414,
+      "meanR15_late": 0.015408551566572781,
+      "best_coin": "ZENUSDT",
+      "n_ex_best": 1153,
+      "meanR15_ex_best": 0.009668719161307772,
+      "sumR15": 23.214941298852807,
+      "meanR_actual": 0.044455999795933426,
+      "coins_traded": 128,
+      "coins_positive": 55,
+      "order": 0,
+      "feasibility": {
+        "attempts": 1166,
+        "executed": 1166,
+        "rule_blocked": 0,
+        "skipped": {}
+      },
+      "max_concurrent_closed_trades": 3,
+      "maxdd_R15_closed": 33.506741072072856,
+      "why": {
+        "signal": 915,
+        "stop": 143,
+        "tp": 108
+      },
+      "long_n": 585,
+      "short_n": 581,
+      "long_sumR15": -22.530707999819555,
+      "short_sumR15": 45.74564929867238,
+      "closes_per_week": 5.444963308872582
+    },
+    "medians": {
+      "n": 1154.0,
+      "meanR7": 0.043325883968687376,
+      "meanR15": 0.018854492497877014,
+      "meanR23": -0.005616898972933345,
+      "meanR15_early": 0.01626153232480849,
+      "meanR15_late": 0.02339495710110519,
+      "meanR15_ex_best": 0.007506741904545013
+    },
+    "gates": {
+      "trades": true,
+      "meanR15": true,
+      "early": true,
+      "late": true,
+      "ex_best_coin": true,
+      "meanR23": false,
+      "order0_30_per_half": true
+    },
+    "signals": {
+      "raw": 7043,
+      "eligible": 3815
+    },
+    "replay_exact": true
+  }
+}

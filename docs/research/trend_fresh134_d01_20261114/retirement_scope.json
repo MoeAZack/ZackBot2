@@ -1,0 +1,8 @@
+{
+  "trial": "TREND-FRESH134-D01",
+  "primary": "FAIL",
+  "secondary_max3": "FAIL",
+  "disposition": "Do not expand account4 EX13 to fresh134. Existing extra31 EX13 and all other accounts unchanged.",
+  "counting": "One dependent transfer trial with two preregistered capacities; not two new strategies.",
+  "limitations": "Native frozen engine run plus observer replay; not independent alpha implementation. See receipt for cost/funding/filters/proxy and metadata interpretation."
+}
