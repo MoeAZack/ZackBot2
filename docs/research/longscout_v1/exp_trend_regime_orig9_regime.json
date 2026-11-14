@@ -1,0 +1,255 @@
+{
+ "case": "exp_trend_regime_orig9",
+ "orders": 40,
+ "closes_order0": 212,
+ "by_side": {
+  "long": {
+   "median_n": 107.0,
+   "median_meanR15": 0.11956180556553206,
+   "median_sumR15": 12.671982047596003,
+   "by_half": {
+    "early": {
+     "median_sumR15": 3.251898635425063,
+     "n_order0": 62
+    },
+    "late": {
+     "median_sumR15": 9.373294928594525,
+     "n_order0": 43
+    }
+   }
+  },
+  "short": {
+   "median_n": 108.5,
+   "median_meanR15": -0.12215105008910662,
+   "median_sumR15": -13.28141910596131,
+   "by_half": {
+    "early": {
+     "median_sumR15": -6.854263353297328,
+     "n_order0": 59
+    },
+    "late": {
+     "median_sumR15": -6.528365800938408,
+     "n_order0": 48
+    }
+   }
+  }
+ },
+ "by_btc_regime": {
+  "falling|long": {
+   "order0_n": 16,
+   "order0_meanR15": 0.31525761491801635,
+   "order0_sumR15": 5.044121838688262,
+   "median_n": 16.0,
+   "median_meanR15": 0.3152576149180164,
+   "median_sumR15": 5.0441218386882625,
+   "orders_with_trades": 40
+  },
+  "falling|short": {
+   "order0_n": 47,
+   "order0_meanR15": -0.2370009025522651,
+   "order0_sumR15": -11.13904241995646,
+   "median_n": 48.0,
+   "median_meanR15": -0.22573715886567627,
+   "median_sumR15": -10.863766973080331,
+   "orders_with_trades": 40
+  },
+  "rising|long": {
+   "order0_n": 69,
+   "order0_meanR15": 0.005469116391638307,
+   "order0_sumR15": 0.3773690310230432,
+   "median_n": 69.0,
+   "median_meanR15": -0.0451992865313691,
+   "median_sumR15": -3.1187507706644677,
+   "orders_with_trades": 40
+  },
+  "rising|short": {
+   "order0_n": 43,
+   "order0_meanR15": 0.16543662644517151,
+   "order0_sumR15": 7.1137749371423755,
+   "median_n": 44.0,
+   "median_meanR15": 0.11261942130223106,
+   "median_sumR15": 4.898068898074889,
+   "orders_with_trades": 40
+  },
+  "sideways|long": {
+   "order0_n": 15,
+   "order0_meanR15": 0.5236529870891228,
+   "order0_sumR15": 7.854794806336841,
+   "median_n": 17.0,
+   "median_meanR15": 0.8198242631459363,
+   "median_sumR15": 13.937012473480918,
+   "orders_with_trades": 40
+  },
+  "sideways|short": {
+   "order0_n": 10,
+   "order0_meanR15": -0.3073640206388137,
+   "order0_sumR15": -3.073640206388137,
+   "median_n": 10.0,
+   "median_meanR15": -0.3073640206388137,
+   "median_sumR15": -3.073640206388137,
+   "orders_with_trades": 40
+  },
+  "unknown|long": {
+   "order0_n": 5,
+   "order0_meanR15": -0.3541085881170159,
+   "order0_sumR15": -1.7705429405850794,
+   "median_n": 5.0,
+   "median_meanR15": -0.3541085881170159,
+   "median_sumR15": -1.7705429405850794,
+   "orders_with_trades": 40
+  },
+  "unknown|short": {
+   "order0_n": 7,
+   "order0_meanR15": -0.6352017226487836,
+   "order0_sumR15": -4.446412058541485,
+   "median_n": 7.0,
+   "median_meanR15": -0.6352017226487836,
+   "median_sumR15": -4.446412058541485,
+   "orders_with_trades": 40
+  }
+ },
+ "by_coin_regime": {
+  "falling|long": {
+   "order0_n": 24,
+   "order0_meanR15": 0.5209494061449594,
+   "order0_sumR15": 12.502785747479026,
+   "median_n": 23.0,
+   "median_meanR15": 0.4850794696648959,
+   "median_sumR15": 10.67174833262771,
+   "orders_with_trades": 40
+  },
+  "falling|short": {
+   "order0_n": 61,
+   "order0_meanR15": -0.2625521404731993,
+   "order0_sumR15": -16.015680568865157,
+   "median_n": 60.0,
+   "median_meanR15": -0.27221809166421645,
+   "median_sumR15": -16.393179988966374,
+   "orders_with_trades": 40
+  },
+  "rising|long": {
+   "order0_n": 58,
+   "order0_meanR15": 0.015074439643515566,
+   "order0_sumR15": 0.8743174993239028,
+   "median_n": 60.0,
+   "median_meanR15": 0.003530338900411799,
+   "median_sumR15": 0.20828999512429613,
+   "orders_with_trades": 40
+  },
+  "rising|short": {
+   "order0_n": 23,
+   "order0_meanR15": 0.24989392502706162,
+   "order0_sumR15": 5.747560275622417,
+   "median_n": 24.0,
+   "median_meanR15": 0.1854301872795908,
+   "median_sumR15": 4.3277333173714965,
+   "orders_with_trades": 40
+  },
+  "sideways|long": {
+   "order0_n": 18,
+   "order0_meanR15": -0.005600976153043582,
+   "order0_sumR15": -0.10081757075478448,
+   "median_n": 19.0,
+   "median_meanR15": 0.1841824081821588,
+   "median_sumR15": 3.4994657554610176,
+   "orders_with_trades": 40
+  },
+  "sideways|short": {
+   "order0_n": 16,
+   "order0_meanR15": 0.19807578775253237,
+   "order0_sumR15": 3.169212604040518,
+   "median_n": 18.0,
+   "median_meanR15": 0.17356166344349722,
+   "median_sumR15": 3.0751493071312206,
+   "orders_with_trades": 40
+  },
+  "unknown|long": {
+   "order0_n": 5,
+   "order0_meanR15": -0.3541085881170159,
+   "order0_sumR15": -1.7705429405850794,
+   "median_n": 5.0,
+   "median_meanR15": -0.3541085881170159,
+   "median_sumR15": -1.7705429405850794,
+   "orders_with_trades": 40
+  },
+  "unknown|short": {
+   "order0_n": 7,
+   "order0_meanR15": -0.6352017226487836,
+   "order0_sumR15": -4.446412058541485,
+   "median_n": 7.0,
+   "median_meanR15": -0.6352017226487836,
+   "median_sumR15": -4.446412058541485,
+   "orders_with_trades": 40
+  }
+ },
+ "time_share_coin_regime_mean_over_coins": {
+  "falling": 0.3927,
+  "rising": 0.3434,
+  "sideways": 0.2009,
+  "unknown": 0.063
+ },
+ "time_share_btc_regime": {
+  "rising": 0.4636,
+  "falling": 0.3027,
+  "sideways": 0.1707,
+  "unknown": 0.063
+ },
+ "time_share_per_coin": {
+  "ADAUSDT": {
+   "falling": 0.5161,
+   "rising": 0.2649,
+   "sideways": 0.156,
+   "unknown": 0.063
+  },
+  "AVAXUSDT": {
+   "falling": 0.4834,
+   "rising": 0.2716,
+   "sideways": 0.182,
+   "unknown": 0.063
+  },
+  "BNBUSDT": {
+   "rising": 0.4236,
+   "falling": 0.3334,
+   "sideways": 0.18,
+   "unknown": 0.063
+  },
+  "BTCUSDT": {
+   "rising": 0.4636,
+   "falling": 0.3027,
+   "sideways": 0.1707,
+   "unknown": 0.063
+  },
+  "DOGEUSDT": {
+   "falling": 0.4334,
+   "rising": 0.2756,
+   "sideways": 0.228,
+   "unknown": 0.063
+  },
+  "ETHUSDT": {
+   "rising": 0.3963,
+   "falling": 0.356,
+   "sideways": 0.1847,
+   "unknown": 0.063
+  },
+  "LINKUSDT": {
+   "falling": 0.4154,
+   "rising": 0.3076,
+   "sideways": 0.214,
+   "unknown": 0.063
+  },
+  "SOLUSDT": {
+   "rising": 0.3863,
+   "falling": 0.336,
+   "sideways": 0.2147,
+   "unknown": 0.063
+  },
+  "XRPUSDT": {
+   "falling": 0.358,
+   "rising": 0.3009,
+   "sideways": 0.278,
+   "unknown": 0.063
+  }
+ },
+ "regime_rule": "R1 (research/longscout_v1.py)",
+ "split": "2025-01-01 00:00"
+}

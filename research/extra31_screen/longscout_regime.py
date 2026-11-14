@@ -8,7 +8,8 @@ plus the share of 4h bars each coin spent in each regime from T0 (base rates).
 """
 import sys, os, json, argparse
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(HERE)), 'research'))
+ROOT = os.path.dirname(os.path.dirname(HERE))
+sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(ROOT, 'research')); sys.path.insert(0, ROOT)
 import run_screen as RS, sieve_v1 as SV
 import longscout_v1 as L
 
