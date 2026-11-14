@@ -1,0 +1,1247 @@
+{
+ "case": "s25_weekly_close_breakdown_4h",
+ "frozen_case": {
+  "source": "longscout25",
+  "commit": "f1fc8dde2ad97c2839c691771a9c63d0069f45e8",
+  "key": "s25_weekly_close_breakdown_4h",
+  "tf": "4h",
+  "side": "short",
+  "management": {
+   "stop_atr": 3.0,
+   "tp_r": 3.0,
+   "max_bars": 60
+  },
+  "params": {
+   "weeks": 12
+  },
+  "eligible_coins": "fresh134+extra31",
+  "prior_exposure": "none: new rule, never run on any coin before this freeze",
+  "label": "NEW_CANDIDATE_RULE_V1_WIDE165"
+ },
+ "coins": [
+  "1000BONKUSDT",
+  "1000FLOKIUSDT",
+  "1000LUNCUSDT",
+  "1000PEPEUSDT",
+  "1000RATSUSDT",
+  "1000SATSUSDT",
+  "1000SHIBUSDT",
+  "1000XECUSDT",
+  "1INCHUSDT",
+  "AAVEUSDT",
+  "ACEUSDT",
+  "ACHUSDT",
+  "AGLDUSDT",
+  "ALGOUSDT",
+  "ALICEUSDT",
+  "ANKRUSDT",
+  "APEUSDT",
+  "API3USDT",
+  "APTUSDT",
+  "ARBUSDT",
+  "ARKMUSDT",
+  "ARKUSDT",
+  "ARPAUSDT",
+  "ARUSDT",
+  "ASTRUSDT",
+  "ATOMUSDT",
+  "AUCTIONUSDT",
+  "AXSUSDT",
+  "BANDUSDT",
+  "BATUSDT",
+  "BCHUSDT",
+  "BEAMXUSDT",
+  "BELUSDT",
+  "BICOUSDT",
+  "BIGTIMEUSDT",
+  "BLURUSDT",
+  "BNTUSDT",
+  "BSVUSDT",
+  "C98USDT",
+  "CAKEUSDT",
+  "CELOUSDT",
+  "CELRUSDT",
+  "CFXUSDT",
+  "CHRUSDT",
+  "CHZUSDT",
+  "CKBUSDT",
+  "COMPUSDT",
+  "COTIUSDT",
+  "CRVUSDT",
+  "CTSIUSDT",
+  "CYBERUSDT",
+  "DASHUSDT",
+  "DODOXUSDT",
+  "DOTUSDT",
+  "DUSKUSDT",
+  "DYDXUSDT",
+  "EDUUSDT",
+  "EGLDUSDT",
+  "ENAUSDT",
+  "ENJUSDT",
+  "ENSUSDT",
+  "ETCUSDT",
+  "ETHWUSDT",
+  "FETUSDT",
+  "FILUSDT",
+  "FLOWUSDT",
+  "GALAUSDT",
+  "GASUSDT",
+  "GMTUSDT",
+  "GMXUSDT",
+  "GRTUSDT",
+  "GTCUSDT",
+  "HBARUSDT",
+  "HOTUSDT",
+  "ICPUSDT",
+  "IDUSDT",
+  "ILVUSDT",
+  "IMXUSDT",
+  "INJUSDT",
+  "IOSTUSDT",
+  "IOTAUSDT",
+  "IOTXUSDT",
+  "JASMYUSDT",
+  "JOEUSDT",
+  "JTOUSDT",
+  "KASUSDT",
+  "KAVAUSDT",
+  "KNCUSDT",
+  "KSMUSDT",
+  "LDOUSDT",
+  "LPTUSDT",
+  "LQTYUSDT",
+  "LTCUSDT",
+  "LUNA2USDT",
+  "MAGICUSDT",
+  "MANAUSDT",
+  "MASKUSDT",
+  "MAVUSDT",
+  "MEMEUSDT",
+  "MINAUSDT",
+  "MOVRUSDT",
+  "MTLUSDT",
+  "NEARUSDT",
+  "NEOUSDT",
+  "NMRUSDT",
+  "OGNUSDT",
+  "ONDOUSDT",
+  "ONEUSDT",
+  "ONGUSDT",
+  "ONTUSDT",
+  "OPUSDT",
+  "ORDIUSDT",
+  "PENDLEUSDT",
+  "PEOPLEUSDT",
+  "POLYXUSDT",
+  "POWRUSDT",
+  "PYTHUSDT",
+  "QNTUSDT",
+  "QTUMUSDT",
+  "RIFUSDT",
+  "RLCUSDT",
+  "ROSEUSDT",
+  "RSRUSDT",
+  "RUNEUSDT",
+  "RVNUSDT",
+  "SANDUSDT",
+  "SEIUSDT",
+  "SFPUSDT",
+  "SKLUSDT",
+  "SNXUSDT",
+  "SPELLUSDT",
+  "SSVUSDT",
+  "STEEMUSDT",
+  "STRKUSDT",
+  "STXUSDT",
+  "SUIUSDT",
+  "SUPERUSDT",
+  "SUSHIUSDT",
+  "TAOUSDT",
+  "THETAUSDT",
+  "TIAUSDT",
+  "TLMUSDT",
+  "TRBUSDT",
+  "TRXUSDT",
+  "TUSDT",
+  "TWTUSDT",
+  "UMAUSDT",
+  "UNIUSDT",
+  "USTCUSDT",
+  "VETUSDT",
+  "WAXPUSDT",
+  "WLDUSDT",
+  "WOOUSDT",
+  "XLMUSDT",
+  "XMRUSDT",
+  "XTZUSDT",
+  "XVGUSDT",
+  "XVSUSDT",
+  "YFIUSDT",
+  "YGGUSDT",
+  "ZECUSDT",
+  "ZENUSDT",
+  "ZILUSDT",
+  "ZROUSDT",
+  "ZRXUSDT"
+ ],
+ "n_coins": 165,
+ "orders": 40,
+ "universe": "smoke",
+ "max_pos": 1,
+ "status": "FAIL",
+ "label": "NEW_CANDIDATE_RULE_V1_WIDE165",
+ "gates": {
+  "trades": false,
+  "meanR15": false,
+  "early": false,
+  "late": false,
+  "ex_best_coin": false,
+  "meanR23": false,
+  "order0_30_per_half": false
+ },
+ "medians": {
+  "n": 0.0,
+  "meanR7": null,
+  "meanR15": null,
+  "meanR23": null,
+  "meanR15_early": null,
+  "meanR15_late": null,
+  "meanR15_ex_best": null
+ },
+ "meanR15_p10": null,
+ "meanR15_min": null,
+ "meanR15_max": null,
+ "orders_passing_all_but_order0_gate": 0,
+ "worst_path_diagnostic": {
+  "medians": {
+   "n": 0.0,
+   "meanR7": null,
+   "meanR15": null,
+   "meanR23": null,
+   "meanR15_early": null,
+   "meanR15_late": null,
+   "meanR15_ex_best": null
+  },
+  "gates": {
+   "trades": false,
+   "meanR15": false,
+   "early": false,
+   "late": false,
+   "ex_best_coin": false,
+   "meanR23": false,
+   "order0_30_per_half": false
+  }
+ },
+ "order0": {
+  "n": 0,
+  "n_early": 0,
+  "n_late": 0,
+  "order": 0,
+  "feasibility": {
+   "attempts": 0,
+   "executed": 0,
+   "rule_blocked": 0,
+   "skipped": {}
+  }
+ },
+ "signals": {
+  "raw": 0,
+  "eligible": 0
+ },
+ "per_order": {
+  "path": [
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 0,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 1,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 2,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 3,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 4,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 5,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 6,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 7,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 8,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 9,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 10,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 11,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 12,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 13,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 14,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 15,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 16,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 17,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 18,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 19,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 20,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 21,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 22,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 23,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 24,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 25,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 26,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 27,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 28,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 29,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 30,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 31,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 32,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 33,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 34,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 35,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 36,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 37,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 38,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 39,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   }
+  ],
+  "worst": [
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 0,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 1,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 2,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 3,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 4,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 5,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 6,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 7,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 8,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 9,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 10,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 11,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 12,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 13,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 14,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 15,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 16,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 17,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 18,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 19,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 20,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 21,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 22,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 23,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 24,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 25,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 26,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 27,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 28,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 29,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 30,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 31,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 32,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 33,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 34,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 35,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 36,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 37,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 38,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 0,
+    "n_early": 0,
+    "n_late": 0,
+    "order": 39,
+    "feasibility": {
+     "attempts": 0,
+     "executed": 0,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   }
+  ]
+ },
+ "code_sha256": {
+  "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+  "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+  "longscout_v1.py": "20f432edfddd63afdf5419fc38b03597bfd4eaffc0937c993dc7bbbf69f90500",
+  "longscout_v25.py": "6971754698de96970803ec035ae9c11a57bcbb9728311b6899128ed732ab58a4"
+ },
+ "cases_sha256": "ba3492bf53850e7bb5998a2112ac95179ea4b473d2e34f62c82ece1f2fe79752",
+ "variant_sha256": "6fd133b36a823aa05826b3ad4e21abfecc5ec384535c24d701d9c948ec7db2f2",
+ "runner_sha256": "6da5a8493a66015ebe2f16f1bb3dff62231b56b37b3b8a3f8b476e6baf5de075",
+ "sieve_v1_sha256": "49612393fb38b3208b30b42f629b6b9ca0fda5ef49d25a1824c9a45d70a41929",
+ "longscout": {
+  "cases_sha256": "2da84a41f321a5a45403c7d81bf83d2ae4db61ed3856e25a01d5399e909a8def",
+  "runner_sha256": "5d569f51ea21e87930c712ba96ddf086d821a5b7f3f311db6c4d6c90200ab853",
+  "panel_runner_sha256": "6da5a8493a66015ebe2f16f1bb3dff62231b56b37b3b8a3f8b476e6baf5de075",
+  "note": "cases_sha256 / runner_sha256 above (from sieve_v1_panel) name that runner's files; this block names the LONGSCOUT ones"
+ },
+ "wide165": {
+  "subset_gate": {
+   "fresh134": null,
+   "extra31": null,
+   "pass_": false,
+   "note": "no trades",
+   "pass": false
+  },
+  "status": "FAIL",
+  "cases_sha256": "f5b66e3e67eae90567b1d9f999eb6aac1634361b63892837ebb332083a97baff",
+  "runner_sha256": "5b05c65420e808dacf32dd029c9f2614e725b531a877d89c15d325392fb1ef59",
+  "n_coins": 165
+ }
+}
