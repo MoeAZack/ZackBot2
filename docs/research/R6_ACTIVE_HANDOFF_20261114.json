@@ -1,0 +1,16 @@
+{
+  "date_cairo": "2026-11-14",
+  "first_lead": "r6_regime_flip_4h",
+  "economic_screen": "independently reproduced PASS",
+  "venue163_fit": "independently confirmed PASS at349/60c0a1c5",
+  "code": "R6-PAPER-01 default-OFF Build active, not installed",
+  "frequency_test": "separately frozen max3 diagnostic active, no live capacity change",
+  "scouting": "continuous next batches active; no daily-row wait",
+  "handoff_target_cairo": "13:30",
+  "decision_checkpoint_cairo": "14:00 or earlier on ready signal",
+  "conditional_canary_target_cairo": "18:00",
+  "conditions": "data, actual sizing/cap, protective stops, rollback, exact-head gates; no profit promise",
+  "other_accounts": "unchanged",
+  "scheduler_changes": "none",
+  "owner_relay": "none needed; final acceptance by Codex under standing PAPER authorization"
+}

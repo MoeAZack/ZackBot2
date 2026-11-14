@@ -1,0 +1,18 @@
+{
+  "head": "60c0a1c5933b371d36ad0a011f3130d228b8fe51",
+  "hashes_verified": 6,
+  "freeze_rules_match": true,
+  "orderings_compared": 40,
+  "per_order_fields": 6,
+  "max_stat_difference": 0.0,
+  "trades_compared": 150,
+  "max_cash_differences": {
+    "pnl": 0.0,
+    "R": 0.0,
+    "pnl15": 0.0,
+    "pnl23": 0.0,
+    "turnover": 0.0
+  },
+  "verdict": "NATIVE_CONFIRMATION_ACCEPTED for deployment-fit economic gate; no runtime/activation approval",
+  "scope": "Reviewed actual native wrapper; compares separate independent simulator to original-alpha/native-engine outputs at exact head. Current-filter fit is dependent, consumed-calendar, tail-concentrated. No rerun or account action."
+}
