@@ -1,0 +1,267 @@
+{
+  "head": {
+    "receipt": {
+      "name": "head_r1",
+      "kind": "buildcheck",
+      "head": "6e259ea5acf2379fe09bff933d7c5b05cfaa269e",
+      "started_cairo": "2026-11-14T01:33:15.130620+02:00",
+      "deadline_s": 14400,
+      "python": "C:\\Users\\princ\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "command": [
+        "cmd",
+        "/d",
+        "/c",
+        "F:\\ZackBot2_data\\CLOCK-1021-REVIEW-20261113\\head_r1\\build_app.bat",
+        "buildcheck"
+      ],
+      "localappdata": "F:\\ZackBot2_data\\CLOCK-1021-REVIEW-20261113\\supported_window_20261114\\head_r1_buildcheck_appdata",
+      "no_install": true,
+      "dependencies": {
+        "pytest": "9.1.1",
+        "pytest-xdist": "3.8.0",
+        "pandas": "3.0.6",
+        "numpy": "2.5.3",
+        "requests": "2.34.2"
+      },
+      "pid": 27312,
+      "timed_out": false,
+      "exit_code": 1,
+      "finished_cairo": "2026-11-14T02:38:56.832226+02:00",
+      "seconds": 3941.69,
+      "clean_at_end": true
+    },
+    "passed": false,
+    "safety_test_summary": "22 failed, 11058 passed, 53 skipped, 44 deselected, 13 xfailed, 4 warnings in 3854.65s (1:04:14)",
+    "safety_failure_error_ids": [
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_amended_execute_binds_the_amendment_into_run_json_lines_and_result"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_cli_never_evaluates_without_an_integration_loader"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_disclosures_are_in_docstring_result_and_run_json"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_execute_binds_an_immutable_rules_identity"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_execute_binds_the_rss_cap_to_the_source_before_any_read"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_execute_is_authorized_rss_guarded_chained_and_resumable"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_pass2_refuses_a_source_mutated_between_passes_or_without_identity"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_pit_default_path_carries_no_prospective_label"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_prospective_execute_binds_identity_and_labels_every_packet"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_rss_guard_trips_inside_heavy_work_and_writes_nothing_past_the_checkpoint[b0_sample]"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_rss_guard_trips_inside_heavy_work_and_writes_nothing_past_the_checkpoint[bootstrap_lcb]"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_rss_guard_trips_inside_heavy_work_and_writes_nothing_past_the_checkpoint[unit_replays]"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_run_assembles_gate_inputs_and_never_decides"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_run_is_in_memory_without_verdict_and_writes_are_refused"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_run_json_binds_the_complete_authorization_and_resume_under_another_fails"
+      ],
+      [
+        "FAILED",
+        "tests/test_fib_pullback_02.py::test_f1_injected_failure_after_run_before_publish_leaves_no_final_packet"
+      ],
+      [
+        "FAILED",
+        "tests/test_fib_pullback_02.py::test_f1_publish_failure_leaves_no_final_packet"
+      ],
+      [
+        "FAILED",
+        "tests/test_fib_pullback_02.py::test_f1_stale_staging_is_refused_never_reused[0]"
+      ],
+      [
+        "FAILED",
+        "tests/test_fib_pullback_02.py::test_f1_stale_staging_is_refused_never_reused[1]"
+      ],
+      [
+        "FAILED",
+        "tests/test_fib_pullback_02.py::test_f1_stale_staging_is_refused_never_reused[2]"
+      ],
+      [
+        "FAILED",
+        "tests/test_fib_pullback_02.py::test_wrapper_refuses_holdout_and_non_mainnet_rules"
+      ],
+      [
+        "FAILED",
+        "tests/test_fib_pullback_02.py::test_wrapper_runs_frozen_runner_with_scoped_equivalents"
+      ]
+    ],
+    "stdout_sha256": "e466f94660632dd2286203af25e9a5effb4c5154a61d33116540508dc2b95542",
+    "internal_log_sha256": "16041b97140f1899530cc927614498e28e0c19952dce290ca10f3db441556575",
+    "last_progress": [
+      "[3/8] Checking the build libraries...",
+      "[4/8] Running the safety tests..."
+    ]
+  },
+  "base": {
+    "receipt": {
+      "name": "base",
+      "kind": "buildcheck",
+      "head": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+      "started_cairo": "2026-11-14T02:38:57.134997+02:00",
+      "deadline_s": 14400,
+      "python": "C:\\Users\\princ\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "command": [
+        "cmd",
+        "/d",
+        "/c",
+        "F:\\ZackBot2_data\\CLOCK-1021-REVIEW-20261113\\base\\build_app.bat",
+        "buildcheck"
+      ],
+      "localappdata": "F:\\ZackBot2_data\\CLOCK-1021-REVIEW-20261113\\supported_window_20261114\\base_buildcheck_appdata",
+      "no_install": true,
+      "dependencies": {
+        "pytest": "9.1.1",
+        "pytest-xdist": "3.8.0",
+        "pandas": "3.0.6",
+        "numpy": "2.5.3",
+        "requests": "2.34.2"
+      },
+      "pid": 42632,
+      "timed_out": false,
+      "exit_code": 1,
+      "finished_cairo": "2026-11-14T03:45:01.898033+02:00",
+      "seconds": 3964.69,
+      "clean_at_end": true
+    },
+    "passed": false,
+    "safety_test_summary": "22 failed, 11019 passed, 53 skipped, 44 deselected, 13 xfailed, 4 warnings in 3885.25s (1:04:45)",
+    "safety_failure_error_ids": [
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_amended_execute_binds_the_amendment_into_run_json_lines_and_result"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_cli_never_evaluates_without_an_integration_loader"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_disclosures_are_in_docstring_result_and_run_json"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_execute_binds_an_immutable_rules_identity"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_execute_binds_the_rss_cap_to_the_source_before_any_read"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_execute_is_authorized_rss_guarded_chained_and_resumable"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_pass2_refuses_a_source_mutated_between_passes_or_without_identity"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_pit_default_path_carries_no_prospective_label"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_prospective_execute_binds_identity_and_labels_every_packet"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_rss_guard_trips_inside_heavy_work_and_writes_nothing_past_the_checkpoint[b0_sample]"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_rss_guard_trips_inside_heavy_work_and_writes_nothing_past_the_checkpoint[bootstrap_lcb]"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_rss_guard_trips_inside_heavy_work_and_writes_nothing_past_the_checkpoint[unit_replays]"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_run_assembles_gate_inputs_and_never_decides"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_run_is_in_memory_without_verdict_and_writes_are_refused"
+      ],
+      [
+        "FAILED",
+        "tests/test_bpyr_runner.py::test_run_json_binds_the_complete_authorization_and_resume_under_another_fails"
+      ],
+      [
+        "FAILED",
+        "tests/test_fib_pullback_02.py::test_f1_injected_failure_after_run_before_publish_leaves_no_final_packet"
+      ],
+      [
+        "FAILED",
+        "tests/test_fib_pullback_02.py::test_f1_publish_failure_leaves_no_final_packet"
+      ],
+      [
+        "FAILED",
+        "tests/test_fib_pullback_02.py::test_f1_stale_staging_is_refused_never_reused[0]"
+      ],
+      [
+        "FAILED",
+        "tests/test_fib_pullback_02.py::test_f1_stale_staging_is_refused_never_reused[1]"
+      ],
+      [
+        "FAILED",
+        "tests/test_fib_pullback_02.py::test_f1_stale_staging_is_refused_never_reused[2]"
+      ],
+      [
+        "FAILED",
+        "tests/test_fib_pullback_02.py::test_wrapper_refuses_holdout_and_non_mainnet_rules"
+      ],
+      [
+        "FAILED",
+        "tests/test_fib_pullback_02.py::test_wrapper_runs_frozen_runner_with_scoped_equivalents"
+      ]
+    ],
+    "stdout_sha256": "f2284a26853742332211f7e0b02df6b9a5c41907077cb6cdbf79a05a00d1af0b",
+    "internal_log_sha256": "54d8af93086663c68269a96a4521d0a9826bd9456372c1c407144ef5eec41892",
+    "last_progress": [
+      "[3/8] Checking the build libraries...",
+      "[4/8] Running the safety tests..."
+    ]
+  },
+  "both_passed": false,
+  "head_only_safety_failure_error_ids": [],
+  "base_only_safety_failure_error_ids": [],
+  "identical_reported_safety_failure_error_multisets": true,
+  "note": "Only exit 0 plus fresh BUILDCHECK_OK in both logs is a buildcheck PASS; identical failures do not prove an executable self-test passed."
+}

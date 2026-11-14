@@ -1,10 +1,16 @@
 {
+  "build_comparison.json": "59a90ead944b0b98cba6728a23c183d6886bc4fe87f4862cf17410a66b0119ec",
   "collect_clock_supported.py": "95ddc2d97ed4f082c935e1bce689cfc76b65f930d6e720e2153279b73a1bb69f",
   "collection_receipt.json": "09d0c1677aa3a87eb943ea0a60cd2f2875169b375f6e28b6d5776ef3141e569f",
+  "compare_clock_builds.py": "89b43a89253f960f00f3e6805b09b38269ed559f12076ac23b67c724af17af1a",
   "compare_clock_supported.py": "f0ca540cfd014284b665b6e8a2a254e4e0e389cf50edae592acbb20a2ffc7708",
+  "FINAL_REPORT.md": "53de5bcfaae7ff9584f909c926f1288949df04f3a7d37aa85b40de272db689aa",
+  "full_run_receipt.json": "dd6e8a61fc37979da4c669413ad844389e14b7f62d3bbd0f0bf114d7567ef815",
   "local_artifact_hashes.json": "a01bd143623cc7a38b906f6352cc52442f66f562f40cc7419b09cb21286197d5",
   "run_clock_supported.py": "dcaccaf336db1722d824c493e8ff99b4add8033444a5ee8d2417d32edc91f7fd",
   "test_comparison.json": "04bd231e9c4f219460e0c47d88b6c38c2b592f4323a8c9fc32c5785151f7ede2",
   "TEST_REPORT.md": "beae1b7fef5f65452cfc0d5142aefb146ce1fa6ae834f4a32bc7058606be1972",
-  "test_run_receipt.json": "10e7638de2bfcef8f7fe06043511bffcc11b976c88b6618877edacfb064ae70d"
+  "test_run_receipt.json": "10e7638de2bfcef8f7fe06043511bffcc11b976c88b6618877edacfb064ae70d",
+  "verdict.json": "23980c920e6393f873510e47a793c020848d0de9862c9de27b8d14ce3a61303e",
+  "worktree_end_state.json": "7ddcd0bc6279ac61c235b176dc7ed017f04baf1e38b915b7ca62bc898ca6b130"
 }
