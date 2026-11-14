@@ -1,0 +1,70 @@
+{
+ "id": "EXTRA31-SCREEN",
+ "status": "FROZEN before any strategy in this catalog was run on the extra31 coins by this screen",
+ "nature": "cross-symbol transfer SCREEN of unchanged rules; research only; no engine, runtime, account or key change; a pass is a lead for a full gated test, never an activation or promotion",
+ "approval": "moe 2026-11-13 (project chat: 'go' + 'compile the biggest strategy list ever'); scope relayed by the coordinator",
+ "sources": {
+  "master": {"commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce", "modules": [],
+             "note": "the 57 strategies registered in master strategies.py"},
+  "c254": {"commit": "f7a1265b197fd226a62287fec352287b6926bdb3", "modules": [],
+           "note": "codex/bullish-long-line-c254, the top of the stacked C-candidate branches; only the 209 keys that are not on master run from here"},
+  "cp12": {"commit": "2fba3ff06ac7c2e23823d91a963385c6c6f6010b", "modules": ["newstrat_cp", "newstrat_cp2"],
+           "note": "PR #334 head: CP wave 1 and 2 (N1..N8)"},
+  "cp345": {"commit": "646ab3fa1be92614998905e6ab3497ab03a7d382", "modules": ["newstrat_cp3", "newstrat_cp4", "newstrat_cp5"],
+            "note": "PR #337 head: CP3 (X/Y), CP4 (Z), CP5 (V)"}
+ },
+ "source_files": "each source is exported with git archive at its commit (top-level *.py, research/*.py, data/exchange_rules_testnet.json); strategy, backtest and module sha256 are recorded per result",
+ "rule_changes": "none: signal functions, params and mgmt are the registered defaults; any change is a new candidate",
+ "universe": {
+  "extra31": ["1000PEPEUSDT", "AAVEUSDT", "APTUSDT", "ARBUSDT", "ARKUSDT", "BCHUSDT", "DOTUSDT", "ENAUSDT", "ENJUSDT", "ETCUSDT",
+              "FETUSDT", "FILUSDT", "GALAUSDT", "INJUSDT", "LTCUSDT", "MANAUSDT", "MOVRUSDT", "NEARUSDT", "ONDOUSDT", "ONEUSDT",
+              "QNTUSDT", "SANDUSDT", "STRKUSDT", "SUIUSDT", "SUPERUSDT", "TAOUSDT", "UNIUSDT", "WLDUSDT", "XLMUSDT", "ZECUSDT", "ZROUSDT"],
+  "context_only": ["BTCUSDT"],
+  "note": "BTC is in the book for market context and cross-sectional ranks, never traded. A strategy's own 'exclude' list is honoured."
+ },
+ "data": {
+  "dir": "C:/Dev/ZackBot_research_cache/h5_wide_d01_20261112/clean",
+  "manifest": "input_manifest.json",
+  "manifest_location": "in the data folder or one level above it (D01 layout); each CSV sha256 is recorded with the count found in the manifest",
+  "manifest_sha256": "99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95",
+  "bars": "1h native; 4h and 1d are UTC bins built from 1h, a bin needs all of its 1h bars else it is dropped; 15m does not exist in this data",
+  "late_listings": "no candle is invented: coins are grouped by listing date and each group is run in its own book that starts at that date and holds BTC plus every coin already listed (the cross-sectional context of that moment); a coin's own first max(warmup, 720h / bar hours) bars are never traded (warmup 220 bars, 60 for 1d)",
+  "fetch": "none"
+ },
+ "window": {"entries_from": "2022-08-26 06:00 UTC", "data_to": "2026-10-04 04:00 UTC", "half_split": "2024-09-14 00:00 UTC (calendar midpoint, by entry time)"},
+ "timeframe": "the strategy's registered tf; strategies without a tf (the legacy set) run on 4h, the timeframe they were built on",
+ "execution": {
+  "engine": "the source commit's own unchanged backtest.run, pessimistic='path'",
+  "sizing": "start $10,000,000, risk 0.0000008 of equity = $8 per entry, max_pos 99 (every signal is taken, no ordering effect), max_lev 10, daily_halt 0.08 (cannot bind at this size)",
+  "costs": "base 5 bp fee + 2 bp slippage per side (7 bp); stresses add 8 / 16 bp on each trade's executed notional from the fill log (15 / 23 bp per side)",
+  "funding": "0.01% per 8h charged per bar on open notional (engine proxy, not native funding)",
+  "exchange_filters": "data/exchange_rules_testnet.json of the source commit (current snapshot); symbols missing from it use the engine's legacy floor and are listed",
+  "R": "the engine's own R: trade P&L after costs divided by the $8 risk budget of the entry (|pnl / R| from the engine; the entry fill's risk when R is 0). Quantity is floored to the exchange step, so the risk actually taken can be below $8"
+ },
+ "pass_rule": {
+  "frozen": "2026-11-13, before any run",
+  "trades": ">= 100 closed trades on extra31",
+  "meanR_15bp": "> 0",
+  "meanR_23bp": ">= 0",
+  "halves": "mean R at 15 bp > 0 in both halves (each half must have at least one trade)",
+  "ex_best_coin": "mean R at 15 bp > 0 after removing the coin with the largest summed R at 15 bp",
+  "all_five_required": true,
+  "never": "no gate is weakened, no parameter is tuned and no coin is dropped to rescue a strategy"
+ },
+ "skipped_already_tested_on_extra31": {
+  "cp_x2_alt_btc_ratio_break_4h": "X2-WIDE failed (head c4d45868)",
+  "rank_breadth_reversal_4h": "RBR-WIDE failed (head ee808bdd)",
+  "not_in_catalog": "H5, RSR, SVS, IMP, PFX live in their own research modules and already failed on these coins"
+ },
+ "statuses": ["PASS", "FAIL", "SKIPPED_ALREADY_TESTED", "NO_DATA_15M", "NO_DATA_INPUT", "ERROR"],
+ "status_notes": "NO_DATA_15M: 15m rule, the data is 1h. NO_DATA_INPUT: the rule reads an input (mark price, taker flow, minute bars, trade sizes) that this 1h price/volume data does not hold; it is listed, not judged. ERROR: listed with the error, not judged.",
+ "order": "ema_st and kalman_innovation_recovery_long_1h (C101) are run and reported first; the order does not change any result",
+ "amendments": ["2026-11-13, before any extra31 run: the first launch stopped at the manifest check because the manifest sits one level above clean/. The runner now also looks there and records each CSV sha256 with the count found in the manifest. No rule, universe, cost or gate changed."],
+ "limitations": [
+  "about 290 strategies are screened at once, so a few passes by luck are expected; a pass only earns a full gated test (portfolio limits, order permutations, worst path, Codex reproduction)",
+  "not a fresh time period: the same calendar window as earlier development, different coins",
+  "every signal is taken independently (no position limit), so account-level interaction is not measured",
+  "hourly or coarser candles, engine path model, funding proxy, current exchange filters, fixed survivor universe",
+  "cross-sectional strategies rank inside this 31-coin + BTC universe, which differs from the one they were built on"
+ ]
+}

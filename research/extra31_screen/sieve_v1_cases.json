@@ -1,0 +1,49 @@
+{
+ "id": "SIEVE-V1-CASES",
+ "rule": "Codex catalog-and-sieve rule v1: docs/research/catalog_sieve_20261113/PASS_RULE_V1_ORIGINAL.md, first published at 487843b3b573702ba08bc69466ff576f8c95fe9c (PR #337 comments 6847728598 and 6848020692; readable copy and Cairo label erratum in PR #342 at 8bd85737)",
+ "status": "FROZEN before any rule-v1 outcome of these cases",
+ "disclosure_of_prior_outcomes": [
+  "EXTRA31-SCREEN (this folder's contract.json, a different every-signal simulation) was already running when rule v1 reached Claude. Its ema_st line was seen before this freeze: PASS n=927 meanR15=+0.2057 on extra31 (unverified first-pass screen).",
+  "The EXTRA31-SCREEN line for kalman_innovation_recovery_long_1h was also seen before this freeze: FAIL n=1255 meanR15=-0.0092 on all 31 coins, i.e. including the eight coins of its recorded development run (unverified first-pass screen). The c101 case below was written before that line arrived and was not changed after it.",
+  "No rule-v1 run of either case existed at this freeze. The runner was smoke-tested on original-9 coins only."
+ ],
+ "cases": {
+  "ema_st": {
+   "source": "master", "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce", "key": "ema_st", "tf": "4h", "side": "long",
+   "management": {"stop_atr": 2.5, "exit": "the rule's own lx signal; no target, no partial, no trail, no time cap (registered mgmt, unchanged)"},
+   "eligible_coins": "extra31",
+   "prior_exposure": "original-nine and OLD3 book use is known; broader development history is unresolved (Codex 6847728598)",
+   "label": "CONSUMED_SYMBOL_TRANSFER_DIAGNOSTIC (does not count toward the fresh-coin goal until the history is reconciled)"
+  },
+  "c101": {
+   "source": "c254", "commit": "f7a1265b197fd226a62287fec352287b6926bdb3", "key": "kalman_innovation_recovery_long_1h", "tf": "1h", "side": "long",
+   "management": {"stop_atr": 1.5, "tp_r": 1.5, "max_bars": 8, "exit": "plus the rule's own lx signal (registered mgmt, unchanged)"},
+   "eligible_coins": "extra31 minus prior_used",
+   "prior_used": ["1000PEPEUSDT", "ENAUSDT", "NEARUSDT", "QNTUSDT", "SUIUSDT", "UNIUSDT", "WLDUSDT", "ZECUSDT"],
+   "prior_exposure": "recorded Stage-A development run used 18 coins incl. the eight above (and LSK, not in this cache), per Codex 6847728598; Claude has not checked the source packet itself",
+   "label": "TRANSFER_SCREEN on the 23 coins not in the recorded development run, PENDING Codex confirmation of the recorded-history scope; if that scope is not confirmed it is a CONSUMED_SYMBOL_TRANSFER_DIAGNOSTIC"
+  }
+ },
+ "implementation": {
+  "engine": "the source commit's own unchanged backtest.run (native admission, registered management), one sleeve, max_pos 1 from the start",
+  "signals": "the unchanged registered signal function, computed per coin on that coin's real history only (a BTC + coin book); no candle is invented",
+  "one_account_over_late_listings": "the account book spans BTC's full timeline; a coin has no candles and no signals before its own data starts; its indicator columns and signals are the ones computed on its real history",
+  "sizing": "fixed $8 risk and $3,333.33 notional cap on every entry: the engine sizes from equity, so equity is set to $10,000,000 with risk 0.0000008 and max_lev 0.000333333 (P&L drift moves these by under 0.02%). $4,000 is the research-capital denominator for reporting only",
+  "R": "R_budget = net closed P&L in USD / 8 (primary). R_actual = the engine's own R (reported, never used for a gate)",
+  "costs": "engine base 5 bp fee + 2 bp slippage per side (7 bp); 15 / 23 bp add 8 / 16 bp on each trade's executed notional from the fill log; funding proxy 1 bp / 8 h on open notional, both sides, not native funding",
+  "eligibility": "entries only at decisions where: t >= 2022-08-26 06:00 UTC; the coin's own bar number >= warmup (220); D01 point-in-time liquidity at the decision's last 1h bar (median daily quote volume of the prior 30 complete UTC days >= $10m and >= 720 consecutive hourly bars). Exits are never masked",
+  "bars": "4h = complete UTC groups of four 1h bars; management on the alpha's own bars (4h for ema_st, 1h for c101)",
+  "paths": "primary pessimistic='path'; diagnostic pessimistic='worst' (stop-first), reported, not a gate",
+  "orders": "40 symbol orders: order 0 alphabetical, order k = numpy.default_rng(20261112 + k).permutation of the alphabetical list, k = 1..39",
+  "split": "2025-01-01 00:00 UTC by entry time",
+  "terminal": "a position still open at the end of data is not a completed trade and is not counted",
+  "exchange_filters": "data/exchange_rules_testnet.json of the source commit (current snapshot)",
+  "daily_halt": "engine default 0.08 of equity; cannot bind at this size; rule v1 defines no halt"
+ },
+ "gates": {
+  "medians_over_40_orders_at_15bp": ["completed trades >= 100", "mean R_budget > 0", "early mean > 0", "later mean > 0", "ex-best-coin mean > 0 (best coin = largest summed net P&L at 15 bp in that order; its closed trades removed, no rerun)"],
+  "median_at_23bp": "overall mean R_budget >= 0",
+  "order_0": ">= 30 closed trades in each half",
+  "result_label": "TRANSFER_SCREEN_PASS at most; never PAPER, activation or mainnet approval"
+ }
+}

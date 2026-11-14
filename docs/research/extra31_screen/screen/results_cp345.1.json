@@ -1,0 +1,1281 @@
+{
+ "source": "cp345",
+ "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+ "code_sha256": {
+  "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+  "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+  "newstrat_cp3.py": "98127342cb27b6f010d1715182546ad26c3e1135e1ac907700645283e63edd82",
+  "newstrat_cp4.py": "4f5541ac3f231f0755b94e36d9d376701f3f7b240d0301b9f41b3a9036321d5f",
+  "newstrat_cp5.py": "679d39858956f26c80fdea312a085dabc45822b7eafbadc7c26c6e06ff24274b"
+ },
+ "universe": [
+  "1000PEPEUSDT",
+  "AAVEUSDT",
+  "APTUSDT",
+  "ARBUSDT",
+  "ARKUSDT",
+  "BCHUSDT",
+  "DOTUSDT",
+  "ENAUSDT",
+  "ENJUSDT",
+  "ETCUSDT",
+  "FETUSDT",
+  "FILUSDT",
+  "GALAUSDT",
+  "INJUSDT",
+  "LTCUSDT",
+  "MANAUSDT",
+  "MOVRUSDT",
+  "NEARUSDT",
+  "ONDOUSDT",
+  "ONEUSDT",
+  "QNTUSDT",
+  "SANDUSDT",
+  "STRKUSDT",
+  "SUIUSDT",
+  "SUPERUSDT",
+  "TAOUSDT",
+  "UNIUSDT",
+  "WLDUSDT",
+  "XLMUSDT",
+  "ZECUSDT",
+  "ZROUSDT"
+ ],
+ "results": [
+  {
+   "key": "cp_x2_alt_btc_ratio_break_4h",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "name": "[RESEARCH] CP-X2 Alt/BTC ratio breakout 4h",
+   "tf": "4h",
+   "sides": "both",
+   "status": "SKIPPED_ALREADY_TESTED",
+   "note": "X2-WIDE failed (head c4d45868)"
+  },
+  {
+   "key": "cp_x4_break_retest_4h",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "name": "[RESEARCH] CP-X4 Breakout-retest 4h",
+   "tf": "4h",
+   "sides": "both",
+   "status": "FAIL",
+   "gates": {
+    "trades": true,
+    "meanR15": false,
+    "meanR23": false,
+    "halves": false,
+    "ex_best_coin": false
+   },
+   "stats": {
+    "n": 4689,
+    "meanR7": -0.012256474297129184,
+    "meanR15": -0.048508710798847686,
+    "meanR23": -0.08476094730056616,
+    "sumR15": -227.45734493579678,
+    "n_early": 1881,
+    "n_late": 2808,
+    "meanR15_early": -0.09552868371893858,
+    "meanR15_late": -0.01701135714404321,
+    "best_coin": "SUPERUSDT",
+    "best_coin_sumR15": 20.625070793402582,
+    "n_ex_best": 4567,
+    "meanR15_ex_best": -0.05432065157197271,
+    "coins_traded": 31,
+    "coins_positive": 8,
+    "win_pct": 50.37321390488378,
+    "usd_15bp_at_8": -1819.6587594863743
+   },
+   "raw_trades": 4689,
+   "dropped_seasoning": 0,
+   "feasibility": {
+    "attempts": 4693,
+    "executed": 4693,
+    "rule_blocked": 0
+   },
+   "why": {
+    "stop": 3544,
+    "tp": 660,
+    "time": 485
+   },
+   "per_coin": {
+    "1000PEPEUSDT": {
+     "n": 130,
+     "sumR15": -13.156
+    },
+    "AAVEUSDT": {
+     "n": 185,
+     "sumR15": 8.037
+    },
+    "APTUSDT": {
+     "n": 166,
+     "sumR15": -12.11
+    },
+    "ARBUSDT": {
+     "n": 131,
+     "sumR15": 19.451
+    },
+    "ARKUSDT": {
+     "n": 128,
+     "sumR15": -11.461
+    },
+    "BCHUSDT": {
+     "n": 146,
+     "sumR15": -6.672
+    },
+    "DOTUSDT": {
+     "n": 187,
+     "sumR15": -30.599
+    },
+    "ENAUSDT": {
+     "n": 102,
+     "sumR15": 16.563
+    },
+    "ENJUSDT": {
+     "n": 191,
+     "sumR15": -17.313
+    },
+    "ETCUSDT": {
+     "n": 154,
+     "sumR15": -5.577
+    },
+    "FETUSDT": {
+     "n": 168,
+     "sumR15": -1.098
+    },
+    "FILUSDT": {
+     "n": 166,
+     "sumR15": -6.32
+    },
+    "GALAUSDT": {
+     "n": 150,
+     "sumR15": 11.174
+    },
+    "INJUSDT": {
+     "n": 182,
+     "sumR15": -0.937
+    },
+    "LTCUSDT": {
+     "n": 153,
+     "sumR15": -43.249
+    },
+    "MANAUSDT": {
+     "n": 176,
+     "sumR15": -10.434
+    },
+    "MOVRUSDT": {
+     "n": 107,
+     "sumR15": 6.551
+    },
+    "NEARUSDT": {
+     "n": 187,
+     "sumR15": -10.351
+    },
+    "ONDOUSDT": {
+     "n": 136,
+     "sumR15": -16.685
+    },
+    "ONEUSDT": {
+     "n": 170,
+     "sumR15": -29.448
+    },
+    "QNTUSDT": {
+     "n": 155,
+     "sumR15": -30.334
+    },
+    "SANDUSDT": {
+     "n": 172,
+     "sumR15": -1.092
+    },
+    "STRKUSDT": {
+     "n": 115,
+     "sumR15": 7.558
+    },
+    "SUIUSDT": {
+     "n": 133,
+     "sumR15": 3.879
+    },
+    "SUPERUSDT": {
+     "n": 122,
+     "sumR15": 20.625
+    },
+    "TAOUSDT": {
+     "n": 117,
+     "sumR15": -3.269
+    },
+    "UNIUSDT": {
+     "n": 169,
+     "sumR15": -26.475
+    },
+    "WLDUSDT": {
+     "n": 127,
+     "sumR15": -16.024
+    },
+    "XLMUSDT": {
+     "n": 176,
+     "sumR15": -21.685
+    },
+    "ZECUSDT": {
+     "n": 173,
+     "sumR15": -0.701
+    },
+    "ZROUSDT": {
+     "n": 115,
+     "sumR15": -6.306
+    }
+   },
+   "long_n": 2106,
+   "short_n": 2583
+  },
+  {
+   "key": "cp_x6_anchor180_break_1d",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "name": "[RESEARCH] CP-X6 180-day extreme breakout daily",
+   "tf": "1d",
+   "sides": "both",
+   "status": "FAIL",
+   "gates": {
+    "trades": true,
+    "meanR15": false,
+    "meanR23": false,
+    "halves": false,
+    "ex_best_coin": false
+   },
+   "stats": {
+    "n": 261,
+    "meanR7": -0.04951840568230688,
+    "meanR15": -0.05616916254122357,
+    "meanR23": -0.06281991940014028,
+    "sumR15": -14.660151423259352,
+    "n_early": 109,
+    "n_late": 152,
+    "meanR15_early": -0.07966275791782214,
+    "meanR15_late": -0.039321781646162776,
+    "best_coin": "ZECUSDT",
+    "best_coin_sumR15": 5.699943448794077,
+    "n_ex_best": 253,
+    "meanR15_ex_best": -0.08047468328874874,
+    "coins_traded": 31,
+    "coins_positive": 13,
+    "win_pct": 49.42528735632184,
+    "usd_15bp_at_8": -117.28121138607482
+   },
+   "raw_trades": 261,
+   "dropped_seasoning": 0,
+   "feasibility": {
+    "attempts": 272,
+    "executed": 272,
+    "rule_blocked": 0
+   },
+   "why": {
+    "stop": 139,
+    "time": 111,
+    "tp": 11
+   },
+   "per_coin": {
+    "1000PEPEUSDT": {
+     "n": 8,
+     "sumR15": 3.951
+    },
+    "AAVEUSDT": {
+     "n": 9,
+     "sumR15": -1.855
+    },
+    "APTUSDT": {
+     "n": 12,
+     "sumR15": -2.467
+    },
+    "ARBUSDT": {
+     "n": 8,
+     "sumR15": -0.88
+    },
+    "ARKUSDT": {
+     "n": 7,
+     "sumR15": 0.306
+    },
+    "BCHUSDT": {
+     "n": 8,
+     "sumR15": 1.419
+    },
+    "DOTUSDT": {
+     "n": 13,
+     "sumR15": -3.788
+    },
+    "ENAUSDT": {
+     "n": 7,
+     "sumR15": -0.911
+    },
+    "ENJUSDT": {
+     "n": 11,
+     "sumR15": 0.044
+    },
+    "ETCUSDT": {
+     "n": 8,
+     "sumR15": -3.069
+    },
+    "FETUSDT": {
+     "n": 9,
+     "sumR15": 2.794
+    },
+    "FILUSDT": {
+     "n": 13,
+     "sumR15": -5.475
+    },
+    "GALAUSDT": {
+     "n": 12,
+     "sumR15": 1.512
+    },
+    "INJUSDT": {
+     "n": 10,
+     "sumR15": 1.374
+    },
+    "LTCUSDT": {
+     "n": 10,
+     "sumR15": -2.461
+    },
+    "MANAUSDT": {
+     "n": 11,
+     "sumR15": -2.723
+    },
+    "MOVRUSDT": {
+     "n": 7,
+     "sumR15": -0.909
+    },
+    "NEARUSDT": {
+     "n": 8,
+     "sumR15": 0.817
+    },
+    "ONDOUSDT": {
+     "n": 3,
+     "sumR15": -0.82
+    },
+    "ONEUSDT": {
+     "n": 11,
+     "sumR15": -2.197
+    },
+    "QNTUSDT": {
+     "n": 8,
+     "sumR15": -2.666
+    },
+    "SANDUSDT": {
+     "n": 14,
+     "sumR15": -4.714
+    },
+    "STRKUSDT": {
+     "n": 4,
+     "sumR15": 2.005
+    },
+    "SUIUSDT": {
+     "n": 9,
+     "sumR15": 0.744
+    },
+    "SUPERUSDT": {
+     "n": 8,
+     "sumR15": 1.151
+    },
+    "TAOUSDT": {
+     "n": 1,
+     "sumR15": -0.073
+    },
+    "UNIUSDT": {
+     "n": 10,
+     "sumR15": -0.732
+    },
+    "WLDUSDT": {
+     "n": 7,
+     "sumR15": -1.481
+    },
+    "XLMUSDT": {
+     "n": 5,
+     "sumR15": 1.279
+    },
+    "ZECUSDT": {
+     "n": 8,
+     "sumR15": 5.7
+    },
+    "ZROUSDT": {
+     "n": 2,
+     "sumR15": -0.535
+    }
+   },
+   "long_n": 122,
+   "short_n": 139
+  },
+  {
+   "key": "cp_y2_breadth_thrust_1d",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "name": "[RESEARCH] CP-Y2 Breadth thrust daily",
+   "tf": "1d",
+   "sides": "both",
+   "status": "PASS",
+   "gates": {
+    "trades": true,
+    "meanR15": true,
+    "meanR23": true,
+    "halves": true,
+    "ex_best_coin": true
+   },
+   "stats": {
+    "n": 1042,
+    "meanR7": 0.13069158553676885,
+    "meanR15": 0.12184014452955398,
+    "meanR23": 0.11298870352233904,
+    "sumR15": 126.95743059979525,
+    "n_early": 430,
+    "n_late": 612,
+    "meanR15_early": 0.15745090239402257,
+    "meanR15_late": 0.09681951400386525,
+    "best_coin": "INJUSDT",
+    "best_coin_sumR15": 14.260320675515171,
+    "n_ex_best": 1006,
+    "meanR15_ex_best": 0.11202496016330028,
+    "coins_traded": 31,
+    "coins_positive": 25,
+    "win_pct": 54.510556621881,
+    "usd_15bp_at_8": 1015.659444798362
+   },
+   "raw_trades": 1042,
+   "dropped_seasoning": 0,
+   "feasibility": {
+    "attempts": 1059,
+    "executed": 1058,
+    "rule_blocked": 0
+   },
+   "why": {
+    "time": 516,
+    "stop": 429,
+    "tp": 97
+   },
+   "per_coin": {
+    "1000PEPEUSDT": {
+     "n": 30,
+     "sumR15": 13.727
+    },
+    "AAVEUSDT": {
+     "n": 42,
+     "sumR15": 8.077
+    },
+    "APTUSDT": {
+     "n": 37,
+     "sumR15": 1.224
+    },
+    "ARBUSDT": {
+     "n": 32,
+     "sumR15": 4.149
+    },
+    "ARKUSDT": {
+     "n": 24,
+     "sumR15": 5.031
+    },
+    "BCHUSDT": {
+     "n": 41,
+     "sumR15": 1.833
+    },
+    "DOTUSDT": {
+     "n": 39,
+     "sumR15": 6.13
+    },
+    "ENAUSDT": {
+     "n": 23,
+     "sumR15": 2.603
+    },
+    "ENJUSDT": {
+     "n": 38,
+     "sumR15": 10.107
+    },
+    "ETCUSDT": {
+     "n": 42,
+     "sumR15": -1.458
+    },
+    "FETUSDT": {
+     "n": 37,
+     "sumR15": -3.98
+    },
+    "FILUSDT": {
+     "n": 38,
+     "sumR15": -0.982
+    },
+    "GALAUSDT": {
+     "n": 38,
+     "sumR15": 2.715
+    },
+    "INJUSDT": {
+     "n": 36,
+     "sumR15": 14.26
+    },
+    "LTCUSDT": {
+     "n": 44,
+     "sumR15": -2.883
+    },
+    "MANAUSDT": {
+     "n": 41,
+     "sumR15": 10.315
+    },
+    "MOVRUSDT": {
+     "n": 21,
+     "sumR15": 0.492
+    },
+    "NEARUSDT": {
+     "n": 35,
+     "sumR15": 1.208
+    },
+    "ONDOUSDT": {
+     "n": 23,
+     "sumR15": 8.552
+    },
+    "ONEUSDT": {
+     "n": 39,
+     "sumR15": 3.887
+    },
+    "QNTUSDT": {
+     "n": 33,
+     "sumR15": 4.905
+    },
+    "SANDUSDT": {
+     "n": 39,
+     "sumR15": 0.754
+    },
+    "STRKUSDT": {
+     "n": 22,
+     "sumR15": 6.504
+    },
+    "SUIUSDT": {
+     "n": 30,
+     "sumR15": 2.072
+    },
+    "SUPERUSDT": {
+     "n": 23,
+     "sumR15": 8.063
+    },
+    "TAOUSDT": {
+     "n": 18,
+     "sumR15": -0.982
+    },
+    "UNIUSDT": {
+     "n": 48,
+     "sumR15": 4.846
+    },
+    "WLDUSDT": {
+     "n": 33,
+     "sumR15": 8.221
+    },
+    "XLMUSDT": {
+     "n": 37,
+     "sumR15": -0.193
+    },
+    "ZECUSDT": {
+     "n": 41,
+     "sumR15": 2.866
+    },
+    "ZROUSDT": {
+     "n": 18,
+     "sumR15": 4.892
+    }
+   },
+   "long_n": 585,
+   "short_n": 457
+  },
+  {
+   "key": "cp_y4_vol_feedback_short_1d",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "name": "[RESEARCH] CP-Y4 Volatility-feedback short daily",
+   "tf": "1d",
+   "sides": "short",
+   "status": "FAIL",
+   "gates": {
+    "trades": true,
+    "meanR15": false,
+    "meanR23": false,
+    "halves": false,
+    "ex_best_coin": false
+   },
+   "stats": {
+    "n": 261,
+    "meanR7": -0.154355950678616,
+    "meanR15": -0.16171131854374465,
+    "meanR23": -0.16906668640887326,
+    "sumR15": -42.206654139917354,
+    "n_early": 86,
+    "n_late": 175,
+    "meanR15_early": -0.2846342650598284,
+    "meanR15_late": -0.10130347054155489,
+    "best_coin": "ONDOUSDT",
+    "best_coin_sumR15": 2.0804417170336422,
+    "n_ex_best": 255,
+    "meanR15_ex_best": -0.17367488571353326,
+    "coins_traded": 31,
+    "coins_positive": 6,
+    "win_pct": 41.37931034482759,
+    "usd_15bp_at_8": -337.65323311933884
+   },
+   "raw_trades": 261,
+   "dropped_seasoning": 0,
+   "feasibility": {
+    "attempts": 261,
+    "executed": 261,
+    "rule_blocked": 0
+   },
+   "why": {
+    "time": 181,
+    "stop": 79,
+    "tp": 1
+   },
+   "per_coin": {
+    "1000PEPEUSDT": {
+     "n": 8,
+     "sumR15": -1.9
+    },
+    "AAVEUSDT": {
+     "n": 8,
+     "sumR15": -4.876
+    },
+    "APTUSDT": {
+     "n": 8,
+     "sumR15": -0.014
+    },
+    "ARBUSDT": {
+     "n": 12,
+     "sumR15": -0.174
+    },
+    "ARKUSDT": {
+     "n": 9,
+     "sumR15": -1.761
+    },
+    "BCHUSDT": {
+     "n": 13,
+     "sumR15": -3.855
+    },
+    "DOTUSDT": {
+     "n": 10,
+     "sumR15": -0.128
+    },
+    "ENAUSDT": {
+     "n": 8,
+     "sumR15": 1.648
+    },
+    "ENJUSDT": {
+     "n": 6,
+     "sumR15": -1.281
+    },
+    "ETCUSDT": {
+     "n": 7,
+     "sumR15": -0.838
+    },
+    "FETUSDT": {
+     "n": 6,
+     "sumR15": -3.483
+    },
+    "FILUSDT": {
+     "n": 8,
+     "sumR15": -3.153
+    },
+    "GALAUSDT": {
+     "n": 12,
+     "sumR15": 0.095
+    },
+    "INJUSDT": {
+     "n": 9,
+     "sumR15": -2.524
+    },
+    "LTCUSDT": {
+     "n": 8,
+     "sumR15": -0.525
+    },
+    "MANAUSDT": {
+     "n": 8,
+     "sumR15": -2.606
+    },
+    "MOVRUSDT": {
+     "n": 2,
+     "sumR15": 1.367
+    },
+    "NEARUSDT": {
+     "n": 11,
+     "sumR15": -2.442
+    },
+    "ONDOUSDT": {
+     "n": 6,
+     "sumR15": 2.08
+    },
+    "ONEUSDT": {
+     "n": 11,
+     "sumR15": 1.236
+    },
+    "QNTUSDT": {
+     "n": 11,
+     "sumR15": -0.774
+    },
+    "SANDUSDT": {
+     "n": 8,
+     "sumR15": -0.491
+    },
+    "STRKUSDT": {
+     "n": 10,
+     "sumR15": -1.325
+    },
+    "SUIUSDT": {
+     "n": 10,
+     "sumR15": -3.501
+    },
+    "SUPERUSDT": {
+     "n": 7,
+     "sumR15": -2.96
+    },
+    "TAOUSDT": {
+     "n": 8,
+     "sumR15": -3.966
+    },
+    "UNIUSDT": {
+     "n": 7,
+     "sumR15": -3.429
+    },
+    "WLDUSDT": {
+     "n": 7,
+     "sumR15": -1.269
+    },
+    "XLMUSDT": {
+     "n": 11,
+     "sumR15": -0.743
+    },
+    "ZECUSDT": {
+     "n": 5,
+     "sumR15": 0.348
+    },
+    "ZROUSDT": {
+     "n": 7,
+     "sumR15": -0.965
+    }
+   },
+   "long_n": 0,
+   "short_n": 261
+  },
+  {
+   "key": "cp_z2_trend_tstat_1h",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "name": "[RESEARCH] CP-Z2 Regression t-stat trend 1h",
+   "tf": "1h",
+   "sides": "both",
+   "status": "FAIL",
+   "gates": {
+    "trades": true,
+    "meanR15": true,
+    "meanR23": false,
+    "halves": false,
+    "ex_best_coin": true
+   },
+   "stats": {
+    "n": 11641,
+    "meanR7": 0.050743368619766416,
+    "meanR15": 0.007480592356773217,
+    "meanR23": -0.03578218390621996,
+    "sumR15": 87.08157562519702,
+    "n_early": 5016,
+    "n_late": 6625,
+    "meanR15_early": -0.060467557872307495,
+    "meanR15_late": 0.05892631636417986,
+    "best_coin": "FETUSDT",
+    "best_coin_sumR15": 50.16570603347904,
+    "n_ex_best": 11262,
+    "meanR15_ex_best": 0.0032779141885737988,
+    "coins_traded": 31,
+    "coins_positive": 18,
+    "win_pct": 40.70097070698394,
+    "usd_15bp_at_8": 696.6526050015761
+   },
+   "raw_trades": 11754,
+   "dropped_seasoning": 113,
+   "feasibility": {
+    "attempts": 11768,
+    "executed": 11768,
+    "rule_blocked": 0
+   },
+   "why": {
+    "time": 5576,
+    "stop": 5417,
+    "tp": 648
+   },
+   "per_coin": {
+    "1000PEPEUSDT": {
+     "n": 348,
+     "sumR15": 29.826
+    },
+    "AAVEUSDT": {
+     "n": 449,
+     "sumR15": -34.33
+    },
+    "APTUSDT": {
+     "n": 405,
+     "sumR15": -6.037
+    },
+    "ARBUSDT": {
+     "n": 367,
+     "sumR15": 22.37
+    },
+    "ARKUSDT": {
+     "n": 318,
+     "sumR15": -10.35
+    },
+    "BCHUSDT": {
+     "n": 453,
+     "sumR15": -70.711
+    },
+    "DOTUSDT": {
+     "n": 425,
+     "sumR15": 17.18
+    },
+    "ENAUSDT": {
+     "n": 239,
+     "sumR15": 42.153
+    },
+    "ENJUSDT": {
+     "n": 427,
+     "sumR15": 8.725
+    },
+    "ETCUSDT": {
+     "n": 448,
+     "sumR15": -77.759
+    },
+    "FETUSDT": {
+     "n": 379,
+     "sumR15": 50.166
+    },
+    "FILUSDT": {
+     "n": 431,
+     "sumR15": -15.735
+    },
+    "GALAUSDT": {
+     "n": 425,
+     "sumR15": 46.242
+    },
+    "INJUSDT": {
+     "n": 416,
+     "sumR15": 24.481
+    },
+    "LTCUSDT": {
+     "n": 433,
+     "sumR15": -55.449
+    },
+    "MANAUSDT": {
+     "n": 420,
+     "sumR15": -12.216
+    },
+    "MOVRUSDT": {
+     "n": 274,
+     "sumR15": -8.75
+    },
+    "NEARUSDT": {
+     "n": 409,
+     "sumR15": 45.952
+    },
+    "ONDOUSDT": {
+     "n": 284,
+     "sumR15": -5.088
+    },
+    "ONEUSDT": {
+     "n": 428,
+     "sumR15": 22.798
+    },
+    "QNTUSDT": {
+     "n": 415,
+     "sumR15": -37.493
+    },
+    "SANDUSDT": {
+     "n": 432,
+     "sumR15": 37.928
+    },
+    "STRKUSDT": {
+     "n": 265,
+     "sumR15": 17.96
+    },
+    "SUIUSDT": {
+     "n": 357,
+     "sumR15": 17.004
+    },
+    "SUPERUSDT": {
+     "n": 287,
+     "sumR15": 0.968
+    },
+    "TAOUSDT": {
+     "n": 248,
+     "sumR15": 34.653
+    },
+    "UNIUSDT": {
+     "n": 448,
+     "sumR15": 0.624
+    },
+    "WLDUSDT": {
+     "n": 304,
+     "sumR15": 24.003
+    },
+    "XLMUSDT": {
+     "n": 436,
+     "sumR15": -27.156
+    },
+    "ZECUSDT": {
+     "n": 433,
+     "sumR15": -1.636
+    },
+    "ZROUSDT": {
+     "n": 238,
+     "sumR15": 6.76
+    }
+   },
+   "long_n": 5147,
+   "short_n": 6494
+  },
+  {
+   "key": "cp_z4_psar_adx_1h",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "name": "[RESEARCH] CP-Z4 Parabolic SAR flip with ADX 1h",
+   "tf": "1h",
+   "sides": "both",
+   "status": "FAIL",
+   "gates": {
+    "trades": true,
+    "meanR15": false,
+    "meanR23": false,
+    "halves": false,
+    "ex_best_coin": false
+   },
+   "stats": {
+    "n": 9962,
+    "meanR7": -0.007610970766583975,
+    "meanR15": -0.048095187814451996,
+    "meanR23": -0.08857940486232001,
+    "sumR15": -479.1242610075708,
+    "n_early": 4253,
+    "n_late": 5709,
+    "meanR15_early": -0.04214440492695591,
+    "meanR15_late": -0.05252830738364464,
+    "best_coin": "WLDUSDT",
+    "best_coin_sumR15": 23.087009733143105,
+    "n_ex_best": 9675,
+    "meanR15_ex_best": -0.05190814167862676,
+    "coins_traded": 31,
+    "coins_positive": 8,
+    "win_pct": 40.55410560128488,
+    "usd_15bp_at_8": -3832.9940880605664
+   },
+   "raw_trades": 10069,
+   "dropped_seasoning": 107,
+   "feasibility": {
+    "attempts": 10075,
+    "executed": 10075,
+    "rule_blocked": 0
+   },
+   "why": {
+    "time": 4992,
+    "stop": 4209,
+    "tp": 761
+   },
+   "per_coin": {
+    "1000PEPEUSDT": {
+     "n": 291,
+     "sumR15": -3.942
+    },
+    "AAVEUSDT": {
+     "n": 360,
+     "sumR15": -46.517
+    },
+    "APTUSDT": {
+     "n": 356,
+     "sumR15": -35.382
+    },
+    "ARBUSDT": {
+     "n": 306,
+     "sumR15": -9.556
+    },
+    "ARKUSDT": {
+     "n": 278,
+     "sumR15": -13.841
+    },
+    "BCHUSDT": {
+     "n": 363,
+     "sumR15": -56.174
+    },
+    "DOTUSDT": {
+     "n": 370,
+     "sumR15": -20.047
+    },
+    "ENAUSDT": {
+     "n": 215,
+     "sumR15": -6.434
+    },
+    "ENJUSDT": {
+     "n": 373,
+     "sumR15": 4.396
+    },
+    "ETCUSDT": {
+     "n": 391,
+     "sumR15": -31.902
+    },
+    "FETUSDT": {
+     "n": 321,
+     "sumR15": 11.684
+    },
+    "FILUSDT": {
+     "n": 378,
+     "sumR15": -35.485
+    },
+    "GALAUSDT": {
+     "n": 357,
+     "sumR15": 2.654
+    },
+    "INJUSDT": {
+     "n": 381,
+     "sumR15": 10.652
+    },
+    "LTCUSDT": {
+     "n": 362,
+     "sumR15": -48.809
+    },
+    "MANAUSDT": {
+     "n": 386,
+     "sumR15": -26.382
+    },
+    "MOVRUSDT": {
+     "n": 233,
+     "sumR15": 19.352
+    },
+    "NEARUSDT": {
+     "n": 386,
+     "sumR15": 10.541
+    },
+    "ONDOUSDT": {
+     "n": 241,
+     "sumR15": -4.413
+    },
+    "ONEUSDT": {
+     "n": 373,
+     "sumR15": -14.762
+    },
+    "QNTUSDT": {
+     "n": 320,
+     "sumR15": -58.097
+    },
+    "SANDUSDT": {
+     "n": 398,
+     "sumR15": -25.085
+    },
+    "STRKUSDT": {
+     "n": 239,
+     "sumR15": -8.071
+    },
+    "SUIUSDT": {
+     "n": 295,
+     "sumR15": -31.808
+    },
+    "SUPERUSDT": {
+     "n": 255,
+     "sumR15": 8.8
+    },
+    "TAOUSDT": {
+     "n": 215,
+     "sumR15": -5.607
+    },
+    "UNIUSDT": {
+     "n": 353,
+     "sumR15": -14.226
+    },
+    "WLDUSDT": {
+     "n": 287,
+     "sumR15": 23.087
+    },
+    "XLMUSDT": {
+     "n": 351,
+     "sumR15": -38.545
+    },
+    "ZECUSDT": {
+     "n": 342,
+     "sumR15": -19.785
+    },
+    "ZROUSDT": {
+     "n": 186,
+     "sumR15": -15.42
+    }
+   },
+   "long_n": 4409,
+   "short_n": 5553
+  },
+  {
+   "key": "cp_v1_value_area_reentry_1h",
+   "source": "cp345",
+   "commit": "646ab3fa1be92614998905e6ab3497ab03a7d382",
+   "name": "[RESEARCH] CP-V1 Value-area re-entry (80% rule) 1h",
+   "tf": "1h",
+   "sides": "both",
+   "status": "FAIL",
+   "gates": {
+    "trades": true,
+    "meanR15": false,
+    "meanR23": false,
+    "halves": false,
+    "ex_best_coin": false
+   },
+   "stats": {
+    "n": 18172,
+    "meanR7": -0.06512340767833735,
+    "meanR15": -0.10811110663636025,
+    "meanR23": -0.15109880559438318,
+    "sumR15": -1964.5950297959387,
+    "n_early": 7772,
+    "n_late": 10400,
+    "meanR15_early": -0.11758305863576043,
+    "meanR15_late": -0.10103264404603929,
+    "best_coin": "INJUSDT",
+    "best_coin_sumR15": -4.254112190314216,
+    "n_ex_best": 17508,
+    "meanR15_ex_best": -0.11196829549952163,
+    "coins_traded": 31,
+    "coins_positive": 0,
+    "win_pct": 44.15034118423949,
+    "usd_15bp_at_8": -15716.76023836751
+   },
+   "raw_trades": 18344,
+   "dropped_seasoning": 172,
+   "feasibility": {
+    "attempts": 18360,
+    "executed": 18360,
+    "rule_blocked": 0
+   },
+   "why": {
+    "time": 10435,
+    "stop": 6266,
+    "tp": 1471
+   },
+   "per_coin": {
+    "1000PEPEUSDT": {
+     "n": 574,
+     "sumR15": -80.393
+    },
+    "AAVEUSDT": {
+     "n": 666,
+     "sumR15": -79.668
+    },
+    "APTUSDT": {
+     "n": 645,
+     "sumR15": -97.186
+    },
+    "ARBUSDT": {
+     "n": 573,
+     "sumR15": -86.953
+    },
+    "ARKUSDT": {
+     "n": 472,
+     "sumR15": -25.645
+    },
+    "BCHUSDT": {
+     "n": 665,
+     "sumR15": -59.763
+    },
+    "DOTUSDT": {
+     "n": 675,
+     "sumR15": -72.623
+    },
+    "ENAUSDT": {
+     "n": 382,
+     "sumR15": -26.328
+    },
+    "ENJUSDT": {
+     "n": 669,
+     "sumR15": -64.856
+    },
+    "ETCUSDT": {
+     "n": 651,
+     "sumR15": -78.648
+    },
+    "FETUSDT": {
+     "n": 601,
+     "sumR15": -111.125
+    },
+    "FILUSDT": {
+     "n": 667,
+     "sumR15": -70.091
+    },
+    "GALAUSDT": {
+     "n": 669,
+     "sumR15": -57.522
+    },
+    "INJUSDT": {
+     "n": 664,
+     "sumR15": -4.254
+    },
+    "LTCUSDT": {
+     "n": 672,
+     "sumR15": -63.542
+    },
+    "MANAUSDT": {
+     "n": 684,
+     "sumR15": -68.763
+    },
+    "MOVRUSDT": {
+     "n": 460,
+     "sumR15": -56.014
+    },
+    "NEARUSDT": {
+     "n": 652,
+     "sumR15": -82.163
+    },
+    "ONDOUSDT": {
+     "n": 429,
+     "sumR15": -30.994
+    },
+    "ONEUSDT": {
+     "n": 673,
+     "sumR15": -75.644
+    },
+    "QNTUSDT": {
+     "n": 651,
+     "sumR15": -82.342
+    },
+    "SANDUSDT": {
+     "n": 669,
+     "sumR15": -73.427
+    },
+    "STRKUSDT": {
+     "n": 420,
+     "sumR15": -22.718
+    },
+    "SUIUSDT": {
+     "n": 554,
+     "sumR15": -41.923
+    },
+    "SUPERUSDT": {
+     "n": 461,
+     "sumR15": -49.995
+    },
+    "TAOUSDT": {
+     "n": 388,
+     "sumR15": -38.191
+    },
+    "UNIUSDT": {
+     "n": 659,
+     "sumR15": -68.509
+    },
+    "WLDUSDT": {
+     "n": 507,
+     "sumR15": -74.102
+    },
+    "XLMUSDT": {
+     "n": 687,
+     "sumR15": -112.467
+    },
+    "ZECUSDT": {
+     "n": 641,
+     "sumR15": -41.481
+    },
+    "ZROUSDT": {
+     "n": 392,
+     "sumR15": -67.265
+    }
+   },
+   "long_n": 9312,
+   "short_n": 8860
+  }
+ ]
+}
