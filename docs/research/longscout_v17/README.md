@@ -25,3 +25,7 @@ Diagnostics written after the result, NOT gates:
   overlap r6 in an account. 1 more pass in 87 candidates; a lead only for Codex reproduction.
 
 Running total LONGSCOUT V1-V17: 87 candidates, 3 screen passes (r6 reproduced by Codex; s16 weak; r17 thin on fresh coins).
+
+Codex review (#347 comment 6875668363, evidence 72ca9f06): r17 independently reproduced (all 40 orders). Not literally r6
+(exact tuple Jaccard 1.15%) but related exposure (sides agree 70.7% when both hold). Decision: research lead kept behind r6,
+not a second canary; any later proposal needs venue/cost fit and preregistered paired future evidence.

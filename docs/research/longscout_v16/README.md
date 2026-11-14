@@ -26,3 +26,8 @@ Diagnostics written after the result, NOT gates (nothing is changed by them):
   reading. It is a lead only for Codex reproduction; no PAPER, no account change proposed.
 
 Running total LONGSCOUT V1-V16: 83 candidates, 2 screen passes (r6_regime_flip_4h reproduced by Codex; s16 new, weak).
+
+Codex review (#347 comment 6875668363, evidence 72ca9f06): s16 independently reproduced (signals, order-0 trades and cash).
+Decision: RECORD ONLY, no PAPER. Caveat recorded for any future admission guard, frozen alpha unchanged: if the next UTC day
+is incomplete (missing bars), the last completed inside-day level carries forward into it; none of the pinned 165 inputs
+has such a gap, so the reported economics stand.
