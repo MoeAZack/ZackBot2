@@ -127,3 +127,17 @@ def test_v4_signals_use_no_future_bars(key):
             assert (part[k] == full[k][:cut]).all(), (key, k, cut)
         if 'atr' in full:
             np.testing.assert_allclose(part['atr'], full['atr'][:cut], equal_nan=True)
+
+
+import longscout_v5 as L5
+L5.register()
+
+
+@pytest.mark.parametrize('key', sorted(L5.CANDIDATES))
+def test_v5_signals_use_no_future_bars(key):
+    coin, btc = _mk(2600, '4h', 41), _mk(2600, '4h', 42)
+    full = _sig(key, coin, btc)
+    for cut in (1300, 2563, 2599):
+        part = _sig(key, coin.iloc[:cut].reset_index(drop=True), btc.iloc[:cut].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:cut]).all(), (key, k, cut)
