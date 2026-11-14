@@ -1,0 +1,930 @@
+{
+ "all": {
+  "mean_r": 0.264,
+  "n": 4125,
+  "net_r": 1090.62,
+  "pf": 1.62,
+  "win": 0.335
+ },
+ "files": {
+  "1000PEPEUSDT": "c9847a9d2f13bd8197cbbaa5e1568c74c1c70dd04d1c3bedc64815e4edb671f5",
+  "ADAUSDT": "4298f681a022aeb4fffa0117d20220cfcbfa75a7a3d4ef47a0746fc1c3e893d2",
+  "AVAXUSDT": "7294bb828e7289245a30b6f3d08e311549637cb0c4fed4876826816c239100bb",
+  "BNBUSDT": "de44454945d40e0175c0e2ab20685706bfebd2bf19b577d4a1b62ca3251037b0",
+  "BTCUSDT": "9d22e344e2902cfdb3cf2d0c9c97537461b9734f290146f063b4b717b1d085cc",
+  "DOGEUSDT": "9c12e5b6d3abf2f78187a02714eb84e89ce7e9d6daefc5ab31043e0d43628229",
+  "ENAUSDT": "ee0d1d565da6a5561e1553486d095957ac892f7a2a9159a95c9f793696351fc9",
+  "ETHUSDT": "6926284556e3ab36bd0dc2590089c54b4c3c5d5b113ded47fa0e441e779d39a5",
+  "LINKUSDT": "88bc362c86f3d1764e79ab9dfba55d76a8a51d8aa6516f04a490331317b55bb9",
+  "LSKUSDT": "d18be55c08961dbfd3f26e607d1b5eeae9eb9b99dc6e0ba43fc02c4cc5e962fd",
+  "NEARUSDT": "dcac6a4bf6545a4a3f4475e3d5e5cd169f872a67c1897c6790f6ca6389b952a0",
+  "QNTUSDT": "9f511cd6122fd51560c14bb615968589afdad4a0f2cb94c74894805435322651",
+  "SOLUSDT": "ecd941354c019ae39b61e291f7f823d7a32a168d0d15e698d44cdcb0cc21442a",
+  "SUIUSDT": "5f3784b2a3915ee07865057dcf90b5235570af5d4a2fcb46faa4e2ec0519e2fd",
+  "UNIUSDT": "528135eac251db07fd77028d7cff522fafc98a2b8dfc8995fe89459954e40cde",
+  "WLDUSDT": "8b28db84d47764c0ae8b8a353af9e4a3577daaa5a55ffe7c91c0be71ce302fb0",
+  "XRPUSDT": "206f0214f73b4b323642ee64cd436538493a5ba2cf16b0489d0bf7bcb402d1de",
+  "ZECUSDT": "e9ee680ef1615bb9961d2ed0d81c62643b7b5ee00d9e645612ba4fca30013ef6"
+ },
+ "n": 3,
+ "n_trades": 4125,
+ "per_hyp": {
+  "breakout_pyramid.long": {
+   "align": {
+    "counter": {
+     "mean_r": -0.187,
+     "n": 10,
+     "net_r": -1.87,
+     "pf": 0.68,
+     "win": 0.3
+    },
+    "none": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "with": {
+     "mean_r": 0.918,
+     "n": 355,
+     "net_r": 326.04,
+     "pf": 2.53,
+     "win": 0.268
+    }
+   },
+   "all": {
+    "mean_r": 0.888,
+    "n": 365,
+    "net_r": 324.16,
+    "pf": 2.48,
+    "win": 0.268
+   },
+   "zone": {
+    "beyond_against": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "beyond_with": {
+     "mean_r": 0.913,
+     "n": 356,
+     "net_r": 325.01,
+     "pf": 2.52,
+     "win": 0.267
+    },
+    "inside": {
+     "mean_r": -0.094,
+     "n": 9,
+     "net_r": -0.85,
+     "pf": 0.83,
+     "win": 0.333
+    },
+    "n/a": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    }
+   }
+  },
+  "donchian_ens.long": {
+   "align": {
+    "counter": {
+     "mean_r": -0.467,
+     "n": 1,
+     "net_r": -0.47,
+     "pf": 0.0,
+     "win": 0.0
+    },
+    "none": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "with": {
+     "mean_r": 0.516,
+     "n": 290,
+     "net_r": 149.62,
+     "pf": 2.16,
+     "win": 0.331
+    }
+   },
+   "all": {
+    "mean_r": 0.513,
+    "n": 291,
+    "net_r": 149.16,
+    "pf": 2.15,
+    "win": 0.33
+   },
+   "zone": {
+    "beyond_against": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "beyond_with": {
+     "mean_r": 0.513,
+     "n": 291,
+     "net_r": 149.16,
+     "pf": 2.15,
+     "win": 0.33
+    },
+    "inside": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "n/a": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    }
+   }
+  },
+  "donchian_ens.short": {
+   "align": {
+    "counter": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "none": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "with": {
+     "mean_r": 0.12,
+     "n": 233,
+     "net_r": 27.97,
+     "pf": 1.33,
+     "win": 0.429
+    }
+   },
+   "all": {
+    "mean_r": 0.12,
+    "n": 233,
+    "net_r": 27.97,
+    "pf": 1.33,
+    "win": 0.429
+   },
+   "zone": {
+    "beyond_against": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "beyond_with": {
+     "mean_r": 0.12,
+     "n": 233,
+     "net_r": 27.97,
+     "pf": 1.33,
+     "win": 0.429
+    },
+    "inside": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "n/a": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    }
+   }
+  },
+  "ema_mom.long": {
+   "align": {
+    "counter": {
+     "mean_r": -0.053,
+     "n": 17,
+     "net_r": -0.91,
+     "pf": 0.82,
+     "win": 0.235
+    },
+    "none": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "with": {
+     "mean_r": 0.713,
+     "n": 143,
+     "net_r": 102.0,
+     "pf": 3.09,
+     "win": 0.364
+    }
+   },
+   "all": {
+    "mean_r": 0.632,
+    "n": 160,
+    "net_r": 101.09,
+    "pf": 2.87,
+    "win": 0.35
+   },
+   "zone": {
+    "beyond_against": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "beyond_with": {
+     "mean_r": 0.855,
+     "n": 122,
+     "net_r": 104.31,
+     "pf": 3.53,
+     "win": 0.377
+    },
+    "inside": {
+     "mean_r": -0.085,
+     "n": 38,
+     "net_r": -3.21,
+     "pf": 0.75,
+     "win": 0.263
+    },
+    "n/a": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    }
+   }
+  },
+  "ema_st.long": {
+   "align": {
+    "counter": {
+     "mean_r": 0.543,
+     "n": 15,
+     "net_r": 8.15,
+     "pf": 1.97,
+     "win": 0.2
+    },
+    "none": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "with": {
+     "mean_r": 0.436,
+     "n": 166,
+     "net_r": 72.4,
+     "pf": 1.72,
+     "win": 0.283
+    }
+   },
+   "all": {
+    "mean_r": 0.445,
+    "n": 181,
+    "net_r": 80.54,
+    "pf": 1.74,
+    "win": 0.276
+   },
+   "zone": {
+    "beyond_against": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "beyond_with": {
+     "mean_r": 0.475,
+     "n": 145,
+     "net_r": 68.88,
+     "pf": 1.77,
+     "win": 0.303
+    },
+    "inside": {
+     "mean_r": 0.324,
+     "n": 36,
+     "net_r": 11.66,
+     "pf": 1.58,
+     "win": 0.167
+    },
+    "n/a": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    }
+   }
+  },
+  "exp_breakout.long": {
+   "align": {
+    "counter": {
+     "mean_r": -0.317,
+     "n": 19,
+     "net_r": -6.02,
+     "pf": 0.53,
+     "win": 0.158
+    },
+    "none": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "with": {
+     "mean_r": 0.155,
+     "n": 567,
+     "net_r": 87.91,
+     "pf": 1.28,
+     "win": 0.328
+    }
+   },
+   "all": {
+    "mean_r": 0.14,
+    "n": 586,
+    "net_r": 81.89,
+    "pf": 1.25,
+    "win": 0.323
+   },
+   "zone": {
+    "beyond_against": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "beyond_with": {
+     "mean_r": 0.148,
+     "n": 567,
+     "net_r": 83.92,
+     "pf": 1.26,
+     "win": 0.326
+    },
+    "inside": {
+     "mean_r": -0.107,
+     "n": 19,
+     "net_r": -2.04,
+     "pf": 0.83,
+     "win": 0.211
+    },
+    "n/a": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    }
+   }
+  },
+  "exp_trend.long": {
+   "align": {
+    "counter": {
+     "mean_r": -0.094,
+     "n": 17,
+     "net_r": -1.59,
+     "pf": 0.69,
+     "win": 0.235
+    },
+    "none": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "with": {
+     "mean_r": 0.378,
+     "n": 154,
+     "net_r": 58.28,
+     "pf": 2.16,
+     "win": 0.383
+    }
+   },
+   "all": {
+    "mean_r": 0.332,
+    "n": 171,
+    "net_r": 56.69,
+    "pf": 2.02,
+    "win": 0.368
+   },
+   "zone": {
+    "beyond_against": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "beyond_with": {
+     "mean_r": 0.452,
+     "n": 131,
+     "net_r": 59.26,
+     "pf": 2.4,
+     "win": 0.397
+    },
+    "inside": {
+     "mean_r": -0.064,
+     "n": 40,
+     "net_r": -2.57,
+     "pf": 0.8,
+     "win": 0.275
+    },
+    "n/a": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    }
+   }
+  },
+  "hot_coin.long": {
+   "align": {
+    "counter": {
+     "mean_r": -0.114,
+     "n": 1,
+     "net_r": -0.11,
+     "pf": 0.0,
+     "win": 0.0
+    },
+    "none": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "with": {
+     "mean_r": 0.214,
+     "n": 393,
+     "net_r": 84.02,
+     "pf": 1.5,
+     "win": 0.377
+    }
+   },
+   "all": {
+    "mean_r": 0.213,
+    "n": 394,
+    "net_r": 83.9,
+    "pf": 1.5,
+    "win": 0.376
+   },
+   "zone": {
+    "beyond_against": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "beyond_with": {
+     "mean_r": 0.214,
+     "n": 393,
+     "net_r": 84.02,
+     "pf": 1.5,
+     "win": 0.377
+    },
+    "inside": {
+     "mean_r": -0.114,
+     "n": 1,
+     "net_r": -0.11,
+     "pf": 0.0,
+     "win": 0.0
+    },
+    "n/a": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    }
+   }
+  },
+  "pullback_rsi.long": {
+   "align": {
+    "counter": {
+     "mean_r": 0.115,
+     "n": 241,
+     "net_r": 27.78,
+     "pf": 1.25,
+     "win": 0.548
+    },
+    "none": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "with": {
+     "mean_r": -0.073,
+     "n": 27,
+     "net_r": -1.97,
+     "pf": 0.87,
+     "win": 0.444
+    }
+   },
+   "all": {
+    "mean_r": 0.096,
+    "n": 268,
+    "net_r": 25.81,
+    "pf": 1.2,
+    "win": 0.537
+   },
+   "zone": {
+    "beyond_against": {
+     "mean_r": 0.128,
+     "n": 108,
+     "net_r": 13.81,
+     "pf": 1.27,
+     "win": 0.546
+    },
+    "beyond_with": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "inside": {
+     "mean_r": 0.075,
+     "n": 160,
+     "net_r": 12.0,
+     "pf": 1.16,
+     "win": 0.531
+    },
+    "n/a": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    }
+   }
+  },
+  "rotation.long": {
+   "align": {
+    "counter": {
+     "mean_r": 0.029,
+     "n": 394,
+     "net_r": 11.56,
+     "pf": 1.16,
+     "win": 0.175
+    },
+    "none": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "with": {
+     "mean_r": 0.153,
+     "n": 464,
+     "net_r": 71.05,
+     "pf": 1.56,
+     "win": 0.248
+    }
+   },
+   "all": {
+    "mean_r": 0.096,
+    "n": 858,
+    "net_r": 82.61,
+    "pf": 1.41,
+    "win": 0.214
+   },
+   "zone": {
+    "beyond_against": {
+     "mean_r": 0.046,
+     "n": 53,
+     "net_r": 2.44,
+     "pf": 1.27,
+     "win": 0.189
+    },
+    "beyond_with": {
+     "mean_r": 0.116,
+     "n": 204,
+     "net_r": 23.6,
+     "pf": 1.34,
+     "win": 0.255
+    },
+    "inside": {
+     "mean_r": 0.094,
+     "n": 601,
+     "net_r": 56.57,
+     "pf": 1.47,
+     "win": 0.203
+    },
+    "n/a": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    }
+   }
+  },
+  "squeeze_tp.long": {
+   "align": {
+    "counter": {
+     "mean_r": -0.465,
+     "n": 18,
+     "net_r": -8.36,
+     "pf": 0.39,
+     "win": 0.222
+    },
+    "none": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "with": {
+     "mean_r": 0.167,
+     "n": 273,
+     "net_r": 45.65,
+     "pf": 1.36,
+     "win": 0.399
+    }
+   },
+   "all": {
+    "mean_r": 0.128,
+    "n": 291,
+    "net_r": 37.29,
+    "pf": 1.26,
+    "win": 0.388
+   },
+   "zone": {
+    "beyond_against": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "beyond_with": {
+     "mean_r": 0.124,
+     "n": 249,
+     "net_r": 30.85,
+     "pf": 1.25,
+     "win": 0.373
+    },
+    "inside": {
+     "mean_r": 0.153,
+     "n": 42,
+     "net_r": 6.44,
+     "pf": 1.32,
+     "win": 0.476
+    },
+    "n/a": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    }
+   }
+  },
+  "squeeze_tp.short": {
+   "align": {
+    "counter": {
+     "mean_r": -0.478,
+     "n": 18,
+     "net_r": -8.6,
+     "pf": 0.26,
+     "win": 0.278
+    },
+    "none": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "with": {
+     "mean_r": 0.156,
+     "n": 309,
+     "net_r": 48.11,
+     "pf": 1.36,
+     "win": 0.437
+    }
+   },
+   "all": {
+    "mean_r": 0.121,
+    "n": 327,
+    "net_r": 39.5,
+    "pf": 1.27,
+    "win": 0.428
+   },
+   "zone": {
+    "beyond_against": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    },
+    "beyond_with": {
+     "mean_r": 0.135,
+     "n": 264,
+     "net_r": 35.77,
+     "pf": 1.3,
+     "win": 0.432
+    },
+    "inside": {
+     "mean_r": 0.059,
+     "n": 63,
+     "net_r": 3.73,
+     "pf": 1.14,
+     "win": 0.413
+    },
+    "n/a": {
+     "mean_r": null,
+     "n": 0,
+     "net_r": 0.0,
+     "pf": null,
+     "win": null
+    }
+   }
+  }
+ },
+ "pooled": {
+  "align": {
+   "counter": {
+    "mean_r": 0.026,
+    "n": 751,
+    "net_r": 19.55,
+    "pf": 1.08,
+    "win": 0.302
+   },
+   "none": {
+    "mean_r": null,
+    "n": 0,
+    "net_r": 0.0,
+    "pf": null,
+    "win": null
+   },
+   "with": {
+    "mean_r": 0.317,
+    "n": 3374,
+    "net_r": 1071.07,
+    "pf": 1.71,
+    "win": 0.342
+   }
+  },
+  "aligned_event": {
+   "-": {
+    "mean_r": 0.026,
+    "n": 751,
+    "net_r": 19.55,
+    "pf": 1.08,
+    "win": 0.302
+   },
+   "BOS": {
+    "mean_r": 0.429,
+    "n": 1554,
+    "net_r": 666.48,
+    "pf": 1.95,
+    "win": 0.353
+   },
+   "MSS": {
+    "mean_r": 0.222,
+    "n": 1820,
+    "net_r": 404.59,
+    "pf": 1.49,
+    "win": 0.332
+   }
+  },
+  "event_age": {
+   "fresh<=6": {
+    "mean_r": 0.296,
+    "n": 3252,
+    "net_r": 963.56,
+    "pf": 1.65,
+    "win": 0.345
+   },
+   "n/a": {
+    "mean_r": null,
+    "n": 0,
+    "net_r": 0.0,
+    "pf": null,
+    "win": null
+   },
+   "old>6": {
+    "mean_r": 0.146,
+    "n": 873,
+    "net_r": 127.06,
+    "pf": 1.44,
+    "win": 0.296
+   }
+  },
+  "ext_dist": {
+   "<=1ATR": {
+    "mean_r": 0.121,
+    "n": 1429,
+    "net_r": 172.26,
+    "pf": 1.25,
+    "win": 0.314
+   },
+   ">1ATR": {
+    "mean_r": 0.538,
+    "n": 1526,
+    "net_r": 820.48,
+    "pf": 2.17,
+    "win": 0.378
+   },
+   "n/a": {
+    "mean_r": 0.084,
+    "n": 1170,
+    "net_r": 97.88,
+    "pf": 1.27,
+    "win": 0.304
+   }
+  },
+  "zone": {
+   "beyond_against": {
+    "mean_r": 0.101,
+    "n": 161,
+    "net_r": 16.25,
+    "pf": 1.27,
+    "win": 0.429
+   },
+   "beyond_with": {
+    "mean_r": 0.336,
+    "n": 2955,
+    "net_r": 992.74,
+    "pf": 1.71,
+    "win": 0.347
+   },
+   "inside": {
+    "mean_r": 0.081,
+    "n": 1009,
+    "net_r": 81.63,
+    "pf": 1.26,
+    "win": 0.284
+   },
+   "n/a": {
+    "mean_r": null,
+    "n": 0,
+    "net_r": 0.0,
+    "pf": null,
+    "win": null
+   }
+  }
+ },
+ "strat_beyond_with_minus_inside": {
+  "diff_mean_r": 0.189,
+  "hyps": [
+   "breakout_pyramid.long",
+   "ema_mom.long",
+   "ema_st.long",
+   "exp_breakout.long",
+   "exp_trend.long",
+   "rotation.long",
+   "squeeze_tp.long",
+   "squeeze_tp.short"
+  ]
+ },
+ "strat_with_minus_counter": {
+  "diff_mean_r": 0.233,
+  "hyps": [
+   "breakout_pyramid.long",
+   "ema_mom.long",
+   "ema_st.long",
+   "exp_breakout.long",
+   "exp_trend.long",
+   "pullback_rsi.long",
+   "rotation.long",
+   "squeeze_tp.long",
+   "squeeze_tp.short"
+  ]
+ },
+ "t_inside_vs_beyond_with": -2.82,
+ "t_with_vs_counter": 3.56
+}
