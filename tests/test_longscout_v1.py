@@ -672,3 +672,70 @@ def test_v25_incomplete_previous_day_blocks_day_entries():
     out = L25._ha_flip(drop, dict(run=3), True)
     j = int(np.flatnonzero(pd.to_datetime(drop.t).values == t.values[i])[0])
     assert not out[j]
+
+
+import longscout_v26 as L26
+L26.register()
+
+
+def _ms(df):
+    return df.assign(t=pd.to_datetime(df.t).astype('datetime64[ms]'))     # the real loader yields datetime64[ms]
+
+
+@pytest.mark.parametrize('key', sorted(L26.CANDIDATES))
+def test_v26_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    a, b = (55, 56) if key.startswith('s26') else (56, 55)
+    coin, btc = _ms(_mk(2600, '4h', a)), _ms(_mk(2600, '4h', b))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+@pytest.mark.parametrize('unit', ['ns', 'ms', 's'])
+def test_v26_timestamp_unit_does_not_change_signals(unit):
+    base = S.indicators(_mk(2600, '4h', 56))
+    other = base.assign(t=pd.to_datetime(base.t).astype(f'datetime64[{unit}]'))
+    for up in (True, False):
+        w0, w1 = L26._weekly(base, dict(weeks=12), up), L26._weekly(other, dict(weeks=12), up)
+        h0, h1 = L26._ha_flip(base, dict(run=3), up), L26._ha_flip(other, dict(run=3), up)
+        assert w0.sum() > 0 and h0.sum() > 0
+        np.testing.assert_array_equal(w0, w1); np.testing.assert_array_equal(h0, h1)
+
+
+def test_v25_defect_recorded_ms_timestamps_gave_no_day_entries():
+    c = S.indicators(_ms(_mk(2600, '4h', 56)))                 # documents why V25 L25A/S25A/R25A opened zero trades
+    assert L25._weekly(c, dict(weeks=12), True).sum() == 0 and L25._ha_flip(c, dict(run=3), True).sum() == 0
+    assert L26._weekly(c, dict(weeks=12), True).sum() > 0 and L26._ha_flip(c, dict(run=3), True).sum() > 0
+
+
+def test_v26_weekly_matches_independent_resample_on_ms():
+    c = S.indicators(_ms(_mk(2600, '4h', 56))); t = pd.to_datetime(c.t)
+    got = L26._weekly(c, dict(weeks=12), True)
+    s = pd.Series(c.c.values, index=t); cnt = s.resample('W-SUN').count(); W = s.resample('W-SUN').last()[cnt == 42]
+    ok = W[W > W.rolling(12).max().shift()]
+    assert got.sum() > 5 and (got == np.isin(t.values, (ok.index + pd.Timedelta(days=1)).values)).all()
+
+
+def test_v26_incomplete_previous_day_blocks_day_entries_on_ms():
+    c = S.indicators(_ms(_mk(2600, '4h', 56))); t = pd.to_datetime(c.t)
+    full = L26._ha_flip(c, dict(run=3), True)
+    i = int(np.flatnonzero(full)[2])
+    drop = c.drop(index=i - 2).reset_index(drop=True)
+    j = int(np.flatnonzero(pd.to_datetime(drop.t).values == t.values[i])[0])
+    assert full[i] and not L26._ha_flip(drop, dict(run=3), True)[j]
+
+
+def test_v26_stale_day_after_a_gap_does_not_fire_twice():
+    c = S.indicators(_ms(_mk(2600, '4h', 56))); t = pd.to_datetime(c.t)
+    for fn, p in ((L26._ha_flip, dict(run=3)), (L26._weekly, dict(weeks=12))):
+        full = fn(c, p, True)
+        i = int(np.flatnonzero(full)[2])                           # entry bar = first bar after the event day
+        drop = c.drop(index=i + 1).reset_index(drop=True)          # the entry day becomes incomplete
+        nxt = t.values[i + 6]                                      # first bar of the following day
+        j = int(np.flatnonzero(pd.to_datetime(drop.t).values == nxt)[0])
+        assert not fn(drop, p, True)[j], fn.__name__
