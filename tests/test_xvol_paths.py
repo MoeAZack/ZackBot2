@@ -40,10 +40,28 @@ LEDGER = r'F:\Dev\ZackBot2\research_evidence\ledger'
     (r'F:\Dev\ZackBot2\research_evidence\x.json', False),
     (r'C:\Dev\ZackBot2\research_evidence\ledger\x.json', False),         # another drive is never containment
     (r'C:\Users\u\AppData\Local\Temp\pytest-0\r.json', False),
-    (r'\\srv\share\research_evidence\ledger\x.json', False),             # UNC share vs drive
 ])
 def test_is_within_ntpath(path, inside):
     assert XP.is_within(path, LEDGER, pathmod=ntpath) is inside
+
+
+@pytest.mark.parametrize('alias', [                     # spellings that can name the ledger itself: never "outside"
+    r'\\?\F:\Dev\ZackBot2\research_evidence\ledger\x.json',
+    r'\\.\F:\Dev\ZackBot2\research_evidence\ledger\x.json',
+    r'\\localhost\F$\Dev\ZackBot2\research_evidence\ledger\x.json',
+    r'\\?\UNC\localhost\F$\Dev\ZackBot2\research_evidence\ledger\x.json',
+    r'\\srv\share\research_evidence\ledger\x.json',
+])
+def test_is_within_alias_spellings_raise_and_callers_refuse(alias):
+    with pytest.raises(ValueError):
+        XP.is_within(alias, LEDGER, pathmod=ntpath)
+    from tests.test_bpyr_runner import R
+    real = R.XP.is_within
+    try:
+        R.XP.is_within = lambda p, r: real(alias, LEDGER, pathmod=ntpath)
+        assert R._maybe_ledger('ignored', 'ignored') is True
+    finally:
+        R.XP.is_within = real
 
 
 def test_is_within_posix_matches_the_previous_commonpath_rule():
@@ -184,7 +202,11 @@ def test_fib02_external_rules_on_another_drive(W, cdrive):
 
 def test_fib02_same_volume_identity_bytes_unchanged(W, tmp_path):
     p = _write_rules(tmp_path)
-    assert W.load_rules(str(p))[1]['path'] == os.path.relpath(os.path.abspath(str(p)), W.ROOT).replace(os.sep, '/')
+    try:
+        want = os.path.relpath(os.path.abspath(str(p)), W.ROOT).replace(os.sep, '/')
+    except ValueError:                              # tmp on another (real or simulated) drive: covered elsewhere
+        want = os.path.abspath(str(p)).replace(os.sep, '/')
+    assert W.load_rules(str(p))[1]['path'] == want
     committed = os.path.join(W.ROOT, W.RULES)
     if os.path.exists(committed):
         assert W.load_rules(committed)[1]['path'] == W.RULES                    # the frozen default identity
