@@ -286,3 +286,34 @@ def test_v10_cut_right_after_signals_and_prefixes(key):
         part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
         for k in ('le', 'se', 'lx', 'sx'):
             assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+import longscout_v11 as L11
+L11.register()
+
+
+def _v11_data(key):
+    coin, btc = _mk(2600, '4h', 55), _mk(2600, '4h', 56)
+    if 'capitulation' in key:                               # add sharp BTC drops so the trigger exists
+        f = np.ones(len(btc))
+        for i in range(1300, 2600, 60): f[i:] *= 0.88
+        btc = btc.assign(o=btc.o * np.r_[f[0], f[:-1]], h=btc.h * np.maximum(f, np.r_[f[0], f[:-1]]), l=btc.l * f, c=btc.c * f)
+    if 'mature' in key:                                     # long steady trends so a 30-day unbroken regime exists
+        g = np.exp((1 if 'trend_breakout' in key else -1) * 0.003 * np.arange(len(coin)))
+        coin = coin.assign(**{k: coin[k] * g for k in ('o', 'h', 'l', 'c')})
+        btc = btc.assign(**{k: btc[k] * g for k in ('o', 'h', 'l', 'c')})
+    return coin, btc
+
+
+@pytest.mark.parametrize('key', sorted(L11.CANDIDATES))
+def test_v11_cut_right_after_signals_and_prefixes(key):
+    coin, btc = _v11_data(key)
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    ex = np.flatnonzero(np.diff(np.asarray(full['lx']).astype(int)) | np.diff(np.asarray(full['sx']).astype(int))) + 1
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ex[ex >= 300][:20]) | {1300, 2563, 2599})
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
