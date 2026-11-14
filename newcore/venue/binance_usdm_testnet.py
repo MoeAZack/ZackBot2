@@ -18,6 +18,11 @@ from newcore.ports import venue as P
 from newcore.ports.values import PortValueError, check_int, check_ms, check_symbol, req
 
 TESTNET_BASE_URL = 'https://testnet.binancefuture.com'
+# Binance's currently documented USD-M testnet REST base (Futures Demo Trading keys).  Approved as a second exact
+# origin on #219 (Codex ruling 6660693481).  One origin is chosen per binding and run; there is no fallback between
+# them, no wildcard Binance domain, and no redirect following.
+DEMO_TESTNET_BASE_URL = 'https://demo-fapi.binance.com'
+TESTNET_ORIGINS = frozenset({TESTNET_BASE_URL, DEMO_TESTNET_BASE_URL})
 _PREFIX = {'classic': 'zbn1o-', 'algo': 'zbn1a-'}
 _OPENING = {'LONG': 'BUY', 'SHORT': 'SELL'}
 _CLOSING = {'LONG': 'SELL', 'SHORT': 'BUY'}
@@ -116,6 +121,14 @@ def _positive_id(value) -> str:
     return out
 
 
+def _plain_symbol(value: object) -> bool:
+    try:
+        check_symbol(value, 'positions.row_symbol')
+    except PortValueError:
+        return False
+    return True
+
+
 class BinanceUsdMTestnetVenue:
     """A fail-closed, injected-I/O VenuePort for Binance USD-M testnet."""
 
@@ -126,8 +139,8 @@ class BinanceUsdMTestnetVenue:
                  recv_window_ms: int = 5000, rate_observer: RateObserver | None = None):
         if type(environment) is not str or environment != 'testnet':
             raise VenueBindingError('environment must be the exact string testnet')
-        if type(base_url) is not str or base_url != TESTNET_BASE_URL:
-            raise VenueBindingError('base_url must equal the exact Binance USD-M testnet host')
+        if type(base_url) is not str or base_url not in TESTNET_ORIGINS:
+            raise VenueBindingError('base_url must equal an exact approved Binance USD-M testnet origin')
         if not callable(sender) or not callable(clock):
             raise PortValueError('venue', 'callable sender and clock')
         if not callable(getattr(credentials, 'api_key', None)) or not callable(getattr(credentials, 'sign', None)):
@@ -138,7 +151,7 @@ class BinanceUsdMTestnetVenue:
             raise PortValueError('recv_window_ms', 'an int in 1..10000')
         if rate_observer is not None and not callable(rate_observer):
             raise PortValueError('rate_observer', 'a callable or None')
-        self._base_url = base_url
+        self._base_url = self._pinned_origin = base_url
         self._sender, self._credentials, self._clock = sender, credentials, clock
         self._rate_observer = rate_observer
         self._timeout_s, self._recv_window_ms = float(timeout_s), recv_window_ms
@@ -157,7 +170,7 @@ class BinanceUsdMTestnetVenue:
 
     def _request(self, method: str, path: str, params: list[tuple[str, str]]) -> object:
         # Re-check the exact binding on every request so mutation cannot redirect traffic.
-        if self._base_url != TESTNET_BASE_URL:
+        if self._base_url != self._pinned_origin or self._base_url not in TESTNET_ORIGINS:
             raise _Unknown('binding_changed')
         timestamp = self._now()
         signed = params + [('recvWindow', str(self._recv_window_ms)), ('timestamp', str(timestamp))]
@@ -352,6 +365,11 @@ class BinanceUsdMTestnetVenue:
                 if symbol is not None and row.get('symbol') != symbol:
                     raise _Unknown('echo_mismatch')
                 qty = abs(_decimal(row.get('positionAmt'), 'positionAmt', nonnegative=False))
+                if symbol is None and qty == 0 and not _plain_symbol(row.get('symbol')):
+                    # Real testnet lists every contract, including dated futures (BTCUSDT_261225) and non-ASCII
+                    # names.  An empty row for a symbol NEWCORE cannot trade carries no exposure and is skipped;
+                    # a non-zero one still makes the whole read malformed/UNKNOWN below.
+                    continue
                 out.append(P.VenuePosition(symbol=row['symbol'], side=row['positionSide'], qty=qty,
                                            entry_price=_decimal(row.get('entryPrice'), 'entryPrice')))
             return tuple(out)
@@ -473,5 +491,6 @@ class _VenueError:
     code: int
 
 
-__all__ = ['TESTNET_BASE_URL', 'BinanceUsdMTestnetVenue', 'CredentialSource', 'HttpRequest', 'HttpResponse',
+__all__ = ['DEMO_TESTNET_BASE_URL', 'TESTNET_BASE_URL', 'TESTNET_ORIGINS',
+           'BinanceUsdMTestnetVenue', 'CredentialSource', 'HttpRequest', 'HttpResponse',
            'RateEvidence', 'RateObserver', 'VenueBindingError']

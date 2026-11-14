@@ -1,9 +1,10 @@
 """One-shot HTTPS transport for the Binance USD-M testnet adapter.
 
 The adapter owns request construction and response interpretation.  This
-module is the only NEWCORE component that opens a network socket.  It is
-deliberately bound to the exact testnet origin and never retries or follows a
-redirect.
+module is the only NEWCORE component that opens a network socket.  Each sender
+is bound at construction to exactly one approved testnet origin; that one host
+is used for URL validation, DNS, the TLS server name and the Host header.  It
+never retries, never follows a redirect and never falls back to another origin.
 """
 from __future__ import annotations
 
@@ -16,9 +17,13 @@ import threading
 import time
 from urllib.parse import urlsplit
 
-from .binance_usdm_testnet import HttpRequest, HttpResponse, TESTNET_BASE_URL
+from .binance_usdm_testnet import DEMO_TESTNET_BASE_URL, HttpRequest, HttpResponse, TESTNET_BASE_URL
 
-_HOST = 'testnet.binancefuture.com'
+# Exact approved origin -> its one host.  No other origin, port, scheme or subdomain is reachable.
+_ORIGIN_HOSTS = {
+    TESTNET_BASE_URL: 'testnet.binancefuture.com',
+    DEMO_TESTNET_BASE_URL: 'demo-fapi.binance.com',
+}
 _PORT = 443
 _MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 _MAX_QUERY_BYTES = 16 * 1024
@@ -29,9 +34,14 @@ _PATHS = frozenset({
     '/fapi/v1/openAlgoOrders',
     '/fapi/v1/openOrders',
     '/fapi/v1/order',
+    '/fapi/v1/rateLimit/order',
     '/fapi/v1/userTrades',
+    '/fapi/v2/balance',
     '/fapi/v2/positionRisk',
 })
+# The only unsigned route: public exchange rules (symbol filters and rate limits).  It must be a GET with an empty
+# query and no API-key header, so no credential ever travels with it.
+_PUBLIC_PATHS = frozenset({'/fapi/v1/exchangeInfo', '/fapi/v1/time'})
 _QUERY_KEY = re.compile(r'^[A-Za-z][A-Za-z0-9]*$')
 _QUERY_VALUE = re.compile(r'^[A-Za-z0-9._~+%\-]*$')
 _API_KEY = re.compile(r'^[A-Za-z0-9_-]{1,256}$')
@@ -53,7 +63,7 @@ def _remaining(deadline: float) -> float:
     return remaining
 
 
-def _validate(request: HttpRequest) -> tuple[str, str]:
+def _validate(request: HttpRequest, origin: str, host: str) -> tuple[str, str | None]:
     if not isinstance(request, HttpRequest):
         raise ValueError('invalid testnet HTTP request')
     if request.method not in _METHODS:
@@ -63,14 +73,22 @@ def _validate(request: HttpRequest) -> tuple[str, str]:
     if not 0 < request.timeout_s <= 60:
         raise ValueError('invalid testnet HTTP request')
 
-    if type(request.url) is not str or not request.url.startswith(TESTNET_BASE_URL + '/'):
+    if _ORIGIN_HOSTS.get(origin) != host:
+        raise ValueError('invalid testnet HTTP request')
+    if type(request.url) is not str or not request.url.startswith(origin + '/'):
         raise ValueError('invalid testnet HTTP request')
     parts = urlsplit(request.url)
-    if (parts.scheme, parts.hostname, parts.port) != ('https', _HOST, None):
+    if (parts.scheme, parts.hostname, parts.port) != ('https', host, None):
         raise ValueError('invalid testnet HTTP request')
     if parts.username is not None or parts.password is not None or parts.query or parts.fragment:
         raise ValueError('invalid testnet HTTP request')
-    if parts.path not in _PATHS or request.url != TESTNET_BASE_URL + parts.path:
+    if request.url != origin + parts.path:
+        raise ValueError('invalid testnet HTTP request')
+    if parts.path in _PUBLIC_PATHS:
+        if request.method != 'GET' or request.headers != () or request.query != '':
+            raise ValueError('invalid testnet HTTP request')
+        return parts.path, None
+    if parts.path not in _PATHS:
         raise ValueError('invalid testnet HTTP request')
 
     if type(request.headers) is not tuple or len(request.headers) != 1:
@@ -135,11 +153,24 @@ class TestnetHttpSender:
     """Callable one-attempt HTTPS sender consumed by ``BinanceUsdMTestnetVenue``."""
 
     __test__ = False
+    __slots__ = ('_origin', '_host')
+
+    def __init__(self, base_url: str = TESTNET_BASE_URL):
+        # The default keeps the original origin for existing bindings; the demo origin must be chosen explicitly.
+        if type(base_url) is not str or base_url not in _ORIGIN_HOSTS:
+            raise ValueError('invalid testnet origin')
+        self._origin = base_url
+        self._host = _ORIGIN_HOSTS[base_url]
+
+    @property
+    def origin(self) -> str:
+        return self._origin
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
-        path, api_key = _validate(request)
+        host = self._host
+        path, api_key = _validate(request, self._origin, host)
         deadline = time.monotonic() + float(request.timeout_s)
-        future = _RESOLVER.submit(socket.getaddrinfo, _HOST, _PORT, 0, socket.SOCK_STREAM)
+        future = _RESOLVER.submit(socket.getaddrinfo, host, _PORT, 0, socket.SOCK_STREAM)
         try:
             records = future.result(timeout=_remaining(deadline))
         except concurrent.futures.TimeoutError:
@@ -181,14 +212,15 @@ class TestnetHttpSender:
             context.verify_mode = ssl.CERT_REQUIRED
             context.minimum_version = ssl.TLSVersion.TLSv1_2
             raw.settimeout(_remaining(deadline))
-            tls_sock = context.wrap_socket(raw, server_hostname=_HOST)
+            tls_sock = context.wrap_socket(raw, server_hostname=host)
             holder[0] = tls_sock
 
-            target = path + '?' + request.query
+            target = path + '?' + request.query if request.query else path
+            key_line = '' if api_key is None else f'X-MBX-APIKEY: {api_key}\r\n'
             wire = (
                 f'{request.method} {target} HTTP/1.1\r\n'
-                f'Host: {_HOST}\r\n'
-                f'X-MBX-APIKEY: {api_key}\r\n'
+                f'Host: {host}\r\n'
+                f'{key_line}'
                 'Accept: application/json\r\n'
                 'Content-Length: 0\r\n'
                 'Connection: close\r\n\r\n'
