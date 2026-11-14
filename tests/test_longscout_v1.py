@@ -826,3 +826,53 @@ def test_v28_nr7_entry_only_on_the_day_after_the_nr7_day():
     D = L27._days_v(c); rng = D.h - D.l
     nr = set((rng[(rng <= rng.rolling(7).min())].index + pd.Timedelta(days=1)).values)
     assert ok.sum() > 0 and all(v in nr for v in t.dt.normalize().values[ok])
+
+
+import longscout_v29 as L29
+L29.register()
+
+
+@pytest.mark.parametrize('key', sorted(L29.CANDIDATES))
+def test_v29_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    a = {'l29_weekly_rsi_cross_4h': 52, 's29_ema20_reclaim_fail_4h': 51}.get(key, 56)
+    coin, btc = _ms(_mk(2600, '4h', a)), _ms(_mk(2600, '4h', 55))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v29_helper_values_match_on_every_prefix():
+    c = S.indicators(_ms(_mk(2600, '4h', 52)))
+    P = {k: v['params'] for k, v in L29.CANDIDATES.items()}
+    fns = [lambda x, u=u: L29._squeeze(x, P['r29_daily_squeeze_release_4h'], u) for u in (True, False)] + \
+          [lambda x: L29._weekly_rsi(x, P['l29_weekly_rsi_cross_4h']), lambda x: L29._reclaim_fail(x, P['s29_ema20_reclaim_fail_4h'])]
+    full = [f(c) for f in fns]
+    assert all(x.sum() > 0 for x in full)
+    for cut in range(700, 2600, 19):
+        part = c.iloc[:cut].reset_index(drop=True)
+        for f, x in zip(fns, full):
+            np.testing.assert_array_equal(f(part), x[:cut])
+
+
+def test_v29_weekly_rsi_matches_independent_resample():
+    c = S.indicators(_ms(_mk(2600, '4h', 52))); t = pd.to_datetime(c.t)
+    got = L29._weekly_rsi(c, dict(n=14, lvl=50.0))
+    s = pd.Series(c.c.values, index=t); cnt = s.resample('W-SUN').count(); W = s.resample('W-SUN').last()[cnt == 42]
+    r = S.rsi(W, 14); ok = W[(r > 50) & (r.shift() <= 50)]
+    assert got.sum() > 0 and (got == np.isin(t.values, (ok.index + pd.Timedelta(days=1)).values)).all()
+
+
+def test_v29_weekly_entry_not_repeated_after_a_broken_week():
+    c = S.indicators(_ms(_mk(2600, '4h', 52))); t = pd.to_datetime(c.t)
+    p = dict(n=14, lvl=50.0)
+    full = L29._weekly_rsi(c, p)
+    i = int(np.flatnonzero(full)[0])                             # Monday 00:00 entry
+    drop = c.drop(index=[i + 1 + 6 * k for k in range(7)]).reset_index(drop=True)   # every day of that week incomplete
+    nxt = t.values[i + 42]                                       # the following Monday 00:00
+    j = int(np.flatnonzero(pd.to_datetime(drop.t).values == nxt)[0])
+    assert not L29._weekly_rsi(drop, p)[j]
