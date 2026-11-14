@@ -1,0 +1,1657 @@
+{
+  "head": "c337bed948573fffe62b345812735c380501150d",
+  "public_origin": "https://fapi.binance.com",
+  "client_sha256": "269a9cac4fc3b463f49920012fe8e7f9b09b058ba972f44a18884e919be50555",
+  "symbols_sha256": "7a28fc2d5a4150737075484849097dda865107b6497e65583cec952e52f3fa0f",
+  "requests": [
+    {
+      "path": "/fapi/v1/exchangeInfo",
+      "symbol": null,
+      "elapsed_s": 0.7810000000172295,
+      "http": 200,
+      "used_weight_1m": "72"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "1000BONKUSDT",
+      "elapsed_s": 0.40599999998812564,
+      "http": 200,
+      "used_weight_1m": "82",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "f25e2713fa6f7f74161d3a8883266eb07bde655ffb0e3ceeb04502dbefb53dbc"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "1000FLOKIUSDT",
+      "elapsed_s": 0.34399999998277053,
+      "http": 200,
+      "used_weight_1m": "92",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "caf0caba5b59cbc75fad1ca8060d2a6c80e6504ca1d6c12db86b3c60f96baa4a"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "1000LUNCUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "102",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "f7feb34afab5e9e87e6f13a20e855e9f0eeeab26829a17b9034aad52adf4e537"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "1000PEPEUSDT",
+      "elapsed_s": 0.389999999984866,
+      "http": 200,
+      "used_weight_1m": "112",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "d60ced72973fb57b72673f76a0e70e85df6ec73a1d95979ebd29a39c0beaf345"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "1000RATSUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "122",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "9b57cf6ab41bc811db872dcb7de499f19337c12a1075bfdc8c5d298fead4b8c7"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "1000SATSUSDT",
+      "elapsed_s": 0.7659999999741558,
+      "http": 200,
+      "used_weight_1m": "132",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "dd2f4c5e6cd0ea166c77e2e796ae9c4f0c7de14d3706d646416d27f4bcfd7c7d"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "1000SHIBUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "142",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "dd6b5d989dbbe2105d4436c87701396159faa124915ffbbf412c7326dd4c1e41"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "1000XECUSDT",
+      "elapsed_s": 0.5469999999913853,
+      "http": 200,
+      "used_weight_1m": "152",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "13aca97df495191feeceac436a497c619b4a826d8e08fe1a8a1de329b8178538"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "1INCHUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "162",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "aa42c3b72bf814bf53552494a2f2605d65c88b55975c0f7e7f6595107fd0ee7d"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "AAVEUSDT",
+      "elapsed_s": 0.5469999999913853,
+      "http": 200,
+      "used_weight_1m": "182",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "586ce713da1366ba40fa01b21213781d67835b217743e4f40889a8a6e835fcc2"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ACEUSDT",
+      "elapsed_s": 0.764999999984866,
+      "http": 200,
+      "used_weight_1m": "192",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "90f0f1f891cdad7bc0acb05ff33eabc15a3ff984abac2d7cb3e7968e99ea5231"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ACHUSDT",
+      "elapsed_s": 0.5470000000204891,
+      "http": 200,
+      "used_weight_1m": "202",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "8ddd3599f54b3233d3b24cb0e5b6a47399ba362e7f3440d1c990beee8a1535be"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "AGLDUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "222",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "9ab3e35f17c744c4b964ce8a91453612f1cb68219109f5c4457fb055eded4cfc"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ALGOUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "232",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "ecae834834d07d3e84fb349c34e0fe6eb0497d3971fc6d88dc0c830430f4c3c0"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ALICEUSDT",
+      "elapsed_s": 0.5469999999913853,
+      "http": 200,
+      "used_weight_1m": "242",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "466c85d8fc384217b2d2823c618785a1f236d72da0a129f19d132d2bd8517811"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ANKRUSDT",
+      "elapsed_s": 0.3909999999741558,
+      "http": 200,
+      "used_weight_1m": "252",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "3777c3cfbd2333dc27c024a18e064771a26b62a2bdbc481062218cf025a1a0b4"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "APEUSDT",
+      "elapsed_s": 0.75,
+      "http": 200,
+      "used_weight_1m": "263",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "955f54a1a7efc15c52e1ae5383aeae72bc5b160f3866a6a70a46a97a23b81236"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "API3USDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "273",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "23a05ff2293e58cccf424c7d9caac435fe11c1cb1177f1a4351ac54c71701065"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "APTUSDT",
+      "elapsed_s": 0.5469999999913853,
+      "http": 200,
+      "used_weight_1m": "283",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "b8a8524c16fba223f37923a997c61a66fea61008663726bbb8807ba9a3f76c10"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ARBUSDT",
+      "elapsed_s": 0.3909999999741558,
+      "http": 200,
+      "used_weight_1m": "293",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "761716873ccd40d9a560edbc7972360fae919566c276b8a454cc162e7ebcdbf0"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ARKMUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "303",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "9e6f523ced303ece7bb0339fca0b532bd37568ed8c1ee1a4b9a2f7d25d73c490"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ARKUSDT",
+      "elapsed_s": 0.389999999984866,
+      "http": 200,
+      "used_weight_1m": "313",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "a229a02bf0d366f3ae3971cb85482f3e6bd9badd920fe24c1fc4319be8e147e9"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ARPAUSDT",
+      "elapsed_s": 0.7660000000032596,
+      "http": 200,
+      "used_weight_1m": "323",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "842156f69ed7fb82a4b89873c9384110a6a4c8f3e4a1bf1b40aac69933091d37"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ARUSDT",
+      "elapsed_s": 0.5620000000053551,
+      "http": 200,
+      "used_weight_1m": "333",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "4662ac34489679c422c5c21d38cfee3f36af5bf990754a3b87ca59dcf1fdddd7"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ASTRUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "343",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "9bc328e3c7581e6dd004b05c2e3187d52d9db40d945f5c2db19c4e0d348b3da1"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ATOMUSDT",
+      "elapsed_s": 0.5309999999881256,
+      "http": 200,
+      "used_weight_1m": "353",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "1391061a73911d276f84981cfe61f9a6bda089effd75f6b47ec23ed56dbf8aab"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "AUCTIONUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "363",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "e044dd3d8f1e889e4dba096d3771dfb22c13d4fc1f0462a35794514f60fe640a"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "AXSUSDT",
+      "elapsed_s": 0.75,
+      "http": 200,
+      "used_weight_1m": "383",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "6b47832a8fb280f4184b9e53697a688a421cb06fc5fe2078d3c583aa5032dded"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "BANDUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "403",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "fc8457b1c1a4810096ab0c8ac754e9105ada74c4b0931d12eb119187b9cf3770"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "BATUSDT",
+      "elapsed_s": 0.389999999984866,
+      "http": 200,
+      "used_weight_1m": "413",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "cd7ab2d7ca8d8c8198c11e6f319ce431def4845e0743834845b8a246f2434817"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "BCHUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "423",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "dea26fd1139708647966cf3fda94abafd14f79809a33cc9fa7175880653ce586"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "BEAMXUSDT",
+      "elapsed_s": 0.7650000000139698,
+      "http": 200,
+      "used_weight_1m": "433",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "5cd270e9ba7ccd35e048693c582abb642abaac57584a84268fcee67a4cd8f9e5"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "BELUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "453",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "322475423ecacc7e0c4cd8cf8fbdffd5fc4bd16922d56dcf36570b17e16ce51a"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "BICOUSDT",
+      "elapsed_s": 0.5470000000204891,
+      "http": 200,
+      "used_weight_1m": "463",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "b54d4e7ff9d2b005382b03448750ed27b69e58b72e4fc16602ae3523cd8edf91"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "BIGTIMEUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "473",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "a8bdd11994f8e4c9d296ab96aacfc670e7942739e8c7e5cb27837dd133929ecd"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "BLURUSDT",
+      "elapsed_s": 0.5469999999913853,
+      "http": 200,
+      "used_weight_1m": "483",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "b1f434d1e8c4893a31dab51f02f91246e945989dba83d03e0699db60824f6790"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "BNTUSDT",
+      "elapsed_s": 0.75,
+      "http": 200,
+      "used_weight_1m": "493",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "65b592adf7d3f5b707bdf52c5cbdcc0e6fcccf76b8d075b90d56b2b41e4b5a5d"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "BSVUSDT",
+      "elapsed_s": 0.75,
+      "http": 200,
+      "used_weight_1m": "503",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "c1056fa47e368d5adecb9c7fb4d51761e93f01744423631ed26a25cd45de8f64"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "C98USDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "513",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "899dadd0c5f2d41b12028855d5f0ba2f575ea3291ee760966a0682547fc53138"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "CAKEUSDT",
+      "elapsed_s": 0.514999999984866,
+      "http": 200,
+      "used_weight_1m": "523",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "a32df2802737af7666a83ddd6a590edf4d38a85bd3fd196cfce0f0e65ca88b7f"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "CELOUSDT",
+      "elapsed_s": 0.7660000000032596,
+      "http": 200,
+      "used_weight_1m": "533",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "a06f7c58e0544f68c71e46f1621ac6c261fb2ed6d2a73078d6063e7fa0875b55"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "CELRUSDT",
+      "elapsed_s": 0.40599999998812564,
+      "http": 200,
+      "used_weight_1m": "543",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "904fee6bb2ef3a6ba58764e406f7b796cf5c1bd546e94339b96e72cb60da8e1b"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "CFXUSDT",
+      "elapsed_s": 0.5469999999913853,
+      "http": 200,
+      "used_weight_1m": "553",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "60c9c388332e1ea53b10f105a30d49bda0f6f0a26dfff0bc4b40923ab1d7e617"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "CHRUSDT",
+      "elapsed_s": 0.75,
+      "http": 200,
+      "used_weight_1m": "573",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "9a0dd26e40352b2e6a2fdb82e1ff1f26eeec239d30edcfca878af1101b8b6690"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "CHZUSDT",
+      "elapsed_s": 0.375,
+      "http": 200,
+      "used_weight_1m": "583",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "c5a4d9df89fd8bbb401574f86f2d8f8b261416e88d75995ecb34c64076082e88"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "CKBUSDT",
+      "elapsed_s": 0.5469999999913853,
+      "http": 200,
+      "used_weight_1m": "593",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "ce212e423fcd6123c775463bef49613574594bb3946476692d6925c9b5c8cf63"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "COMPUSDT",
+      "elapsed_s": 0.5469999999913853,
+      "http": 200,
+      "used_weight_1m": "603",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "5b25f5bbe912017836d48bad5da6261cd07c15d59e6eec323e38621154782d5e"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "COTIUSDT",
+      "elapsed_s": 0.3909999999741558,
+      "http": 200,
+      "used_weight_1m": "623",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "e19020311e0554d8c245d70a115ce444e6a5f76bcafa0e763671f7f973daebf2"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "CRVUSDT",
+      "elapsed_s": 0.5310000000172295,
+      "http": 200,
+      "used_weight_1m": "643",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "a7ce6fea08d0ff0862a145eea3ac620cc41fc2a4678cd677c3276b54d1918f4e"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "CTSIUSDT",
+      "elapsed_s": 0.5469999999913853,
+      "http": 200,
+      "used_weight_1m": "653",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "0dc9d2f439dd6f2ff84429af9b7a3992ed8888408870691264e70be5bda1e47a"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "CYBERUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "663",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "508400afeb66becb3131450f8db3bf6fc47cb3c3c73158d3d9c1afa2e0d7562f"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "DASHUSDT",
+      "elapsed_s": 0.7810000000172295,
+      "http": 200,
+      "used_weight_1m": "673",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "82442a83bd95dedbbb0e8d4149f93363e8eaab6b08531d2b4f87e0d8a4f7594d"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "DODOXUSDT",
+      "elapsed_s": 0.5309999999881256,
+      "http": 200,
+      "used_weight_1m": "683",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "979300d8abe78c09dda02d73ce904076a8757b92e6b8ecd420a7274dd6ffb5af"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "DOTUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "693",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "cba4be56fa6cc1df0cf42e393db7121bc681aa8c6b6d8bd077734e0c0160d85a"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "DUSKUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "703",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "5e400b013cf34b5cc50295939c52feb6ab2723d894dd3c95c119e0526c78f93e"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "DYDXUSDT",
+      "elapsed_s": 0.5629999999946449,
+      "http": 200,
+      "used_weight_1m": "713",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "c1f2fbba3b33a81b2a6f46aa84e46ad406053b756d4bdb423260b9c0a9726751"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "EDUUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "723",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "a331594db2d06cc3d518c90273486e0126f39724b4beb78f3f84c262a8303676"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "EGLDUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "10",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "efcacb9ef720c935361f1d88dcff9c90e1ae913d202bca77c99cdb05f7144635"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ENAUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "20",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "2018d2abe3b9f77f384dba40f57d8da95c714a035f75d1d0d5ba2086f81133bb"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ENJUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "30",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "8e57a02119260c20d1c376cb04a8288da25dee9cdad843033b192a78f726105a"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ENSUSDT",
+      "elapsed_s": 0.5160000000032596,
+      "http": 200,
+      "used_weight_1m": "40",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "f0ccf6f9396b74129717af2d8a3ef9e107cbe70f366cc5ba359f19d1a1922ccc"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ETCUSDT",
+      "elapsed_s": 0.40599999998812564,
+      "http": 200,
+      "used_weight_1m": "50",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "63e43d9f97f95162dfcdc1d9553962aa066a0d419565181cb55a7a5a44a43de5"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ETHWUSDT",
+      "elapsed_s": 0.34399999998277053,
+      "http": 200,
+      "used_weight_1m": "60",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "1399b983952029a3679974ca5b24ac5f3e49a693743c1739fe758c6b9091d176"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "FETUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "80",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "260a82a3304eba70a528f0bebf90762ed9eeb797c869ed5de2f5dd5adc597ff3"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "FILUSDT",
+      "elapsed_s": 0.5309999999881256,
+      "http": 200,
+      "used_weight_1m": "90",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "0805faf0c125894c17f1e3f34a60aed69e4189c9ea6c1756fc2c08bc8cab7c98"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "FLOWUSDT",
+      "elapsed_s": 0.45300000000861473,
+      "http": 200,
+      "used_weight_1m": "100",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "e1ad5884c451042ed92976e28b0de05d029e50fe6304e450bb9e8ebb5b8ac222"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "GALAUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "130",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "db19727977c899aaeb29c53c7f6f4011949a2ecdf42f72babaecf9a738220e21"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "GASUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "140",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "6c1563ae658fa825f0d88721fd0f6f204d3bb62a13378576c12f94ce3aab18ed"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "GMTUSDT",
+      "elapsed_s": 0.7650000000139698,
+      "http": 200,
+      "used_weight_1m": "150",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "622e785235bad105bf3b1f22ec569b5f37a10404de2a48b7b6351be187feac0a"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "GMXUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "160",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "7b734e60729db72c0b7f293a9857c0166614fef819b3d3292ee4b23712256994"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "GRTUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "170",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "3bbcecf72b6bdc8fd303e596a52ab2af1d065ad231a6a3f64523113c8d0b01ec"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "GTCUSDT",
+      "elapsed_s": 0.764999999984866,
+      "http": 200,
+      "used_weight_1m": "180",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "06a0c6165af4cd5db759ad6c5d956de1e944cc62eb6f64fcee866559ccff7bc7"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "HBARUSDT",
+      "elapsed_s": 0.40700000000651926,
+      "http": 200,
+      "used_weight_1m": "190",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "ca09f930836becd8cfb8598ba29118a9394e57fa018ee765b3ee83ba403ac72a"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "HOTUSDT",
+      "elapsed_s": 0.75,
+      "http": 200,
+      "used_weight_1m": "200",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "c38edca2296eea0579608da3f7329c3db4d53cd75657aea3cfc65504b1498b36"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "IDUSDT",
+      "elapsed_s": 0.5150000000139698,
+      "http": 200,
+      "used_weight_1m": "210",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "66971c83f3d2794a55284c4e891c3f772cb8f5be64184feb81edc7ebf064ae24"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ILVUSDT",
+      "elapsed_s": 0.34399999998277053,
+      "http": 200,
+      "used_weight_1m": "220",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "e5689799e840c7428ec2ca9811cf74ce360b34f475c31f2e9990e200049efeb1"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "IMXUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "230",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "bc47f2b29a654cd8ed118722a8c73cf32a7cd3296450ea0e2f2a321aa2dd0de9"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "INJUSDT",
+      "elapsed_s": 0.40599999998812564,
+      "http": 200,
+      "used_weight_1m": "240",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "be5ca5dfa183989cfea5f74897c7f2a84c029a61dbd2a23a5aceed9b1fee2336"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "IOSTUSDT",
+      "elapsed_s": 0.40700000000651926,
+      "http": 200,
+      "used_weight_1m": "250",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "d4bb8870ac65e5989c562508375935ea3ed1cd27fd804154a8914de49d05f785"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "IOTAUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "260",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "e43e8ecd389f0eecf06240690900ab5b03c5d2a2f628b3306fe264f602df563d"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "IOTXUSDT",
+      "elapsed_s": 0.5310000000172295,
+      "http": 200,
+      "used_weight_1m": "270",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "e353f1c40f8d4ee189944a77ef71d212996caa4e98d2b46f6564bd8ab00dc41b"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "JASMYUSDT",
+      "elapsed_s": 0.5309999999881256,
+      "http": 200,
+      "used_weight_1m": "290",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "aa745f5b8e5246424dfac46287e0ca8058405705614163cc417d3a7fe732cb7d"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "JOEUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "300",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "8a4c00705b424343a1161e01246cc78a1a69450570cee1f96872e52dca70032d"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "JTOUSDT",
+      "elapsed_s": 0.5310000000172295,
+      "http": 200,
+      "used_weight_1m": "320",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "fced1835fe9dbcfc46eb13c0db41e5aa19e2603f7603cdd69207e6c333216838"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "KASUSDT",
+      "elapsed_s": 0.764999999984866,
+      "http": 200,
+      "used_weight_1m": "340",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "951d4d93be40b2fa6934c4022fb43383162444d7992c81d5a4fa01b092031168"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "KAVAUSDT",
+      "elapsed_s": 0.5320000000065193,
+      "http": 200,
+      "used_weight_1m": "350",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "6c46d596df3f46392ed56df56005086a2810711e881369d7884e4b932f9cb1c7"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "KNCUSDT",
+      "elapsed_s": 0.34299999999348074,
+      "http": 200,
+      "used_weight_1m": "360",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "a2178d2b8b4ec79726deaacc7199a89a843635866ad737022e793f9a215e07c4"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "KSMUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "370",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "ebb9dc0732aa7b609444573098e168ba62c59fdef4b970980298d81fb4d3b7fd"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "LDOUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "380",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "28cd5238d9e96e754c8d1313f87944a79e8a6bb66a078904fca463c8da85c65e"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "LPTUSDT",
+      "elapsed_s": 0.5160000000032596,
+      "http": 200,
+      "used_weight_1m": "390",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "4efa78810c3cd622b595a35dcc2804a4fd8a8d5cc9c25c8f4ed65d8a0dbf0d42"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "LQTYUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "400",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "9eeb40ab86b63102e6773965bab8b3880d4b77e471cbca116ec2c441fb6d4e4b"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "LTCUSDT",
+      "elapsed_s": 0.5309999999881256,
+      "http": 200,
+      "used_weight_1m": "410",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "2a7212682c0f40d416746c01a4186e84e53c46e7aec3a3e981eac519076250fd"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "LUNA2USDT",
+      "elapsed_s": 0.34400000001187436,
+      "http": 200,
+      "used_weight_1m": "420",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "c7d15b85a2c1e746a61cba582f64a4b0f68f49278e3d679b1439c80d79bab296"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "MAGICUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "430",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "e96207426c3bc601462522f9f23c531d7d4f5fe1aecfb526eb97a13696afaa84"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "MANAUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "440",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "6a379eb794be9e8cf71b1b8e31d63628018bb51c38f2fad3b537d24c9db43a0a"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "MASKUSDT",
+      "elapsed_s": 0.375,
+      "http": 200,
+      "used_weight_1m": "450",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "68073cfa7f9ca2e0c9b777b77f822ab29a29f5c04243ce30fb2d10b950deaf74"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "MAVUSDT",
+      "elapsed_s": 0.42199999999138527,
+      "http": 200,
+      "used_weight_1m": "460",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "393c56f852154f8c385f9d362a25aa92d54f07bdab972e0548e60e35c8dcdce5"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "MEMEUSDT",
+      "elapsed_s": 0.75,
+      "http": 200,
+      "used_weight_1m": "470",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "fdf0372fc5744650197c85fd2160a15661e323570d474789321f3ce150ef0733"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "MINAUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "480",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "be14b7a7bc325cf1d255166333b518fbba566fbd5bd29f71a4131df27719e66a"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "MOVRUSDT",
+      "elapsed_s": 0.40700000000651926,
+      "http": 200,
+      "used_weight_1m": "500",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "004bba1c28d52c4a42d2eb37ea5e0353497b9bfd1384929427a5c95c6cc77ae5"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "MTLUSDT",
+      "elapsed_s": 0.5309999999881256,
+      "http": 200,
+      "used_weight_1m": "510",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "9977fade1efcfb0f287dba0334826b6326325124cf7653f7b31a39278219e3d1"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "NEARUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "520",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "f25a1a2d9abc2ecea56d9f5f81df071e8160d9304c45f84c758984dab473a0fa"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "NEOUSDT",
+      "elapsed_s": 0.40599999998812564,
+      "http": 200,
+      "used_weight_1m": "540",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "d65ef6e984d40dda98e61357a76ebfadfb99fe45fbbe556f45b6f13ce62bb53d"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "NMRUSDT",
+      "elapsed_s": 0.7660000000032596,
+      "http": 200,
+      "used_weight_1m": "550",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "d19a7efcb2056081b899645741ac851f8205f9f77980b6a9fc05d1e1bf3f5073"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "OGNUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "560",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "799c4d388cc0f9fffe84c8e2c484359f4b53480fc77eeeccc1ab9adf00a24fa6"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ONDOUSDT",
+      "elapsed_s": 0.3909999999741558,
+      "http": 200,
+      "used_weight_1m": "580",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "5a2f8bb54ff87cb1cb9f980db9514f2702cedbe66bbc09bb5043a1fc696ddd4b"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ONEUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "590",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "5ebf26e1458126a373dedb415223a453139a0c4bc0012f0443a8b9fc91f02c1c"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ONGUSDT",
+      "elapsed_s": 0.389999999984866,
+      "http": 200,
+      "used_weight_1m": "600",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "5d9f4c1a6c8b8cb2478563761d506cf1456db61431b1fbc99f0b9c466f8f1bab"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ONTUSDT",
+      "elapsed_s": 0.5620000000053551,
+      "http": 200,
+      "used_weight_1m": "610",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "e3758e66d1600a21355a6bb868c7385e9ca48843d3aaf971fbaf52ed0104dab3"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "OPUSDT",
+      "elapsed_s": 0.7349999999860302,
+      "http": 200,
+      "used_weight_1m": "620",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "61a24269914f1d27ba750de2e4fcc8c09c3a4bd268a12f81c9fc2e4283fa2fb1"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ORDIUSDT",
+      "elapsed_s": 0.75,
+      "http": 200,
+      "used_weight_1m": "630",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "51a34765cbd9a4340751eccb0896a0ec38a4a902faf4b4f6c007bee7a9066dd8"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "PENDLEUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "640",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "72920eda47f3af3b94095c9cbb00669ccd8fe42e12e1a20f63670291a93aad4e"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "PEOPLEUSDT",
+      "elapsed_s": 0.389999999984866,
+      "http": 200,
+      "used_weight_1m": "650",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "7c6835c0c97342914ef758c4400b5492011d4f12008f492e78ab5afc61aeb7b0"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "POLYXUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "660",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "822f502711bc87d0b0db32af184397de260f0a32699ee8351750a04ec0b99cf7"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "POWRUSDT",
+      "elapsed_s": 0.3909999999741558,
+      "http": 200,
+      "used_weight_1m": "670",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "f1711fadbb36f217ee2c5a58fba650f7ff378929486fbd35cd6fe1fc20951267"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "PYTHUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "680",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "40f1fab6ed6ef302d64a8783a0ffbf39262a2dfc9e763b3c0d2ef3e179eaaba5"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "QNTUSDT",
+      "elapsed_s": 0.389999999984866,
+      "http": 200,
+      "used_weight_1m": "690",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "c982f7879562dc75f3600a05fc1e57e4e5d81cb29bf2f523cbbb741dd8528e0a"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "QTUMUSDT",
+      "elapsed_s": 0.40700000000651926,
+      "http": 200,
+      "used_weight_1m": "700",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "b912ec2f861c01de0d87d4b57724bab1a13ba63c8e7cb7317f42559d84bca618"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "RIFUSDT",
+      "elapsed_s": 0.5460000000020955,
+      "http": 200,
+      "used_weight_1m": "720",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "507143d88b7684184f23b704c19e3e82f6ef061f35e857c29ec0a3c4c2d7d1c3"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "RLCUSDT",
+      "elapsed_s": 0.5309999999881256,
+      "http": 200,
+      "used_weight_1m": "730",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "b3960384351616da28c1fb6d4d8149b9a918d78ef0466939954ed6ef8d9d0d09"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ROSEUSDT",
+      "elapsed_s": 0.75,
+      "http": 200,
+      "used_weight_1m": "750",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "ffff698ce7832eda4dacbf5bba344ba245a7c8ee2ba0e7d449b61c0ba6706cd5"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "RSRUSDT",
+      "elapsed_s": 0.5309999999881256,
+      "http": 200,
+      "used_weight_1m": "770",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "a979934460e7276dcd4b08e691cd1d60b580ccd802db0a5e2940dca920f883a9"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "RUNEUSDT",
+      "elapsed_s": 0.5320000000065193,
+      "http": 200,
+      "used_weight_1m": "780",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "25b5a5f2e863786d61df44f92d69584e43acc661b43c8ecd5543b2594981afb9"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "RVNUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "790",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "a6a41abd0649a0b1c567a9d571382bdbb46a4e3ecf6be303836816fa7dd349ce"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "SANDUSDT",
+      "elapsed_s": 0.75,
+      "http": 200,
+      "used_weight_1m": "800",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "ee5dbc1a48d4431a82335603f6c288f619a02376dccf0d64fe7fa6146020dc78"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "SEIUSDT",
+      "elapsed_s": 0.3909999999741558,
+      "http": 200,
+      "used_weight_1m": "810",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "be908f17e141d25ac6c48898e862b88094aeac148e833875642dfff6cd6d1d8a"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "SFPUSDT",
+      "elapsed_s": 0.34400000001187436,
+      "http": 200,
+      "used_weight_1m": "820",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "2a68ff7b0c5be41485e1e330b7484832e898068b934d9042a78fafd309293592"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "SKLUSDT",
+      "elapsed_s": 0.39000000001396984,
+      "http": 200,
+      "used_weight_1m": "830",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "d90c6328210ff66fec55b624de46c3b8fdef786887815038ea9aece38e9aa302"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "SNXUSDT",
+      "elapsed_s": 0.40700000000651926,
+      "http": 200,
+      "used_weight_1m": "840",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "35cc65020d50cb02c9bc97cd971ce0975729c656fe761293f1bb37fcdaaabc03"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "SPELLUSDT",
+      "elapsed_s": 0.5469999999913853,
+      "http": 200,
+      "used_weight_1m": "850",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "da19e8bc0dac536735ea0714d9561785377bbb277250f5a222803dae5d8b200d"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "SSVUSDT",
+      "elapsed_s": 0.3909999999741558,
+      "http": 200,
+      "used_weight_1m": "860",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "89ae6de7adfc9bb35c01dc0dd81df6127889bb990c306c177ac04eec01dbf5b3"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "STEEMUSDT",
+      "elapsed_s": 0.5320000000065193,
+      "http": 200,
+      "used_weight_1m": "870",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "3092e58bfda74565f7701886bb0bd7c44f1a9ab1c0e41ddbeaec18fe8d16e362"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "STRKUSDT",
+      "elapsed_s": 1.187999999994645,
+      "http": 200,
+      "used_weight_1m": "880",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "9c6bcc732c9e701dbe0bc1e88405125214d4cfe9c29590c59082bd49b1bc03dd"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "STXUSDT",
+      "elapsed_s": 1.187999999994645,
+      "http": 200,
+      "used_weight_1m": "890",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "af2393cab8c129e9bd83338609030d0802865e07a2734964070f412164a7afb9"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "SUIUSDT",
+      "elapsed_s": 1.2030000000086147,
+      "http": 200,
+      "used_weight_1m": "920",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "80eb01c665e7070a8c0804ca1e46d7e0897eb7111766946c933983abafbe0176"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "SUPERUSDT",
+      "elapsed_s": 0.389999999984866,
+      "http": 200,
+      "used_weight_1m": "940",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "2c57bf93d849ecfa6ad79823bbceb09aa81c965b601d29be17c3c51d882f7fa9"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "SUSHIUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "950",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "bfe937dd3416fc48dd71d32cf49d26dcf666d09fd3d8a78c18205ee98cd9b123"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "TAOUSDT",
+      "elapsed_s": 0.5469999999913853,
+      "http": 200,
+      "used_weight_1m": "960",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "7cfb00c2b2647ada43cff3575a27643290a6d3ae0af0b652db057635e71cd2e9"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "THETAUSDT",
+      "elapsed_s": 0.7339999999967404,
+      "http": 200,
+      "used_weight_1m": "970",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "d466b8d9f3f3590286fd2b756d4a23b7c61532a2d4d54e1726f60a88e3b8239b"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "TIAUSDT",
+      "elapsed_s": 0.389999999984866,
+      "http": 200,
+      "used_weight_1m": "980",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "cb74090de48de639e1107f36ffefbefcb422a372659233d1903559186c0e0558"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "TRBUSDT",
+      "elapsed_s": 0.75,
+      "http": 200,
+      "used_weight_1m": "990",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "c3fcdc4a3b85b3d01ec633a8b625eb35835ed630893bbe59787f9d953586295b"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "TRXUSDT",
+      "elapsed_s": 0.75,
+      "http": 200,
+      "used_weight_1m": "1000",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "55ac52f5172481811d9562a1050c11f33c032a743c4119f4c6cc4750dddf6b36"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "TUSDT",
+      "elapsed_s": 0.5629999999946449,
+      "http": 200,
+      "used_weight_1m": "1010",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "a17e6c96e223c1ac01106df646d7c75ea913ba7f009937d1ac3d96ea73d2f2e0"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "TWTUSDT",
+      "elapsed_s": 0.75,
+      "http": 200,
+      "used_weight_1m": "1020",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "f970261cad0f21bbc0558f3f45ab39b0d18fd14f0dc023abac2f8dc4acc6e6ce"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "UMAUSDT",
+      "elapsed_s": 1.187999999994645,
+      "http": 200,
+      "used_weight_1m": "1030",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "6873428a534e12a38394f89a773facce63965038b153b4ea3a30d612d12e77ee"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "UNIUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "1040",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "acb20abc0abfc20b2d7afcf1b18b462b968ec89a78a97122ee72a54e531b3285"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "USTCUSDT",
+      "elapsed_s": 0.75,
+      "http": 200,
+      "used_weight_1m": "1050",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "13f89631c71279882ac2c1f9f64208bbf090254e5bd7f90c8ffac9b7373390d1"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "VETUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "1070",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "da676a24c0a40befe7a4c2687f214f2727afe5d7c8728442416f1b816906b91b"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "WAXPUSDT",
+      "elapsed_s": 0.75,
+      "http": 200,
+      "used_weight_1m": "1080",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "465f04c1cc767c551ceca334d503adc33bd734628219a12be8dcc6a6b3b8fa72"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "WLDUSDT",
+      "elapsed_s": 0.5309999999881256,
+      "http": 200,
+      "used_weight_1m": "1090",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "c484ed5afb39b594d4ee1cc8ea038649df6da4918d78c79f1506f4389ffec134"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "WOOUSDT",
+      "elapsed_s": 0.5320000000065193,
+      "http": 200,
+      "used_weight_1m": "1110",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "c99d8fb3be047d02fabb3f36804219cd3dda7da3dd993cc1a2cfe06bd2526044"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "XLMUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "1120",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "0372d99d40a724d0e93b0108e1c256f32e2a4e3113cf34068d5ed8f96169dce4"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "XMRUSDT",
+      "elapsed_s": 0.40600000001722947,
+      "http": 200,
+      "used_weight_1m": "1130",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "606a8098aab093aee0ae4f604233aa0190d36be2229c79b11f5d4c677b1b8678"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "XTZUSDT",
+      "elapsed_s": 0.75,
+      "http": 200,
+      "used_weight_1m": "1140",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "f7e42f154f7dcf94104932aab8e72cf924f9f3e60b0ea27f8c75c4753e92e496"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "XVGUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "1150",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "b001f8c5137dd7167c99e1440a9ae53556cd2efdac55fe6da5aeb43637e97bd2"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "XVSUSDT",
+      "elapsed_s": 0.7339999999967404,
+      "http": 200,
+      "used_weight_1m": "1160",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "201ac2055242628a8cd12243064967746a1c70d39f65e8a680474c6c99ff0c43"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "YFIUSDT",
+      "elapsed_s": 0.34299999999348074,
+      "http": 200,
+      "used_weight_1m": "1170",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "403b7981d11b257496eb8e7f7b04dfa6b26aeaf165f59b5d067750f6b96599ab"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "YGGUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "1190",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "ffeb2fc254d34f81c4b5c7600eecf381608d4a6a6c7618e17d31e5399ac75506"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ZECUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "1200",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "3d293a342c6a8eabe09a29545525ca0046fafd13fa621df043c2462264473522"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ZENUSDT",
+      "elapsed_s": 8.280999999988126,
+      "http": 200,
+      "used_weight_1m": "10",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "23c3cfef16fea7a61bf7cc60f7b8900c635eaa35d122556c9bcb377901f94b9a"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ZILUSDT",
+      "elapsed_s": 0.39100000000325963,
+      "http": 200,
+      "used_weight_1m": "20",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "83a2af56a26c16219665c0e2096a8acd190b30986f627564fa52093351afd05c"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ZROUSDT",
+      "elapsed_s": 0.5469999999913853,
+      "http": 200,
+      "used_weight_1m": "0",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "29f9946d3479df85d6cf53bbd7402896ad0462661ef644e914142d1b1274e239"
+    },
+    {
+      "path": "/fapi/v1/klines",
+      "symbol": "ZRXUSDT",
+      "elapsed_s": 0.5469999999913853,
+      "http": 200,
+      "used_weight_1m": "40",
+      "rows": 1500,
+      "last_open_utc": "2026-11-14 04:00:00",
+      "raw_sha256": "eaca3d0b46e982cc85b54cd4765b3b598989e8409f045a71745220c5fa526e95"
+    }
+  ],
+  "sleeps": [
+    7.652835845947266
+  ],
+  "scope": "Standalone public market-data client only. No engine, account, credential, scheduler or slot. Does not measure delay inside a running engine lock.",
+  "missing_public_trading_symbols": [],
+  "status": "COMPLETE",
+  "history_problems": [],
+  "raw_signal_compute_s": 1.1700000000128057,
+  "theoretical_4h_weight": 1630,
+  "theoretical_max_d01_extra_weight": 815,
+  "elapsed_s": 93.96900000001187,
+  "observed_at_utc": "2026-11-14T10:15:02.684635+00:00"
+}

@@ -1,0 +1,11 @@
+{
+  "head": "c337bed948573fffe62b345812735c380501150d",
+  "install_error": "R6 overlay: 1 frozen symbol(s) without a testnet rule: ZRXUSDT - not installed (no silent dropping)",
+  "exits_only": true,
+  "context_resolver_present": false,
+  "context_lot_entry_present": false,
+  "last_raw_short_exit": false,
+  "last_exit_after_deadline": false,
+  "decision_bars_after_entry": 121,
+  "expected_short_exit": true
+}
