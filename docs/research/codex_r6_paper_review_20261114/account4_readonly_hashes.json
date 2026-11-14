@@ -1,0 +1,14 @@
+{
+  "F:\\ZackBot2_data\\EXPLORATION-account4\\runtime\\ZackBot\\settings.json": {
+    "sha256": "1d487380997429fb24c363299915a4d22fc736457c96805f63db3015d47cc11a",
+    "unchanged": true
+  },
+  "F:\\ZackBot2_data\\EXPLORATION-account4\\runtime\\ZackBot\\install.json": {
+    "sha256": "bca397c3cca7ddc526d5f9491a20a08a4585e1d4955aad74e586362c177aaa65",
+    "unchanged": true
+  },
+  "F:\\ZackBot2_data\\EXPLORATION-account4\\source\\engine.py": {
+    "sha256": "1515fb8faf6067ece8a7bf20abad617398b9158272a4bc06212a806535324ee4",
+    "unchanged": true
+  }
+}

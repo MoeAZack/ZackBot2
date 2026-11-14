@@ -1,0 +1,77 @@
+{
+  "foreign_slot": {
+    "accepted": true,
+    "id": "EX15",
+    "risk": 0.024,
+    "max_pos": 1,
+    "n_symbols": 1
+  },
+  "short_list": {
+    "accepted": true,
+    "id": "EX14",
+    "risk": 0.024,
+    "max_pos": 1,
+    "n_symbols": 1
+  },
+  "larger_risk": {
+    "accepted": true,
+    "id": "EX14",
+    "risk": 0.048,
+    "max_pos": 1,
+    "n_symbols": 163
+  },
+  "three_positions": {
+    "accepted": true,
+    "id": "EX14",
+    "risk": 0.024,
+    "max_pos": 3,
+    "n_symbols": 163
+  },
+  "guard_after_risk_doubled": null,
+  "failed_reinstall": {
+    "error": "R6 overlay: 1 frozen symbol(s) without a testnet rule: AAVEUSDT - not installed (no silent dropping)",
+    "kept_active_entry": true,
+    "exits_only": false,
+    "entry_guard": null
+  },
+  "save_before_pacer": [
+    {
+      "slot_visible": true,
+      "pacer_installed": false
+    }
+  ],
+  "clock_exit": [
+    {
+      "entry_delay_min": 0,
+      "cycle_delay_min": 20,
+      "age_at_prior_close": 120.08333333333333,
+      "early_exit": false
+    },
+    {
+      "entry_delay_min": 20,
+      "cycle_delay_min": 0,
+      "age_at_prior_close": 119.91666666666667,
+      "early_exit": false
+    },
+    {
+      "entry_delay_min": 0,
+      "cycle_delay_min": 120,
+      "age_at_prior_close": 120.5,
+      "early_exit": true
+    },
+    {
+      "entry_delay_min": 20,
+      "cycle_delay_min": 140,
+      "age_at_prior_close": 120.5,
+      "early_exit": true
+    }
+  ],
+  "slow_fetch_gate": {
+    "gate_result": [
+      "AAVEUSDT",
+      true,
+      "D01 ok (run 768 h, median qv 24,000,000)"
+    ],
+    "returned_minutes_after_close": 21.0
+  }
+}
