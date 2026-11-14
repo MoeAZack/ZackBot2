@@ -375,3 +375,22 @@ def test_v13_incomplete_days_are_not_used():
     d = pd.DataFrame(dict(t=t, o=1.0, h=np.arange(11.0), l=1.0, c=1.0, v=1.0))
     hi, lo = L13._daily_hl(d)
     assert list(hi.index) == [pd.Timestamp('2024-01-02')]
+
+
+import longscout_v14 as L14
+L14.register()
+
+
+@pytest.mark.parametrize('key', sorted(L14.CANDIDATES))
+def test_v14_cut_right_after_signals_and_prefixes(key):
+    a, b = (56, 55) if key.startswith('s14') else (55, 56)     # s14 needs BTC falling
+    coin, btc = _mk(2600, '4h', a), _mk(2600, '4h', b)
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    ex = np.flatnonzero(np.diff(np.asarray(full['lx']).astype(int)) | np.diff(np.asarray(full['sx']).astype(int))) + 1
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ex[ex >= 300][:20]) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
