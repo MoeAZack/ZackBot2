@@ -1,0 +1,43 @@
+{
+ "id": "IVS-ECON-D01",
+ "contract": "docs/research/next_trials_20261113/IVS_METADATA_AND_ECON_D01.md @0547b96f49788d49d562f1c599b96d6ab2e536f8",
+ "contract_sha256": "f76853f672cd30b3ce1478564cfac8d306fd3e1cd97eac8da37a2a37207d36c9",
+ "original_trial": {
+  "result_head": "544a33d29d83ea988631e0d918e1697d4d63e932",
+  "verdict": "FREQUENCY_FAIL (unchanged)",
+  "freeze_head": "9e80432f",
+  "freeze_sha256": "ef2c4cc17805a539984430885434029addab828e09f1178d7481c745d7e85673"
+ },
+ "scope_choice": "post-signal-count / pre-P&L dependent diagnostic chosen after the 826/153 counts were known; NOT preregistered before counts; cannot PASS original IVS or qualify a frequent strategy",
+ "metadata_clarification": "expected raw tuple symbol=BTCBVOLUSDT, base_asset=BTCBVOL, quote_asset=USDT (ruling 82f70688 literal BTC was inaccurate per Codex 6847073965); values unchanged, old freeze not rewritten",
+ "expected_identity": {
+  "tuples": 826,
+  "distinct_fill_times": 153,
+  "raw_signals_sha256": "a92d9d4c00453c6b2c34b7f20b9b810398d2c73eb73ae919ba05fe3e20e21f32"
+ },
+ "cases": "order0 alphabetical PRIMARY + fixed cohort DIAGNOSTIC (BTC ETH XRP SOL DOGE BNB ADA LINK AVAX) x 7/15/23bp x causal/4h stop-first = 12",
+ "not_computed": "40-order grid, p10, LEAD_PASS",
+ "data": "unchanged: original ivs1h freeze verifies all 32 data/harness/futures pins at run time; no new acquisition",
+ "frozen_utc": "2026-11-13T07:38:23.018099+00:00",
+ "outcomes_read": false,
+ "pnl_computed": false,
+ "files": {
+  "research/ivs_econ_d01/econ_run.py": "140cb044d46b5681ed7233921cbf26ee5492ed46686288e15a4cd3c80f7a7f24",
+  "research/ivs_econ_d01/test_econ.py": "d5950f192bfb528acc57a2390d5be42e1884b20c830c6854cf835fb96ddaa371",
+  "research/ivs1h/ivs_hourly.py": "8c93fffac62dc027186c7a57ce05d090ef736c62b0da68b9fd8914cbe54d6f44",
+  "research/ivs1h/ivs_signals.py": "e94cecc57e1848af91c8115236a61f7840aa7b9d83a9920f9701c88d292e01f2",
+  "research/ivs1h/ivs_run.py": "38aeead873a61ce5a95a9f765935580cabdc51478abda34eff96950414a0e0fb",
+  "research/ivs1h/test_ivs.py": "21d4f67b62f31f470f53dc60d8f37873bfbfa10ddd7bdab58595303abc4daebc",
+  "research/ivs1h/ivs_fetch.py": "fcc7ef3003b6190e505ee9c6a8822e7c47ab0c0fd35197603aeb7d8fcb449191",
+  "research/ivs1h/freeze.json": "ef2c4cc17805a539984430885434029addab828e09f1178d7481c745d7e85673",
+  "research/ivs1h/freeze.sha256": "8e7738314483d5c9168379d595a8340753abd69422b696dd47bc3e6d9b9699ec",
+  "docs/research/ivs1h/inputs/expected_manifest.json": "d1ba7e865275d02e4b3da53cf013f7d81f64ceb4e0b6997802be0044c3e4b03d",
+  "docs/research/ivs1h/inputs/fetch_manifest.json": "a6a3e4375cf528ad4e67ba562eb3bcef6987e686bca692d0bf010b57aeac50c0",
+  "docs/research/ivs1h/inputs/audit.json": "f9118009e23dd4ba0e93aa7bd8fe22a2ab628abb0490006eca62d3be2c914ef5",
+  "docs/research/ivs1h/inputs/btcbvol_hourly.csv": "b9f16e54324e771e45dbdae2b23c05beef8f61db74d086b7d8e329ec928339f6",
+  "docs/research/ivs1h/results/raw_signals.csv": "a92d9d4c00453c6b2c34b7f20b9b810398d2c73eb73ae919ba05fe3e20e21f32",
+  "docs/research/ivs1h/results/results.json": "cce089d640e7fb464b2fb5a161bbf021e3b67cab199b8d8958000fca63f06b42",
+  "docs/research/ivs1h/results/trial_record.json": "da28359192f8ddc3169776edcc135278be037ec8ff72c5a8885b19c29a6f977d"
+ },
+ "no_accounts_keys_workers_schedulers_collectors_activation": true
+}

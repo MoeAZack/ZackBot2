@@ -1,0 +1,14 @@
+{
+ "study": "ADMISSION-CONTROLS",
+ "trials": 1,
+ "cases": 24,
+ "source_sha256": {
+  "controls.py": "0159b13e0a602c31e37d9213c7e033e855d22f79f3e02333d5aef1cf3ee43c0c",
+  "run_controls.py": "5e585a1c1cf4d4770762ea189c51aea3b151b9dff8641c6606559369a8a79959",
+  "test_controls.py": "4223e395dde650b80903c8a90771fd4b8b057f0010341b3b1b5d3a07c1cfe2aa",
+  "contract.json": "533faef8a177a67a1bbc338dd23d260e4c3ee37024f35f1ea8016bb52d0a844b"
+ },
+ "data_manifest_sha256": "c11ed2566727c38d0d9236d7290a01aabb4a53a0f3b15388ea8fed7ba8909351",
+ "rules_sha256": "d1ef2a9c60db9858774d68903648c334ca807a66c23dc85cce13fd8add96d2af",
+ "note": "recorded before any outcome of these cases; all 24 retained"
+}

@@ -1,0 +1,107 @@
+{
+ "key": "cp_z5_daily_tsmom_1h",
+ "tf": "1h",
+ "scenario": "worst",
+ "symbols": [
+  "BTCUSDT",
+  "ETHUSDT",
+  "XRPUSDT",
+  "SOLUSDT",
+  "DOGEUSDT",
+  "BNBUSDT",
+  "LINKUSDT",
+  "AVAXUSDT"
+ ],
+ "bars": 35999,
+ "first": "2022-08-26 06:00:00",
+ "last": "2026-10-04 04:00:00",
+ "end_equity": 4070.72,
+ "maxdd_usd": 255.03,
+ "maxdd_R": 31.9,
+ "feasibility": {
+  "attempts": 858,
+  "executed": 858,
+  "rule_blocked": 0
+ },
+ "all": {
+  "n": 858,
+  "win": 44.5,
+  "pnl": 70.72,
+  "long_n": 461,
+  "short_n": 397,
+  "long_pnl": 106.21,
+  "short_pnl": -35.49,
+  "expR_7bp": 0.0115,
+  "pnl_7bp": 70.72,
+  "expR_15bp": -0.0696,
+  "pnl_15bp": -505.6,
+  "expR_23bp": -0.1507,
+  "pnl_23bp": -1081.92
+ },
+ "early_consumed": {
+  "n": 490,
+  "win": 46.1,
+  "pnl": 207.41,
+  "long_n": 276,
+  "short_n": 214,
+  "long_pnl": 161.44,
+  "short_pnl": 45.97,
+  "expR_7bp": 0.0529,
+  "pnl_7bp": 207.41,
+  "expR_15bp": -0.0265,
+  "pnl_15bp": -115.55,
+  "expR_23bp": -0.106,
+  "pnl_23bp": -438.51
+ },
+ "later_consumed": {
+  "n": 368,
+  "win": 42.4,
+  "pnl": -136.7,
+  "long_n": 185,
+  "short_n": 183,
+  "long_pnl": -55.23,
+  "short_pnl": -81.46,
+  "expR_7bp": -0.0437,
+  "pnl_7bp": -136.7,
+  "expR_15bp": -0.1269,
+  "pnl_15bp": -390.05,
+  "expR_23bp": -0.2102,
+  "pnl_23bp": -643.4
+ },
+ "why": {
+  "time": 560,
+  "stop": 275,
+  "tp": 23
+ },
+ "code_sha256": {
+  "newstrat_cp4.py": "4f5541ac3f231f0755b94e36d9d376701f3f7b240d0301b9f41b3a9036321d5f",
+  "newstrat_cp4_run.py": "4e55e0e55e318175d7dc83cb818838a76d12bafdb6a561ba8afecef97a438c08",
+  "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+  "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011"
+ },
+ "dd_label": "High",
+ "cost15_R_median": 0.1361,
+ "sumR15_by_coin": {
+  "BTCUSDT": -55.43,
+  "ETHUSDT": -9.87,
+  "XRPUSDT": -4.28,
+  "AVAXUSDT": -2.28,
+  "LINKUSDT": -0.61,
+  "BNBUSDT": 0.93,
+  "DOGEUSDT": 2.9,
+  "SOLUSDT": 8.91
+ },
+ "expR15_wo_best_coin": -0.0826,
+ "sumR15_by_year": {
+  "2022": 5.73,
+  "2023": -7.57,
+  "2024": -11.17,
+  "2025": -29.88,
+  "2026": -16.84
+ },
+ "top5_share": null,
+ "closedR15_maxdd": 78.15,
+ "closes_per_week": 4.0,
+ "turnover_fallback_trades": 0,
+ "paper_eligible": false
+}

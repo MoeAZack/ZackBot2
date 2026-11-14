@@ -1,0 +1,3544 @@
+{
+ "files": {
+  "2024-10-04": {
+   "bytes": 408644,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-04.zip",
+   "sha256": "327394cd470dc5d4f839a8f675559331eb1bdc1f30fd909623cebb0b8266dd0a"
+  },
+  "2024-10-05": {
+   "bytes": 396551,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-05.zip",
+   "sha256": "70777ae6ca72c8860bce83a9eebbf0bd3c3f0796080de73119bf8902bed3d22c"
+  },
+  "2024-10-06": {
+   "bytes": 407357,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-06.zip",
+   "sha256": "913ca583ec52244f2895074614720114f97d10b6c95eefccfac14e38bd0cc13a"
+  },
+  "2024-10-07": {
+   "bytes": 425143,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-07.zip",
+   "sha256": "387fb7d14dcbcd760ea6800ec841c4722e5db0cb0429436b8dfc0a8965a1974e"
+  },
+  "2024-10-08": {
+   "bytes": 431559,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-08.zip",
+   "sha256": "bf83b9ea529ad278f161ec391659fe212b46c855cd86c90113a64596b7b95b6a"
+  },
+  "2024-10-09": {
+   "bytes": 416283,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-09.zip",
+   "sha256": "7d12d2b7837c1bc0e4d7ded0579966fa4b0564020f60a5da7a9b8784eae0753d"
+  },
+  "2024-10-10": {
+   "bytes": 418345,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-10.zip",
+   "sha256": "d47acb5850af433ceafbe13aff2d2bb2643aef2eb4815b075654fda954ae8ddd"
+  },
+  "2024-10-11": {
+   "bytes": 424281,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-11.zip",
+   "sha256": "20e5f489e26055239c2f5785ab0f9735c09647d6ac16ed855fc1e30cf7edd5a7"
+  },
+  "2024-10-12": {
+   "bytes": 415431,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-12.zip",
+   "sha256": "742a2ad8f5c3a60d99bd49b57af3acfde7960ff0bb54fe35664717d47a4c1e53"
+  },
+  "2024-10-13": {
+   "bytes": 411594,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-13.zip",
+   "sha256": "ea1756de56c10bac22f21be5f42a09e7136af42b0c2a96ddf2abc1a45df69e68"
+  },
+  "2024-10-14": {
+   "bytes": 426765,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-14.zip",
+   "sha256": "5d72025918aac72c04cb77faa09d7fd88cbdbef49dd641a2fcdb15f997c4c548"
+  },
+  "2024-10-15": {
+   "bytes": 425148,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-15.zip",
+   "sha256": "9948797a761fa7915504a7a5eec19bca19998de9be5b91f5094fa13edff27e04"
+  },
+  "2024-10-16": {
+   "bytes": 421022,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-16.zip",
+   "sha256": "d7716266632a020fd17ffe4ca654455f5284544401576a15cd51d9b2ec8a688c"
+  },
+  "2024-10-17": {
+   "bytes": 430743,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-17.zip",
+   "sha256": "ce0af1f6f9087500724436002b2a53122b0bca294df73cf1993170d1d5b8b192"
+  },
+  "2024-10-18": {
+   "bytes": 430899,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-18.zip",
+   "sha256": "a9c27593776fb319bf9c9c3684f1b634238d5b6c96d9fa7375e968dfa3cf6d48"
+  },
+  "2024-10-19": {
+   "bytes": 403841,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-19.zip",
+   "sha256": "bdf843953ad92421018a8fe3abc58eafa958a0e34c5f568d59d9a66c5e62bb3c"
+  },
+  "2024-10-20": {
+   "bytes": 421886,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-20.zip",
+   "sha256": "0ed582fa0faa1ccc33086180d535d351a60c6665aca9844e2dc6c1dff16dc865"
+  },
+  "2024-10-21": {
+   "bytes": 428163,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-21.zip",
+   "sha256": "bb7141e5cafb5024556136c05a1a39542a937cf83b9221e50d2967aff23cccdb"
+  },
+  "2024-10-22": {
+   "bytes": 438227,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-22.zip",
+   "sha256": "4f1d374c03a7af4c5024c97c3e1262fb0f64e279d515698723ddab09ae6a0168"
+  },
+  "2024-10-23": {
+   "bytes": 424962,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-23.zip",
+   "sha256": "883ece80a1d38916bb3e2c34649f786511b3d96293ad29005ace336f940bf5ce"
+  },
+  "2024-10-24": {
+   "bytes": 437736,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-24.zip",
+   "sha256": "65edee7932ee67afbc3722a866d23b679d7992068a80f4c06ddd60877271ff8e"
+  },
+  "2024-10-25": {
+   "bytes": 454057,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-25.zip",
+   "sha256": "160b6fbde0e694fda9a213553898cc662bc62b2cda177e4b7d32c4a254088481"
+  },
+  "2024-10-26": {
+   "bytes": 426542,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-26.zip",
+   "sha256": "68535cbe710dd718e84bf965ed6af23ea7fcb0f3c2d93b3ed580819b8f032445"
+  },
+  "2024-10-27": {
+   "bytes": 407207,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-27.zip",
+   "sha256": "f103a18bdd214860b686880b57c503c4bb026a95be39568d534bb6a5b4dbd49e"
+  },
+  "2024-10-28": {
+   "bytes": 440509,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-28.zip",
+   "sha256": "fec5e248fb7a1731f0349d7bc78b00175ba7592da99f02eb091ad05d80f2aa0f"
+  },
+  "2024-10-29": {
+   "bytes": 441415,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-29.zip",
+   "sha256": "c3952b20a2b6440d556a1392c9b6e841aaf19cd4e5031f1b89bbf45910b35e5a"
+  },
+  "2024-10-30": {
+   "bytes": 428442,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-30.zip",
+   "sha256": "9ac7a87d244fabe71c62abf74550f1fe880d91f3b6f5cad823f6d51988ba1d90"
+  },
+  "2024-10-31": {
+   "bytes": 418668,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-10-31.zip",
+   "sha256": "c208c80c88ad07e93af8a4172e427843a6dc4728198ff801bf114303a352e0cd"
+  },
+  "2024-11-01": {
+   "bytes": 451096,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-01.zip",
+   "sha256": "649719aa73930ccbbbed31bc190e0981820ceb64c34fa7f1d69fc1c867f5101f"
+  },
+  "2024-11-02": {
+   "bytes": 424015,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-02.zip",
+   "sha256": "5c024b905b20ab6657895299a06b5338a5c7e21047d3ec11f877cc72b6254dc8"
+  },
+  "2024-11-03": {
+   "bytes": 429399,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-03.zip",
+   "sha256": "e71594ff23ceaa406e505a720bf435c61a702d87929a0ae4beca1f07c26aaf46"
+  },
+  "2024-11-04": {
+   "bytes": 433584,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-04.zip",
+   "sha256": "1f7d6b659a5cbf81998e5d0a8ad8c578edd9ec41637ec816999a92f3e38c9634"
+  },
+  "2024-11-05": {
+   "bytes": 443658,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-05.zip",
+   "sha256": "881d22b3602bdc7451b416eae617f81a5dca944e30d232ab8cb3103896e58d25"
+  },
+  "2024-11-06": {
+   "bytes": 463152,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-06.zip",
+   "sha256": "f3151a9edeeea14403ee644cf3a2fac6f2e32dba51662c75ed2aa24f08a0dec8"
+  },
+  "2024-11-07": {
+   "bytes": 427863,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-07.zip",
+   "sha256": "ace33b2790357b35558d9ea8f9e267e2e6420ed45f26498b7f87b8494db457d7"
+  },
+  "2024-11-08": {
+   "bytes": 426924,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-08.zip",
+   "sha256": "07446faf59954c38512d9b9b390715cff3a7054ffc726cb5edc0581934fa2de5"
+  },
+  "2024-11-09": {
+   "bytes": 403295,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-09.zip",
+   "sha256": "5fc7adf650124327cd5b40162c16a5b89be2b39e7a16e3371d6bbb58e8ea904b"
+  },
+  "2024-11-10": {
+   "bytes": 437684,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-10.zip",
+   "sha256": "2861cb7ee765475c92d1a105178211000b36d71e60c61ce2ceabc1d604cc37c2"
+  },
+  "2024-11-11": {
+   "bytes": 456855,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-11.zip",
+   "sha256": "b92d200f89808b95d8dcd69b167ccef8296d7e3f49bf6bae307e7ae95e2182eb"
+  },
+  "2024-11-12": {
+   "bytes": 496743,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-12.zip",
+   "sha256": "5b6ad4c194a2cccdb1ef8655ed030508be117ccddd0053d6e1606b29993617b4"
+  },
+  "2024-11-13": {
+   "bytes": 473772,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-13.zip",
+   "sha256": "989dc5111b26e75f414fff9a01d3d63fa53463e74333b8e4b52faefed42e08e1"
+  },
+  "2024-11-14": {
+   "bytes": 460421,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-14.zip",
+   "sha256": "594ee34a9617d2e786cf1a833735c43e6d1aefbc306c02371421261a0830e530"
+  },
+  "2024-11-15": {
+   "bytes": 443213,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-15.zip",
+   "sha256": "4896c59b07dd34d361772036f4b8af6a788d90925996c2cb7e939663b1937429"
+  },
+  "2024-11-16": {
+   "bytes": 428142,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-16.zip",
+   "sha256": "eb3e9c69fa4fd17f5572d9c587f996bcfcc668a7eba231c67ec960166255884d"
+  },
+  "2024-11-17": {
+   "bytes": 431068,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-17.zip",
+   "sha256": "30c646361c975790bb64ca76b749b9f942d75f23f68fdb265098d8cd0018bb31"
+  },
+  "2024-11-18": {
+   "bytes": 434663,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-18.zip",
+   "sha256": "2fecff3956f94ca46b91548174ed37983ab988e2796acb4666082fa238b6b205"
+  },
+  "2024-11-19": {
+   "bytes": 450957,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-19.zip",
+   "sha256": "aa57e9a178facd665b491bf18a77fb0921cb4f91c8d599068e6c6c81a8164e30"
+  },
+  "2024-11-20": {
+   "bytes": 454204,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-20.zip",
+   "sha256": "ea4235a80356ff1b42df69bdd7f724d794434b140cffe5f1621cb1fd2d780b91"
+  },
+  "2024-11-21": {
+   "bytes": 473793,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-21.zip",
+   "sha256": "484788990e532c932fcad8480184bf74c5d928ca14be43f443ba0a72bc604c34"
+  },
+  "2024-11-22": {
+   "bytes": 471045,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-22.zip",
+   "sha256": "9fcd30da88f6a32851d54043f6f87206740a61680d6e3b0b6c9c17782960bd18"
+  },
+  "2024-11-23": {
+   "bytes": 426160,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-23.zip",
+   "sha256": "d6d88655a5393c4693c5800df7165d008e2b5d3e8faecd92c43daadd98e031dd"
+  },
+  "2024-11-24": {
+   "bytes": 426050,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-24.zip",
+   "sha256": "1926b5edb8399f47aba9a75f15eeeed0ed96a141c19a785b7640cb56ee14479c"
+  },
+  "2024-11-25": {
+   "bytes": 443622,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-25.zip",
+   "sha256": "44ddaa48f4c0099f7874602c348138ac1f34974b30a3eb9413c7fa689e467e80"
+  },
+  "2024-11-26": {
+   "bytes": 449199,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-26.zip",
+   "sha256": "ab775e96f2b43419c6d87ce1d62d01e209ac6292cc228ba3f9087f32f3a745f1"
+  },
+  "2024-11-27": {
+   "bytes": 436853,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-27.zip",
+   "sha256": "ac0aa02f82a1203ba1a2efe58dcf254e8c9a9c93ed8761a2f0dec226ba11296b"
+  },
+  "2024-11-28": {
+   "bytes": 421445,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-28.zip",
+   "sha256": "04c5ca8bd50fec64aeca03202120f526d67aef0c95e5e03bf127caf0b70ce6f8"
+  },
+  "2024-11-29": {
+   "bytes": 444073,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-29.zip",
+   "sha256": "0d8f37b42359054d888389f58ca1c4a449023ee882ed32a2f252f284d512a94d"
+  },
+  "2024-11-30": {
+   "bytes": 416372,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-11-30.zip",
+   "sha256": "0309dc223268a42176c0d4585c56a8458a2cb1bee92de528697c35874b7c32fc"
+  },
+  "2024-12-01": {
+   "bytes": 420408,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-01.zip",
+   "sha256": "4a68aecd80d2dd082e38fed2a068663176c2b9c5da3c129101eedd3c37e4b9dd"
+  },
+  "2024-12-02": {
+   "bytes": 427798,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-02.zip",
+   "sha256": "e643a96c4fb550174b2ac955649b27a6e48680fd4e4ccaf2f974d96bb34bbf3c"
+  },
+  "2024-12-03": {
+   "bytes": 424477,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-03.zip",
+   "sha256": "c56728d46b5e858dd03ca689d8c5c99f5981bc2d56d25a063494de448cb71fbf"
+  },
+  "2024-12-04": {
+   "bytes": 429798,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-04.zip",
+   "sha256": "7b4aea031a1bf09e68beb4acdf4d228d723958ba93b49f38c1125cf52b39a440"
+  },
+  "2024-12-05": {
+   "bytes": 460066,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-05.zip",
+   "sha256": "3903221bc7c07c1b0eebed8b7f4afa1d2629183f647cc86952460aa7e81fd0c3"
+  },
+  "2024-12-06": {
+   "bytes": 439137,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-06.zip",
+   "sha256": "918537152a6024c0b9e0f7ea2aae77d7c9312fac68fc6f789e59c4c805c6fb44"
+  },
+  "2024-12-07": {
+   "bytes": 406668,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-07.zip",
+   "sha256": "caa0ad56eee8468b774fd4cd5fc9b9318204263c4b73ab7a988944809dc375e8"
+  },
+  "2024-12-08": {
+   "bytes": 410613,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-08.zip",
+   "sha256": "7da4d1bb105f84977cb4c0675a742ca77b97f47fc92366e240b69e80f11e0924"
+  },
+  "2024-12-09": {
+   "bytes": 452619,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-09.zip",
+   "sha256": "8836bda83d72b7e77ab0bc11ba3561a4cdce7707d635968be463b3cbb8236d9b"
+  },
+  "2024-12-10": {
+   "bytes": 460462,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-10.zip",
+   "sha256": "2051d31f4b4b3e3378699c263d5257c6a93a351e8a95c871e52ca52e96fad6be"
+  },
+  "2024-12-11": {
+   "bytes": 418017,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-11.zip",
+   "sha256": "ce8f6767d65b7938b717842420801f3cd98e4f3b52b353ac98497943350af3c3"
+  },
+  "2024-12-12": {
+   "bytes": 430012,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-12.zip",
+   "sha256": "24dacf8c2b35958b0d4efc59cff77d8d197a3e9a1587170d94d15401cff04c3f"
+  },
+  "2024-12-13": {
+   "bytes": 412423,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-13.zip",
+   "sha256": "97d18659f21a9caaf4fbcc961c06054195f3cbe0f3180438935affd22e57b1a6"
+  },
+  "2024-12-14": {
+   "bytes": 440665,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-14.zip",
+   "sha256": "71b200c3a67be19e51d606eb97203547d2c54fb63f024bf141a59281fb17223d"
+  },
+  "2024-12-15": {
+   "bytes": 440516,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-15.zip",
+   "sha256": "d67d5e266881ed1413040bcd16a760976de542528d4420e62ff922041dcc8532"
+  },
+  "2024-12-16": {
+   "bytes": 432073,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-16.zip",
+   "sha256": "dee7692fef6eef8c629e757e3944e9b725032557c8733c4fc9ff47e3fcb7dfb0"
+  },
+  "2024-12-17": {
+   "bytes": 420881,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-17.zip",
+   "sha256": "644d25ff3fc5d3fc7ecb282e6d727c7a4e467c7319ff38f828d0b558f3cd8375"
+  },
+  "2024-12-18": {
+   "bytes": 455775,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-18.zip",
+   "sha256": "38e2c17ee02576b9e71bb84a5de3c6c352a610e73b50e1aca39da8f660b7a508"
+  },
+  "2024-12-19": {
+   "bytes": 461429,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-19.zip",
+   "sha256": "4254870d60ec4a9751e9241bbd4aa884c2ad207928933a32d5bfb3785da2c93c"
+  },
+  "2024-12-20": {
+   "bytes": 452906,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-20.zip",
+   "sha256": "9f7fab5a1a91ad634669f506bfdbebed87a84838130e40142111cf0106caebf3"
+  },
+  "2024-12-21": {
+   "bytes": 427309,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-21.zip",
+   "sha256": "7c023d5595911c4bd1da8811257fb65b477b6dcdffddc6559069eea1ce4d91e2"
+  },
+  "2024-12-22": {
+   "bytes": 422855,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-22.zip",
+   "sha256": "4a910f68e277ec4b5e8b77c8e789c561ec5551ab258e7062aa2e6b817416ba57"
+  },
+  "2024-12-23": {
+   "bytes": 462812,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-23.zip",
+   "sha256": "3e85343c721f78d657a16b868aaa3e60740886c06d24bf3d13abca84c1d30830"
+  },
+  "2024-12-24": {
+   "bytes": 459326,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-24.zip",
+   "sha256": "b71db55abcd3fe45699c806c69bd0f4fc6840968c0ab24c0e36aa9fcb157df0c"
+  },
+  "2024-12-25": {
+   "bytes": 439073,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-25.zip",
+   "sha256": "37706f44b219a8ca7a10db4c07a83b3e516fd8662b0aa392ec0702c4a00a5b12"
+  },
+  "2024-12-26": {
+   "bytes": 429992,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-26.zip",
+   "sha256": "8b4e472881fa0222326e9f1d25a3d05eb80dc592c5a31a7bad1b6680af733e19"
+  },
+  "2024-12-27": {
+   "bytes": 428078,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-27.zip",
+   "sha256": "31e55804752106edd0832a19c4610660bb1a925748029fec8b8e431bffb0385d"
+  },
+  "2024-12-28": {
+   "bytes": 398821,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-28.zip",
+   "sha256": "37406fef6649e4c6c08f48e50ea296b35bf70ca18c49a8723003473a201bc0b1"
+  },
+  "2024-12-29": {
+   "bytes": 411941,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-29.zip",
+   "sha256": "ef7c32a57b4fe68d297e53439bd94e5228d57710a55cef4e549201774b6ae27b"
+  },
+  "2024-12-30": {
+   "bytes": 430072,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-30.zip",
+   "sha256": "9e295e34422909422e3b369c1845b1f2e0373df246515e4a5498674e6071cdd9"
+  },
+  "2024-12-31": {
+   "bytes": 444601,
+   "file": "BTCBVOLUSDT-BVOLIndex-2024-12-31.zip",
+   "sha256": "035627b398e19dd8388f48ce5b5957b72b68b18d90d3d3c45a3bd588e8377a75"
+  },
+  "2025-01-01": {
+   "bytes": 451930,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-01.zip",
+   "sha256": "7569c1f9908f328dde6abbabc7c4f773e7cb139da254e0cdb2c432f4e4d28b63"
+  },
+  "2025-01-02": {
+   "bytes": 440154,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-02.zip",
+   "sha256": "6c0a2f3ca3c9c77199970739807be8025d835bee538ab7eac0cb676660e1d2d1"
+  },
+  "2025-01-03": {
+   "bytes": 415635,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-03.zip",
+   "sha256": "7b5f377cc21e416039844ec9bb8674b1b05bcb7c7efd28fb883087f25a5f2506"
+  },
+  "2025-01-04": {
+   "bytes": 404965,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-04.zip",
+   "sha256": "3cfc9a39d7a36e8dc6e657f2c6eedd91cfecd73a311897a3c67bcbda1b529a08"
+  },
+  "2025-01-05": {
+   "bytes": 393632,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-05.zip",
+   "sha256": "d2d63ec566cc328cd84382b7e8ff140da539acce41a74aa07019a3796eb390c9"
+  },
+  "2025-01-06": {
+   "bytes": 425252,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-06.zip",
+   "sha256": "079386d6b12d1905cfee09169789f410ac57cfc83ec8743c15447dfc155a3a8b"
+  },
+  "2025-01-07": {
+   "bytes": 429553,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-07.zip",
+   "sha256": "84277c68c292ab10165509e1de067635c527948e8e806854d50776bd80d80b1d"
+  },
+  "2025-01-08": {
+   "bytes": 437417,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-08.zip",
+   "sha256": "a5922ca9e6ee52690cd715c95afc0347a1fefe63ff3fa106683ec501cf544338"
+  },
+  "2025-01-09": {
+   "bytes": 472219,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-09.zip",
+   "sha256": "8abb97e9432014be46192a981d1593cb323508458d7c6599d0c200f861ae943d"
+  },
+  "2025-01-10": {
+   "bytes": 442844,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-10.zip",
+   "sha256": "078d8c2a9b70603a99e381c7913c626e27ca8a945e56feed5928aadc6598a2cc"
+  },
+  "2025-01-11": {
+   "bytes": 449527,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-11.zip",
+   "sha256": "57435f84e415b35c94d01ac3c13d13f2259a06e2c7d4e0b8bae352235db09db9"
+  },
+  "2025-01-12": {
+   "bytes": 439242,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-12.zip",
+   "sha256": "9251dd745242198e67cf035cf329294f8d8f1acfa936f9090f52267b04519ceb"
+  },
+  "2025-01-13": {
+   "bytes": 435277,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-13.zip",
+   "sha256": "fb1cff1f864ceebcaab383759668275122d031b6ce806dbf05cd90621a2c69a1"
+  },
+  "2025-01-14": {
+   "bytes": 425257,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-14.zip",
+   "sha256": "fa2d842351d52224f94f248007b3321eaa68f48d1004443e296424b08aa30d67"
+  },
+  "2025-01-15": {
+   "bytes": 413131,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-15.zip",
+   "sha256": "4260dac209d9f1f82cabaa2effd6c080d004170f774246abad6f316c08e9d584"
+  },
+  "2025-01-16": {
+   "bytes": 430012,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-16.zip",
+   "sha256": "56fce2f2dba759e6188eaa8db9897961f98b0d9b701d738629985cd77d4bd8fe"
+  },
+  "2025-01-17": {
+   "bytes": 465078,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-17.zip",
+   "sha256": "cf232463d27943158bfb06fb5c805134e6a6ac2e79c979cecd5da03262627a9e"
+  },
+  "2025-01-18": {
+   "bytes": 430115,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-18.zip",
+   "sha256": "cd6d3f21e48eabfd25bae16ffdbc40703d78073b027f2ee19dd11c08f04c4356"
+  },
+  "2025-01-19": {
+   "bytes": 443526,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-19.zip",
+   "sha256": "0d89b8c2efc907164ab9e5e77582ed61666eca97b2b30bcf6b26b601b1aa1443"
+  },
+  "2025-01-20": {
+   "bytes": 470505,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-20.zip",
+   "sha256": "a54c0a8a8bf6fc39b25e4fc0651669a9fb341394325e1e5b65570644f2583b34"
+  },
+  "2025-01-21": {
+   "bytes": 445439,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-21.zip",
+   "sha256": "313b17bd4e3759f328b6da71487a7e6234478fbd6a956f7dd3ca41c68f1e17d2"
+  },
+  "2025-01-22": {
+   "bytes": 419306,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-22.zip",
+   "sha256": "b26c17c3160ea1b99805c9c19ca6e6f7c7df12dcb832c2c4c9286ad2ac886cbb"
+  },
+  "2025-01-23": {
+   "bytes": 450718,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-23.zip",
+   "sha256": "8abdbb849dbdfe86d3390dc51b77259b31ad8b399194c1e729e920bd70945e5d"
+  },
+  "2025-01-24": {
+   "bytes": 429246,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-24.zip",
+   "sha256": "0622dc5093adf502c3236997692848d909afe3e422451a4815e19af7ed385bac"
+  },
+  "2025-01-25": {
+   "bytes": 391593,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-25.zip",
+   "sha256": "19c107a13eaab6c1a0961335c6a28842b2c3cb73294e65b990f81a5425c20652"
+  },
+  "2025-01-26": {
+   "bytes": 392525,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-26.zip",
+   "sha256": "0087f3f2884808dbbbcb9d8d1136ad273dbe05874d35ec52e0a19514326d9e6b"
+  },
+  "2025-01-27": {
+   "bytes": 448228,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-27.zip",
+   "sha256": "972763e6ddb8280fd54a9dc78f04c0d0aa1ad1063549f39770dec13517868e99"
+  },
+  "2025-01-28": {
+   "bytes": 416951,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-28.zip",
+   "sha256": "61b552c056488cda3592412a753fb7a7615638d0e7c90ba822b224525ab798ba"
+  },
+  "2025-01-29": {
+   "bytes": 408606,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-29.zip",
+   "sha256": "b9c08ab9acc742594d09d93a115556065c74a08bc5562908b9c34b976b368d3e"
+  },
+  "2025-01-30": {
+   "bytes": 409161,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-30.zip",
+   "sha256": "2e9be3ac7c3d228ccb1d20c610bf7e57b89d6570ea505743927ed54fc75f69d9"
+  },
+  "2025-01-31": {
+   "bytes": 420739,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-01-31.zip",
+   "sha256": "c5c7ff2af5449be610f2fe1cd81d9983b9aadb70c55d4ad4fb90c0085707ffc0"
+  },
+  "2025-02-01": {
+   "bytes": 410925,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-01.zip",
+   "sha256": "0176c1edd201666f031b7377198e36e3ce93e0a509675acb28f42be6bc079e64"
+  },
+  "2025-02-02": {
+   "bytes": 447637,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-02.zip",
+   "sha256": "4aee35257573d1402c19cd8e0885dd18a5abf0323d9992c408d2a41253743e24"
+  },
+  "2025-02-03": {
+   "bytes": 470418,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-03.zip",
+   "sha256": "65f589648de54196ef1c0630bac6321aa405c4af85a7ac32f535ce38c64e1630"
+  },
+  "2025-02-04": {
+   "bytes": 459363,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-04.zip",
+   "sha256": "c8fe27a03e0b8cf53e1fbad887558ff2647d27c00671cfb99c6ac5da80809dca"
+  },
+  "2025-02-05": {
+   "bytes": 431956,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-05.zip",
+   "sha256": "bf237447e513311e2fdcc0c418bf63e86f57a8a53d7f075eb152237e35f92f57"
+  },
+  "2025-02-06": {
+   "bytes": 419389,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-06.zip",
+   "sha256": "174b99bc81e5a967ee8b9958f843b3a709f91e8d68d6b0ed22d8930f4f4129da"
+  },
+  "2025-02-07": {
+   "bytes": 427773,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-07.zip",
+   "sha256": "fc0c01cbe225f9bb8183916cfee925648c6f07448388295ae85ecdb88b22b608"
+  },
+  "2025-02-08": {
+   "bytes": 402772,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-08.zip",
+   "sha256": "fd5ff53ddf71b0820d26ffdc190a88ed16dd48344f7130d21ede14bd81b56462"
+  },
+  "2025-02-09": {
+   "bytes": 413363,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-09.zip",
+   "sha256": "b953685af8240a37e34de2146660093572b6ba114984d9cfcf48e2bc55bb124f"
+  },
+  "2025-02-10": {
+   "bytes": 421188,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-10.zip",
+   "sha256": "f56508feeab96478d5c62f7b9a0ff33d4ace32d9fcfe84b22100c13ae973e36d"
+  },
+  "2025-02-11": {
+   "bytes": 421892,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-11.zip",
+   "sha256": "86ba2283b0c29f98957e6bfe2b9a98dc72c221399908b882ccc3124be7637018"
+  },
+  "2025-02-12": {
+   "bytes": 423818,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-12.zip",
+   "sha256": "260eb21e25690175809131e97773966c75bff474e53ae17018de94168087a902"
+  },
+  "2025-02-13": {
+   "bytes": 435691,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-13.zip",
+   "sha256": "42d3c363b41c3a7be3a9e4714b4f8ca481f5f10dea180aa715eb4f1bd9864ed3"
+  },
+  "2025-02-14": {
+   "bytes": 416898,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-14.zip",
+   "sha256": "ca1709117ff9f96fe181b1500da858228de1419a30c595a6486c6da51336df64"
+  },
+  "2025-02-15": {
+   "bytes": 415494,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-15.zip",
+   "sha256": "9291e10c6c210ce02001cbca409d219cb4012d97683d2c6a5e5db674b3cd2f2b"
+  },
+  "2025-02-16": {
+   "bytes": 418206,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-16.zip",
+   "sha256": "1969cf99993e4c5d09d416f76a80d535ad8b9ba5c108ed07acd6c82187e32132"
+  },
+  "2025-02-17": {
+   "bytes": 442239,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-17.zip",
+   "sha256": "c3b1e8c72e0448e9494431e54409e0aeaad9dd670f4aef8d98fc80c59d45b42e"
+  },
+  "2025-02-18": {
+   "bytes": 411013,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-18.zip",
+   "sha256": "199a0847f0c60c1b9dd3e14f092a0a7d67dab05dd72c2d496272d5fbc21ad26f"
+  },
+  "2025-02-19": {
+   "bytes": 399705,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-19.zip",
+   "sha256": "20e2b4a57dd7eebc1fdaedbaf4c1291b09733d6cc27d2fb63e31c002e77d3180"
+  },
+  "2025-02-20": {
+   "bytes": 420416,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-20.zip",
+   "sha256": "65b0ebad732930193345a79c460d1ce8b26dfd075acae32cdc0c104454db0401"
+  },
+  "2025-02-21": {
+   "bytes": 438840,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-21.zip",
+   "sha256": "9047c62725ac07039c39e3d66b6668fa1e61b56da8b2fa205264401bf50f6026"
+  },
+  "2025-02-22": {
+   "bytes": 412928,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-22.zip",
+   "sha256": "0c0ecc9f6e4108b53b27e16db3c077c9d038d3d41a162bef276b1c4de9fdbc24"
+  },
+  "2025-02-23": {
+   "bytes": 407966,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-23.zip",
+   "sha256": "11663d59d54dda66f20466016db2c8022ac3a92e6c371ca61adcd3439c9a6d27"
+  },
+  "2025-02-24": {
+   "bytes": 428750,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-24.zip",
+   "sha256": "ec93c1c8c7fe71f94a81d387052e8f245989b94f058ad44c845c09221fe923eb"
+  },
+  "2025-02-25": {
+   "bytes": 454174,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-25.zip",
+   "sha256": "456c62b6f0c15521e05ad26a71a5debc2c5902baac13587e0115ba70db4263f9"
+  },
+  "2025-02-26": {
+   "bytes": 447188,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-26.zip",
+   "sha256": "47149e1a3496bce82050fcad714129cdc77e1db99009cb8f1563ac595f3331c2"
+  },
+  "2025-02-27": {
+   "bytes": 460040,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-27.zip",
+   "sha256": "290f8e2583ff0aeac97b651071a3924417b564997ab4f830c350f7af17b8ea03"
+  },
+  "2025-02-28": {
+   "bytes": 471372,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-02-28.zip",
+   "sha256": "7da034e4b127088b31b72d730d2697f8f0256e8dfa121cf55744441b5b2279c3"
+  },
+  "2025-03-01": {
+   "bytes": 453212,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-01.zip",
+   "sha256": "bb5b57a077c126f2b84561173c6086bb77e027bd60b57e1d97eb519ce6647cf4"
+  },
+  "2025-03-02": {
+   "bytes": 447022,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-02.zip",
+   "sha256": "6ac04cb0a11fb28c2c02e8b592b414c5b14c614febfbef906b5a65ffc00b02e2"
+  },
+  "2025-03-03": {
+   "bytes": 467433,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-03.zip",
+   "sha256": "0f5ba2c5ed7ea92263bc142aaad5832848c688b0b6c5faddd8a38341ea29ab06"
+  },
+  "2025-03-04": {
+   "bytes": 470005,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-04.zip",
+   "sha256": "b2528fe7befbbdea5d7a02059c7b3d695187ae9b340966ca2acb16f372d11b05"
+  },
+  "2025-03-05": {
+   "bytes": 456318,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-05.zip",
+   "sha256": "ea5105d06d767e7a20132a8bc67dd9819bb67ea1a940b61738eab978b06512f6"
+  },
+  "2025-03-06": {
+   "bytes": 449876,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-06.zip",
+   "sha256": "fc7ec0228f463e00058ee53f0e7cffebac496bcf2c1deeccdfd8426dcc5ee9d6"
+  },
+  "2025-03-07": {
+   "bytes": 452165,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-07.zip",
+   "sha256": "1b0f3ec0f23a563b32f3602c270350dc41824537c26fbeecfd64bc6b00cbefb8"
+  },
+  "2025-03-08": {
+   "bytes": 418851,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-08.zip",
+   "sha256": "82abf7c61ac1a8834f26961e4e8d7de5ff008eecae0a79231503f1d25c7bb07c"
+  },
+  "2025-03-09": {
+   "bytes": 450438,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-09.zip",
+   "sha256": "e0c93136d344f7aa6a3247e5faa6f00fba311e692d0aa76050e0075ab53931cb"
+  },
+  "2025-03-10": {
+   "bytes": 453247,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-10.zip",
+   "sha256": "cd748d5f2f6c3d95fa83b7cd2325555d8dffcd7ef8a406af2c54352a270b63ae"
+  },
+  "2025-03-11": {
+   "bytes": 448983,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-11.zip",
+   "sha256": "8c8b18ad144ef3ba13f601d977686280611428a99ff7176b29ea11cce56f31aa"
+  },
+  "2025-03-12": {
+   "bytes": 429097,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-12.zip",
+   "sha256": "795d4556f052d890364531a58eb6ecf72acc8be69bfaf6595dfd0cec73342f91"
+  },
+  "2025-03-13": {
+   "bytes": 442346,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-13.zip",
+   "sha256": "3f8c496efa5fb84bb2a0988da042ace21d208cac9b444b378513d23d0097ac8d"
+  },
+  "2025-03-14": {
+   "bytes": 452433,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-14.zip",
+   "sha256": "3905ac006e5786448c150c7f93e14ebb69465272e4c262827b72aa33485270a2"
+  },
+  "2025-03-15": {
+   "bytes": 423755,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-15.zip",
+   "sha256": "a96ae1e05ecca2a891cd63cad19589015ddd64de264fde0573e963ec0d6eed33"
+  },
+  "2025-03-16": {
+   "bytes": 413660,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-16.zip",
+   "sha256": "3dac26e4b2ae0291db5afa2a650e64e9de22efa65fd692fdd6978931e98af9ea"
+  },
+  "2025-03-17": {
+   "bytes": 448799,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-17.zip",
+   "sha256": "22e3edfba3c4b3b63da7de17e91ac8baa378d0b3e7559aeed8d00f4dc8593847"
+  },
+  "2025-03-18": {
+   "bytes": 416771,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-18.zip",
+   "sha256": "140501047dfbdc4f198176fb74e5129d1d77dc7c2ed19bf5100b2f6886f70e9c"
+  },
+  "2025-03-19": {
+   "bytes": 417799,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-19.zip",
+   "sha256": "7c729abc936052b2d7ac3b095b7245c6f76af4ca8c10adcefc7ed496c783bd70"
+  },
+  "2025-03-20": {
+   "bytes": 424516,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-20.zip",
+   "sha256": "84d92d0e218461fe08f938955de5f27efb33ea57773e729d35d8e04042ff79a2"
+  },
+  "2025-03-21": {
+   "bytes": 414217,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-21.zip",
+   "sha256": "bfc5fbe2a2932f9553ee3962304935ec027fae2dc0390923dbf80469add6c4a9"
+  },
+  "2025-03-22": {
+   "bytes": 400311,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-22.zip",
+   "sha256": "38af14f76af35fa2071360236dfb9afd01c35c1b3adc73ef53a58fe2422d7c65"
+  },
+  "2025-03-23": {
+   "bytes": 390591,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-23.zip",
+   "sha256": "4329c70adb04a458a32eedcc4822077ea095a93706f1fb404ae4a7497556a1f1"
+  },
+  "2025-03-24": {
+   "bytes": 421262,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-24.zip",
+   "sha256": "4680dfa4014dca9f5bc8b0be782ff578f05235af14d0d3d1bc897e78d846c11e"
+  },
+  "2025-03-25": {
+   "bytes": 419996,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-25.zip",
+   "sha256": "5aba2ee2eca1a0b8ff85ac0c865f30689c6b3d6d6766dfdf428f419f5cc0d971"
+  },
+  "2025-03-26": {
+   "bytes": 409054,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-26.zip",
+   "sha256": "a191d016914aeaca4733b99afbb688730f95d7737e3e160f64ce2fe859e2f8b8"
+  },
+  "2025-03-27": {
+   "bytes": 409413,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-27.zip",
+   "sha256": "025d80fbcda2db07fa0983fcffdbb1cd75a30e2bb2be64d5b34b652a47208078"
+  },
+  "2025-03-28": {
+   "bytes": 434900,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-28.zip",
+   "sha256": "8f5132691cc201dbe63a3347dbb34b891fb42916f42cdec081bceb187a816c75"
+  },
+  "2025-03-29": {
+   "bytes": 419406,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-29.zip",
+   "sha256": "19d6a60b40b04f589dbdb21357d8868b4563c547c68755703e3f73070074ae8a"
+  },
+  "2025-03-30": {
+   "bytes": 417747,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-30.zip",
+   "sha256": "785199f7e5b9e47a89efd021c9caf11450eb71ef9b86d67a70b2bfd399efba81"
+  },
+  "2025-03-31": {
+   "bytes": 427846,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-03-31.zip",
+   "sha256": "e2e7240ba7a4ea2c374b4dc6ca754ecbe45c59b64edf4da36e2dfab026bbc880"
+  },
+  "2025-04-01": {
+   "bytes": 419103,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-01.zip",
+   "sha256": "1dbdae0be2c3769b0fc2627af365b8b19599d2ad51fc15c7b0ddf53ce3706b86"
+  },
+  "2025-04-02": {
+   "bytes": 432535,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-02.zip",
+   "sha256": "cb792fed660d4472adb981b2823c0aea3f14a1e89e53bf21be7de632588cdd35"
+  },
+  "2025-04-03": {
+   "bytes": 427932,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-03.zip",
+   "sha256": "463f8b2a0f93d4ee7b4507215b626c7b5cb33c30c56b285442574a45e2fd4e4b"
+  },
+  "2025-04-04": {
+   "bytes": 437594,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-04.zip",
+   "sha256": "7e8f92ceda84a075658e0c803b27861e60d00eebb78aa80136a267429ee8fe1e"
+  },
+  "2025-04-05": {
+   "bytes": 404742,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-05.zip",
+   "sha256": "6a355a346f01471a845551b80b7ac82cf7bd20822a9e3cc19f1130e88a380caf"
+  },
+  "2025-04-06": {
+   "bytes": 435517,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-06.zip",
+   "sha256": "4d96e2244125f48c802bebe54860031cef0c70dacbc3b4c459d263cabed6abc6"
+  },
+  "2025-04-07": {
+   "bytes": 462259,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-07.zip",
+   "sha256": "c1bea6ed0c43a3339fb6033c8411137c7bd65770f0d275eecd25bcf84e2d97e2"
+  },
+  "2025-04-08": {
+   "bytes": 439424,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-08.zip",
+   "sha256": "765c00b4e5cec52769dd9410209f8cfb1d305145bdb4ece333bbf231f00fd480"
+  },
+  "2025-04-09": {
+   "bytes": 461139,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-09.zip",
+   "sha256": "8c541633cf47914c52a496950faf82a5a3b96e978741adcf7f0c5c92a675f370"
+  },
+  "2025-04-10": {
+   "bytes": 438714,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-10.zip",
+   "sha256": "d1a4ec432a047d989bb05f39a5de9e403e694449d416f81ea70f45f2fb49fbfd"
+  },
+  "2025-04-11": {
+   "bytes": 428148,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-11.zip",
+   "sha256": "25ba66b229ca735394dcc8fd703dbe1a9de9ea3921cf21095cb4ffd03b23ae06"
+  },
+  "2025-04-12": {
+   "bytes": 411138,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-12.zip",
+   "sha256": "59fffba0017dafb8f042990fd4fd22a27aed1185d62a373c8c42e05ad8b8357b"
+  },
+  "2025-04-13": {
+   "bytes": 421133,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-13.zip",
+   "sha256": "857e8a124c45ed2bd0b2afe5e3b869a35f05ebfd9abca80e9880b20c930a2cd3"
+  },
+  "2025-04-14": {
+   "bytes": 415182,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-14.zip",
+   "sha256": "bca0e4bea7cb9e4b3128e8b634f88cb9963a0430e38da7056b83adc2bd503f84"
+  },
+  "2025-04-15": {
+   "bytes": 411849,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-15.zip",
+   "sha256": "c0b5a9d7e9e06d355e20184349c298704e4b3a88c09214213dfe8e3b4a8408c7"
+  },
+  "2025-04-16": {
+   "bytes": 396670,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-16.zip",
+   "sha256": "e5230880eb14817523a65c41327ecd0d0cede8795f400c7710c9bf46e70baf71"
+  },
+  "2025-04-17": {
+   "bytes": 432744,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-17.zip",
+   "sha256": "affb2e4bf635b140493aefa244b3629c537eeea8269d21dcaf87002a915040d8"
+  },
+  "2025-04-18": {
+   "bytes": 415245,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-18.zip",
+   "sha256": "e9ff8af45e5c7fb7554c71b505df0b1c71e648fdc4163500359729c90dcc71fa"
+  },
+  "2025-04-19": {
+   "bytes": 377937,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-19.zip",
+   "sha256": "7db54240e7fbefbdbe2dac79a78c2cf5d9b791c60b86d21e2ad24c887b07ccd4"
+  },
+  "2025-04-20": {
+   "bytes": 377053,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-20.zip",
+   "sha256": "7907b4b44da9d9e00078ff5f50c811e7bbefbc18aff06273be7522255db1c2e3"
+  },
+  "2025-04-21": {
+   "bytes": 436603,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-21.zip",
+   "sha256": "81661c9aa5fb959ae8685dcb1e8a2df4df0319535855f09f01307c9ae3e5526d"
+  },
+  "2025-04-22": {
+   "bytes": 459028,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-22.zip",
+   "sha256": "0ded2d38ee54a05842709d2189b8b8bf31cb26ef67b8c5dd96122d1bd15053ce"
+  },
+  "2025-04-23": {
+   "bytes": 463766,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-23.zip",
+   "sha256": "11b2156d36b06e9c7def5d3ef119c457618cf315c1ddb7d024443ff122494f5a"
+  },
+  "2025-04-24": {
+   "bytes": 467216,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-24.zip",
+   "sha256": "1d28a7c1de2f5f1ffd4d5bebe5d99aa462e549411ce05ba2fd609ea8cab075a8"
+  },
+  "2025-04-25": {
+   "bytes": 467413,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-25.zip",
+   "sha256": "7f9bd0b97facd7182c5dc616e7cb36e0a310e0dfa66b3977825749b27a194841"
+  },
+  "2025-04-26": {
+   "bytes": 435422,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-26.zip",
+   "sha256": "e95cf40e114bec19d22a42b3fe0bce60436263e999d60977316b65455fd171ad"
+  },
+  "2025-04-27": {
+   "bytes": 430632,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-27.zip",
+   "sha256": "7f1b86b48eb3261dcf904620f34bf0ef89431f043426dc447a3de54ce4cf2b3b"
+  },
+  "2025-04-28": {
+   "bytes": 454981,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-28.zip",
+   "sha256": "bcee2b678adc214fa290201aebb4a571f37d16a3c76f3b411726855b18aa6754"
+  },
+  "2025-04-29": {
+   "bytes": 441966,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-29.zip",
+   "sha256": "6caa71b6cbb5e2fd9112475553592865080babe0b678c412168ce5f716212802"
+  },
+  "2025-04-30": {
+   "bytes": 447603,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-04-30.zip",
+   "sha256": "f1b5878cf7d6aebd05567a9e310b2650ec618d6cd168243f9d2b402c282f3dfb"
+  },
+  "2025-05-01": {
+   "bytes": 446181,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-01.zip",
+   "sha256": "15bbc6337e2630770b4c35edbaba65d6cbd11460991f2711cda14faf255ee024"
+  },
+  "2025-05-02": {
+   "bytes": 458355,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-02.zip",
+   "sha256": "964355c414931ea84ede8c6ae3a2b231e9fd19a724596801096c2289736f5d45"
+  },
+  "2025-05-03": {
+   "bytes": 428136,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-03.zip",
+   "sha256": "ed40823907f99d93b9f7ae0a90ec55f3511232b9323d1c65d2bf5082f19ea3ab"
+  },
+  "2025-05-04": {
+   "bytes": 427614,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-04.zip",
+   "sha256": "d039945f6bb730f51d22f5d90171a35f2b9c801ce722311f9e8da9b2d3d202f7"
+  },
+  "2025-05-05": {
+   "bytes": 444792,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-05.zip",
+   "sha256": "238d1700a6ec8c37db34e75c80b038c9a98bfaff44a288a5c6af58f6f21da395"
+  },
+  "2025-05-06": {
+   "bytes": 445159,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-06.zip",
+   "sha256": "7f689ff75c74d87e7ca92059870026353d79460006965b5dec329efd2d508a56"
+  },
+  "2025-05-07": {
+   "bytes": 446576,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-07.zip",
+   "sha256": "59f9a1bfea419f80669142d17dfe8238da1c3d83292a31f82d45cb14e45997eb"
+  },
+  "2025-05-08": {
+   "bytes": 471072,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-08.zip",
+   "sha256": "2d34da10f550c8ad01df68e5c32e4e66404e147a24dd859ef111220e844d36ae"
+  },
+  "2025-05-09": {
+   "bytes": 453452,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-09.zip",
+   "sha256": "437626775f1ba1c6e48c63973db61b28ee3214d949f059352f0c035396c3920e"
+  },
+  "2025-05-10": {
+   "bytes": 445668,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-10.zip",
+   "sha256": "675f485419b9796439acbd7f09572b269bf14f1327610e5bae0c1fb6322bd795"
+  },
+  "2025-05-11": {
+   "bytes": 457804,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-11.zip",
+   "sha256": "945696ee5a4924b001819301bd781c7b8c8bb8b5459b42acbbf53bbbdc8bb213"
+  },
+  "2025-05-12": {
+   "bytes": 470843,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-12.zip",
+   "sha256": "88030f1a9df4b0648935624dba7e9df6f8bd80823a7396fd7785d7fdae9585ab"
+  },
+  "2025-05-13": {
+   "bytes": 461274,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-13.zip",
+   "sha256": "b675fb1176188ed06e27106405d1a4a47996c66e6f6550eeb81fd381eb245a36"
+  },
+  "2025-05-14": {
+   "bytes": 438681,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-14.zip",
+   "sha256": "4d71465e8724d7a04c678727568b88bc1405af7bfe8d9e1e029e2bd261f85ae0"
+  },
+  "2025-05-15": {
+   "bytes": 457655,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-15.zip",
+   "sha256": "a71a22bae98dd1a1723928bff19f0b533c3c4b7f3b564600c8085bd5d420fdf9"
+  },
+  "2025-05-16": {
+   "bytes": 448145,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-16.zip",
+   "sha256": "fd88bcde05a0772954fde9ff25a8c75df18e1b183c40e71212f3fe92eb14c3f8"
+  },
+  "2025-05-17": {
+   "bytes": 426926,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-17.zip",
+   "sha256": "45a65117fe7b1050ba376b3a2ab997e92c54e32720b58b774c541e2889d791aa"
+  },
+  "2025-05-18": {
+   "bytes": 438934,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-18.zip",
+   "sha256": "cbe1ce29b648eefe09847fa973872f88d437dcb0bddc343b516022323ae41786"
+  },
+  "2025-05-19": {
+   "bytes": 453357,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-19.zip",
+   "sha256": "820056846e9f9a5cb3ed875340310125ea9e7659cb9d65c453168baed5f1e44c"
+  },
+  "2025-05-20": {
+   "bytes": 466309,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-20.zip",
+   "sha256": "6e4b9e3afdeec9b67846ead53d6c3b4d065174f7907029b1cd4d1150ab87d3d5"
+  },
+  "2025-05-21": {
+   "bytes": 476190,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-21.zip",
+   "sha256": "cc5012aed59f147cae88c4c5f2a4f3d7b8622fdcaed655ebb0cc0406eee92b14"
+  },
+  "2025-05-22": {
+   "bytes": 467941,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-22.zip",
+   "sha256": "ec3b4ad25acf31a14a06a43a9a299038a8a7ba95cc78fc5938a263e9316c162a"
+  },
+  "2025-05-23": {
+   "bytes": 464153,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-23.zip",
+   "sha256": "8ba04e44ebe245fae03053cd6a45c71267b435545b8a41c369f5816a4cbe096e"
+  },
+  "2025-05-24": {
+   "bytes": 425631,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-24.zip",
+   "sha256": "3b8b84c039bf799f28012b98f119a3f488ad6305c7e36c234ffc2ef4353e0ea2"
+  },
+  "2025-05-25": {
+   "bytes": 443985,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-25.zip",
+   "sha256": "f27797cde176682a28fa63229378653e54a3394363bb9d660e17d4959a41eca6"
+  },
+  "2025-05-26": {
+   "bytes": 459461,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-26.zip",
+   "sha256": "614f5b32d798af23c015cda5206c5034c70763e3cac5ba042756c08d42bf5ca4"
+  },
+  "2025-05-27": {
+   "bytes": 461320,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-27.zip",
+   "sha256": "5b6620b88514b0b3a347e9aff0f32bfe65556fd03548e96dbb1ca6253347fc13"
+  },
+  "2025-05-28": {
+   "bytes": 455658,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-28.zip",
+   "sha256": "499719cacb709025ac9c3247f02ca3853a3458d2213a9c8bfbc9679214120196"
+  },
+  "2025-05-29": {
+   "bytes": 461524,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-29.zip",
+   "sha256": "a0539fa075e9dc2d1bb64ad31eba91821fca0733b729d4caca322fffa6ae91b4"
+  },
+  "2025-05-30": {
+   "bytes": 467331,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-30.zip",
+   "sha256": "c231c39e4bd07ae46887e83b1549bd82de759ca0ec9df80db43faff2881bb83b"
+  },
+  "2025-05-31": {
+   "bytes": 450621,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-05-31.zip",
+   "sha256": "dd42381c76e449438246a2c9ad91372ae2454d1fb5318e3e68afad790378be94"
+  },
+  "2025-06-01": {
+   "bytes": 448141,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-01.zip",
+   "sha256": "bfbd760dcde4a1fdf7edd338b92c013b965cc9cdfd4e717028984d214817c3b8"
+  },
+  "2025-06-02": {
+   "bytes": 443047,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-02.zip",
+   "sha256": "d85037448594e074f3d7a0e1be98e90884d3fcc00fcd31e86691007329399b7c"
+  },
+  "2025-06-03": {
+   "bytes": 430898,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-03.zip",
+   "sha256": "109f24153fedf1a5c83fe9c08ab9600aa212ea1333d3fbb11eb1d19ab0f380ee"
+  },
+  "2025-06-04": {
+   "bytes": 440848,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-04.zip",
+   "sha256": "f7b2b7018b22258b62297493dd6f02707a018795c8c3e89ae1b2f6d6a295e5fb"
+  },
+  "2025-06-05": {
+   "bytes": 454536,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-05.zip",
+   "sha256": "0979813b7de371ae70c981ee9959c3945526267a298da57c605c883085398a70"
+  },
+  "2025-06-06": {
+   "bytes": 456778,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-06.zip",
+   "sha256": "cba6526a56cc6edec92b78f7b1742114773d7db403b540d53615c443557e2399"
+  },
+  "2025-06-07": {
+   "bytes": 423424,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-07.zip",
+   "sha256": "7d65c47d383b11c9fe97995a5ad1202165b1debce8ffde23d121634b292282ae"
+  },
+  "2025-06-08": {
+   "bytes": 417843,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-08.zip",
+   "sha256": "59b10095053033c4764149e2921a9338548d35b0230e13e58cb6633373b41ce3"
+  },
+  "2025-06-09": {
+   "bytes": 440833,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-09.zip",
+   "sha256": "1fe6f33ab829fd3f8951f1742036104844df812f0bd966c1754c06327fafda67"
+  },
+  "2025-06-10": {
+   "bytes": 437279,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-10.zip",
+   "sha256": "363ae00e18c3b0c8e399528c5b80eabdd4d317bdb7967d81ca88d620ad17546e"
+  },
+  "2025-06-11": {
+   "bytes": 423917,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-11.zip",
+   "sha256": "f47c0b972b83bba4cac02de8dc0f8960339f6705a45b6342f624bd1fc4689abe"
+  },
+  "2025-06-12": {
+   "bytes": 435002,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-12.zip",
+   "sha256": "54ca4b43fa0055c50c0d5ff181a3fe3e8535df9a60c08bf76c3d08349aa23054"
+  },
+  "2025-06-13": {
+   "bytes": 464079,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-13.zip",
+   "sha256": "b29bac8230ae51156677e7e10f8d9997bc345f839e76c649d63637cd801af8f6"
+  },
+  "2025-06-14": {
+   "bytes": 431819,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-14.zip",
+   "sha256": "7cc83521c9311c7a94b2bf1f2197eac6226d940787877b08f5a12abab83e6f74"
+  },
+  "2025-06-15": {
+   "bytes": 438313,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-15.zip",
+   "sha256": "c94b941c8e7661e3639177862e35ef8812470c7cac9db31f0fc0a7fcaa7dcb87"
+  },
+  "2025-06-16": {
+   "bytes": 447234,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-16.zip",
+   "sha256": "b414775dd9d8eff5ae74fe6f695a1f425181025ae5ab808ee307b3a844e55208"
+  },
+  "2025-06-17": {
+   "bytes": 447168,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-17.zip",
+   "sha256": "7d359f697321820061f48b24e3937be4ec2879f8941171e33add427be0b5638e"
+  },
+  "2025-06-18": {
+   "bytes": 433985,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-18.zip",
+   "sha256": "a4bca1d0f72cfabd76d046fb9783bf3fe339a3a9ea02e5c1cb55cd69451a1b45"
+  },
+  "2025-06-19": {
+   "bytes": 423266,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-19.zip",
+   "sha256": "e3a585043be24c3acef4e2988f1e0cde0667d135e38662d0ef4ce454dd4eb025"
+  },
+  "2025-06-20": {
+   "bytes": 446640,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-20.zip",
+   "sha256": "6c988b75c1080127586aa115cf61bc37d294fa546a6c938e6ce5fad569385834"
+  },
+  "2025-06-21": {
+   "bytes": 434305,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-21.zip",
+   "sha256": "18182fbc5f0a92b2b70d96d9e7cd6832b09e11159aacd21239c837634a9ce7b5"
+  },
+  "2025-06-22": {
+   "bytes": 470252,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-22.zip",
+   "sha256": "ce5db4b73e95db3432d278f61fa2293b5474b863cd022cdbbac6cba33443ad9a"
+  },
+  "2025-06-23": {
+   "bytes": 455461,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-23.zip",
+   "sha256": "f1a48c1d7d9cd302951fb21e460e46855a8b5469185ac3646f96a5f03ca36d60"
+  },
+  "2025-06-24": {
+   "bytes": 449448,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-24.zip",
+   "sha256": "d759e91c7d9959872abd2a844b6bba912956dcd3e0a27e465bc42e8b39e170b5"
+  },
+  "2025-06-25": {
+   "bytes": 448725,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-25.zip",
+   "sha256": "c0a09c6131b59bdf3d44537625b023c3910c5da0f94f20db17f679e00bb45b89"
+  },
+  "2025-06-26": {
+   "bytes": 440070,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-26.zip",
+   "sha256": "6e2f378c0a018903a9308e53c8bf613c676d0059b2cca4455ef04ab60582b5b1"
+  },
+  "2025-06-27": {
+   "bytes": 447572,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-27.zip",
+   "sha256": "a929c8f4535c9b67aa7f56c0b7d371243ed039f06c80461ddc6dc9efdb4ce9ee"
+  },
+  "2025-06-28": {
+   "bytes": 426867,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-28.zip",
+   "sha256": "d9e676e190f560c3c0bc245c2317f01628fef7094c7270c137de39a3adab78cb"
+  },
+  "2025-06-29": {
+   "bytes": 429645,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-29.zip",
+   "sha256": "f5f7ad6958f06522230e00bf3024acc8917f9a0653a2568127f45d950dd5c323"
+  },
+  "2025-06-30": {
+   "bytes": 430529,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-06-30.zip",
+   "sha256": "e67fe4ae4ed8b7a38f787c6a84ed7682fddbc29c0f437949d38a853523a9aea9"
+  },
+  "2025-07-01": {
+   "bytes": 433843,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-01.zip",
+   "sha256": "1c815ad910c7d355a22f93669c7b7b6e9b2516b746795a58c5690633a9c9e090"
+  },
+  "2025-07-02": {
+   "bytes": 443179,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-02.zip",
+   "sha256": "cad9a94c34be9da443216bb95c6864e172e8237eba1a49024cc9e91cd6463a12"
+  },
+  "2025-07-03": {
+   "bytes": 442902,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-03.zip",
+   "sha256": "08ef560619a7896a9635fdbee0bdc2ec219372f6e113f57ea153cd217c6701da"
+  },
+  "2025-07-04": {
+   "bytes": 441065,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-04.zip",
+   "sha256": "919f9eeafa9a5f7099472ab1bbf760878868c859c9736268bf86cead1b3316b4"
+  },
+  "2025-07-05": {
+   "bytes": 416525,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-05.zip",
+   "sha256": "7615f1cd8dd0d38e1a379403f6bd0e8fb35b02ecebfc6f98df0bfb21d84a0692"
+  },
+  "2025-07-06": {
+   "bytes": 422912,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-06.zip",
+   "sha256": "098a3b932cdd852a976eb868bf632fedbaefcc97efcb2bc03ea08af07b2dae82"
+  },
+  "2025-07-07": {
+   "bytes": 427851,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-07.zip",
+   "sha256": "5c7944fdd28a14d29f886d7d71e95030f001565d6c01d03780b4f9aa79a41b91"
+  },
+  "2025-07-08": {
+   "bytes": 422436,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-08.zip",
+   "sha256": "4e5c2b55d0f80f4f1fab234ee8a131d9c1c81e661b015c858c3acf5e954f4923"
+  },
+  "2025-07-09": {
+   "bytes": 434001,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-09.zip",
+   "sha256": "759b94f6376b1fab4a5760e0fd89fa37ffca772dc197dad4df5c2c08b41a874d"
+  },
+  "2025-07-10": {
+   "bytes": 461826,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-10.zip",
+   "sha256": "1f575ee8106f79c187a52548c0382d2bcb2e8f6296065369e945fa0d96c569df"
+  },
+  "2025-07-11": {
+   "bytes": 461361,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-11.zip",
+   "sha256": "bc01aff6e2d1a716ab50b976c3f8517475aeedbd25dcea5001f38b4168834f51"
+  },
+  "2025-07-12": {
+   "bytes": 414477,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-12.zip",
+   "sha256": "194670fd25b9d664c06cb2cb5462355dce8cadd87221a07b6eaef4311d8da2c6"
+  },
+  "2025-07-13": {
+   "bytes": 425976,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-13.zip",
+   "sha256": "ba31faa9ed4d450919d35292b0f35ab776791d6085787c5cd4dab72d29f8bca8"
+  },
+  "2025-07-14": {
+   "bytes": 453513,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-14.zip",
+   "sha256": "8b1b643333c25ba0e18a58d99660ff36ddcb28b590ba4cd689875e94a0e7ff21"
+  },
+  "2025-07-15": {
+   "bytes": 464379,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-15.zip",
+   "sha256": "6238512e58994cf4651b1a8b46aa3af3da7b0f5822aeed0bcd63287575fb8ceb"
+  },
+  "2025-07-16": {
+   "bytes": 451435,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-16.zip",
+   "sha256": "01843936e46fa549ee6d9719de0c30da18823782ab97a90eccc203fd21ae6ab4"
+  },
+  "2025-07-17": {
+   "bytes": 455469,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-17.zip",
+   "sha256": "3ad2a43558e6f42403fbe85e9b3a13b26a6fd2ded5d856cb9de79e13135170e6"
+  },
+  "2025-07-18": {
+   "bytes": 461075,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-18.zip",
+   "sha256": "c70d1b260576e235f6299befb5ba7f33f16945128240e4420755c129b8945995"
+  },
+  "2025-07-19": {
+   "bytes": 407724,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-19.zip",
+   "sha256": "032623bc62705f5b658d9586bdaac009ddf1ea35fd51d2c6c838faa048182282"
+  },
+  "2025-07-20": {
+   "bytes": 428098,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-20.zip",
+   "sha256": "cc8446682429ac337701d5bfe32ed0b8d6c3f3733982eaa3f368f740351fe23c"
+  },
+  "2025-07-21": {
+   "bytes": 451634,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-21.zip",
+   "sha256": "d4495f9b8d791ea9e9188ff7394333ce33fae70f219ff3f6f76f8b91571a150a"
+  },
+  "2025-07-22": {
+   "bytes": 447654,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-22.zip",
+   "sha256": "d705f730a8e13b630ea5f478378f56675dd2d8b992fbfec62c5597bfe848788c"
+  },
+  "2025-07-23": {
+   "bytes": 425967,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-23.zip",
+   "sha256": "ded60f252d41380bc047152cb548096023553652d5890c0f376dfb7ede61938b"
+  },
+  "2025-07-24": {
+   "bytes": 443265,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-24.zip",
+   "sha256": "870b583bd9827788acb66fe1eab4aa6813cf0680514b5be776ead37ac82901f4"
+  },
+  "2025-07-25": {
+   "bytes": 475265,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-25.zip",
+   "sha256": "58fe5e2516053cb8928da56c63a618a1dd55721850673a4468c71edd3ca4e0e6"
+  },
+  "2025-07-26": {
+   "bytes": 427553,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-26.zip",
+   "sha256": "2b53f7cc5a3c9be0e4935376fc035e46f35a4b074c610fd559a6e655122efb04"
+  },
+  "2025-07-27": {
+   "bytes": 432901,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-27.zip",
+   "sha256": "4ac7c0cea4195233b940c99770984f5038ca2f3f05066438cc3b75e56dbb7edd"
+  },
+  "2025-07-28": {
+   "bytes": 451071,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-28.zip",
+   "sha256": "1805682c334d37ba8d91367d7da2205d7263b58a47f0d395dfe3b10bbaf760d3"
+  },
+  "2025-07-29": {
+   "bytes": 450600,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-29.zip",
+   "sha256": "3f7fa90ef8a2781aa185f2cf9adaa84def4e631059889340cfb765f255eaf2ba"
+  },
+  "2025-07-30": {
+   "bytes": 476616,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-30.zip",
+   "sha256": "2b4a188309e01714dd401ff260a7f207ecca1e826248b10053d8e3d9faa2091b"
+  },
+  "2025-07-31": {
+   "bytes": 461976,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-07-31.zip",
+   "sha256": "a2ad3746659cf48dd3cf6733aa69a3a68782d90d2c2019b3b059f3197a473180"
+  },
+  "2025-08-01": {
+   "bytes": 469601,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-01.zip",
+   "sha256": "376f31e7c22be6224cc27ebf26dbb982b74fdbc88caf59e05070176dcc890980"
+  },
+  "2025-08-02": {
+   "bytes": 449798,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-02.zip",
+   "sha256": "6e6d8fecf25cb2b9d2b47e8e6ef665181d4db752290226dc9ea5f24b099777e9"
+  },
+  "2025-08-03": {
+   "bytes": 442662,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-03.zip",
+   "sha256": "f1418c7d5e103d2bf86fd4f86e5777c70e90c6931c3c1341bd8f7357c1112efc"
+  },
+  "2025-08-04": {
+   "bytes": 437927,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-04.zip",
+   "sha256": "40ad4fca67b0cb84dda2b0b5f71b4d66f9c3cd7aef49b1c7d2b5a2a84d4493ed"
+  },
+  "2025-08-05": {
+   "bytes": 451420,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-05.zip",
+   "sha256": "5991afeea6f839ec60030466f21ec25d1f37f1aded31fa19eb82c83087f56ae6"
+  },
+  "2025-08-06": {
+   "bytes": 437471,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-06.zip",
+   "sha256": "fa09cc243d3eea75dd4dac5f799cceeaa01f5fc4cbcb11d14bcd2061f634566a"
+  },
+  "2025-08-07": {
+   "bytes": 432314,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-07.zip",
+   "sha256": "3426fa4ebb93874054786cbd9af5016171feb9835a57c6a6dce628514c2a7941"
+  },
+  "2025-08-08": {
+   "bytes": 437403,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-08.zip",
+   "sha256": "3c90a3a4c6f4b0509d3059b9dc75bbc295e85b854e49168d39bcab9ba3571915"
+  },
+  "2025-08-09": {
+   "bytes": 423479,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-09.zip",
+   "sha256": "d8f0fd310ccb0645f633f169cd251bd3476a88830f93ef33a92033711b835aef"
+  },
+  "2025-08-10": {
+   "bytes": 443435,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-10.zip",
+   "sha256": "bdf21ab16a89ef481ecb1a7691cbe64654a64f196024fa056035b6d7f44357a2"
+  },
+  "2025-08-11": {
+   "bytes": 467711,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-11.zip",
+   "sha256": "2bb51e170d1b81b88842559983109e4511c05556aa9ec99dc221f880a45a2666"
+  },
+  "2025-08-12": {
+   "bytes": 449565,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-12.zip",
+   "sha256": "275ab95514f12f3737b412fb9734e24cf709b89c2f0200254e2b08baec594cf6"
+  },
+  "2025-08-13": {
+   "bytes": 460853,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-13.zip",
+   "sha256": "e84e503a408f430d5abc4d0ca4754e6df312044c7a7ba87379e9c0c2f3cf9b5d"
+  },
+  "2025-08-14": {
+   "bytes": 494451,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-14.zip",
+   "sha256": "9b03175d684f6276ff1715a0416b3d46aa244f5a865185470cb5934aa831bc05"
+  },
+  "2025-08-15": {
+   "bytes": 491602,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-15.zip",
+   "sha256": "f205f44a78435a1011cce59a5645d0eedde1f7beb44bd343f293019c79d738af"
+  },
+  "2025-08-16": {
+   "bytes": 447798,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-16.zip",
+   "sha256": "bd653c6510d13c99007712ee3be1b9f8cf4a1a07ef1e1876844d83b675e8c935"
+  },
+  "2025-08-17": {
+   "bytes": 432166,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-17.zip",
+   "sha256": "3d37cfc5943bd0edf2ac4aad86184758cf683835679803a598d9a20da23e0b9c"
+  },
+  "2025-08-18": {
+   "bytes": 463130,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-18.zip",
+   "sha256": "f3a64d5c6d71e18e8404b0427eca46d70f2dead9037b53359b35c99c32d9d1a4"
+  },
+  "2025-08-19": {
+   "bytes": 458982,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-19.zip",
+   "sha256": "3f42eb5e4b24211430aa070d303076dee8f61c02a0b071b9f83b9f89bfc7a5dd"
+  },
+  "2025-08-20": {
+   "bytes": 454793,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-20.zip",
+   "sha256": "6af345a84c75464446e3bb112584f074db31d8ddeec0cfd32e806c094c16358e"
+  },
+  "2025-08-21": {
+   "bytes": 477674,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-21.zip",
+   "sha256": "8587820cd3d2a03cbae77f16214381a267dfdeb2be6ca9dd88e534a3e55bd435"
+  },
+  "2025-08-22": {
+   "bytes": 473813,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-22.zip",
+   "sha256": "dec2aad39060c7ac84d67511f5207a8c88cbb9373029272dd6db1a92fe486681"
+  },
+  "2025-08-23": {
+   "bytes": 481739,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-23.zip",
+   "sha256": "2f162e565efb9ea8b98b430b322e293c60f50487ab61d5914d105f2711f8ab24"
+  },
+  "2025-08-24": {
+   "bytes": 448244,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-24.zip",
+   "sha256": "9d6d3a7e31c5a83ec1c1df4ccbb1f068786f5a87f81f89f3d798a49366f599bf"
+  },
+  "2025-08-25": {
+   "bytes": 474820,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-25.zip",
+   "sha256": "ead83cca9eb63415f2b14790133c97472adb01aea91f203171a13b2fa4d66c24"
+  },
+  "2025-08-26": {
+   "bytes": 492069,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-26.zip",
+   "sha256": "9fb22464d28510d65e005512b54a7a90eabc05b9191466b9dd11a46836007bca"
+  },
+  "2025-08-27": {
+   "bytes": 461617,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-27.zip",
+   "sha256": "3e75740b2c273e2705750c62c589ff67b5ce672a0c0608f40d89f96c952e1395"
+  },
+  "2025-08-28": {
+   "bytes": 449615,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-28.zip",
+   "sha256": "a4631b94127704847e6beff5acc01f1b97be8225c0e7512eaa41f16ec340c199"
+  },
+  "2025-08-29": {
+   "bytes": 471927,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-29.zip",
+   "sha256": "51437ed09dff380c03b6401c541a4cfa28bab58c32501357efc692aaabf9e2d1"
+  },
+  "2025-08-30": {
+   "bytes": 444712,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-30.zip",
+   "sha256": "61dab258c255812b1e20e90f10b2fe946268f1b948e228a42f52737da7080981"
+  },
+  "2025-08-31": {
+   "bytes": 442022,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-08-31.zip",
+   "sha256": "e902607212dbf551417b980732418c2bc66f60b10f4f1503065aa2cb50e5853f"
+  },
+  "2025-09-01": {
+   "bytes": 453916,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-01.zip",
+   "sha256": "66fb23f82d84a3a64f81b5136f245ee3333a7156d5a73c3f4f2e3dc914d47ea7"
+  },
+  "2025-09-02": {
+   "bytes": 451026,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-02.zip",
+   "sha256": "24c7cd747fcb74eafb960b74241654051ddc0b9bed69baf0fa669df1e1c16574"
+  },
+  "2025-09-03": {
+   "bytes": 442257,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-03.zip",
+   "sha256": "7719391f1e026e9ad2c064da44b2ea17f3db06ea2a31b284e370198fda0ec479"
+  },
+  "2025-09-04": {
+   "bytes": 443161,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-04.zip",
+   "sha256": "133995d9454104f0c8b98c5db60405eabed4dacf8db39f1ef1ef37435be95605"
+  },
+  "2025-09-05": {
+   "bytes": 452722,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-05.zip",
+   "sha256": "ac544e39c307b3543c75b3f3129222a7c495f3e3223dcdaf539c21d503f23df9"
+  },
+  "2025-09-06": {
+   "bytes": 416815,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-06.zip",
+   "sha256": "996d7fbcdad42cd41fbbca2383c915cc66076f29f674d078d7dab93199fe8477"
+  },
+  "2025-09-07": {
+   "bytes": 407193,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-07.zip",
+   "sha256": "a0cef992368b320d998a5e36ab70a5cee6226a6351f3235004777ad0be163f8a"
+  },
+  "2025-09-08": {
+   "bytes": 422449,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-08.zip",
+   "sha256": "bbbb090531cd6e22cc7d4edafffdbad72a02a00083607307d6a79079be07218e"
+  },
+  "2025-09-09": {
+   "bytes": 423416,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-09.zip",
+   "sha256": "51a2032df7e2850173060744518fbdfb5939d0a42bb365746d8c43cae54147fe"
+  },
+  "2025-09-10": {
+   "bytes": 431456,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-10.zip",
+   "sha256": "d7a10107b8dd9e3195319226819d53d63fec6e2308a6f153446cf72bdfa6fd2c"
+  },
+  "2025-09-11": {
+   "bytes": 483143,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-11.zip",
+   "sha256": "207f3cdcee4a3a4fcb9aa424c80ab0a17694177325f2eb5e3ae76be081398811"
+  },
+  "2025-09-12": {
+   "bytes": 515096,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-12.zip",
+   "sha256": "b2bf984007f1d520db9107648d2cd26340e540b5543c1c9b4e6db8241264426b"
+  },
+  "2025-09-13": {
+   "bytes": 478974,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-13.zip",
+   "sha256": "7dbdb64924610c3d89f81264975589de50d1dd4463f69302a15ef57a6eb0db8e"
+  },
+  "2025-09-14": {
+   "bytes": 495335,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-14.zip",
+   "sha256": "b3b1f067bc0e5c0d6242921cbfbaa573313b8ea2be1be719e6c4602fce40a80a"
+  },
+  "2025-09-15": {
+   "bytes": 504726,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-15.zip",
+   "sha256": "b71a1b71e0175d3bb2bae04a071bd323ad9a469bed7634c515374d8179271f8d"
+  },
+  "2025-09-16": {
+   "bytes": 500853,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-16.zip",
+   "sha256": "1f5d62a33926349f7aff92eec78802acc745906907f2ee7eaeea4c33f9e6feac"
+  },
+  "2025-09-17": {
+   "bytes": 453497,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-17.zip",
+   "sha256": "d2a12bff2745a3282fc684fff9e7332027464a46ed00a647790643d77fff18e3"
+  },
+  "2025-09-18": {
+   "bytes": 478963,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-18.zip",
+   "sha256": "e764a6ef75b593463591f2b1f59146003897dc32740b1fd4126030d7cf79da50"
+  },
+  "2025-09-19": {
+   "bytes": 461341,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-19.zip",
+   "sha256": "b815627ce8d89c10476e90260c57b41aaad14879b5f86062109b2714ad1e99f9"
+  },
+  "2025-09-20": {
+   "bytes": 388990,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-20.zip",
+   "sha256": "4df110793b948339da32310f11cf686027e273d4f2cd0b5a1b4c18e61f6d8173"
+  },
+  "2025-09-21": {
+   "bytes": 392659,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-21.zip",
+   "sha256": "4ca9f6856d60f9ff735c749de59f49d72b6fd45643890ed59e157d4d425ac4b2"
+  },
+  "2025-09-22": {
+   "bytes": 464985,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-22.zip",
+   "sha256": "d5145986f8cb0ee49ccc9a0c488ce894975f0a97779f34b4961e6a39cc6ac119"
+  },
+  "2025-09-23": {
+   "bytes": 443920,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-23.zip",
+   "sha256": "333bd3411b7e33227ad9f8c1d9acb3cc43b5d7ce13e60856e22383813e81c4b0"
+  },
+  "2025-09-24": {
+   "bytes": 450232,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-24.zip",
+   "sha256": "3c8b6147e1855163d1c004748601805d6aae6ba79cf250fc1d0e1473d0056040"
+  },
+  "2025-09-25": {
+   "bytes": 485277,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-25.zip",
+   "sha256": "96515a7a7bb212e9c549ca6ba0da99b022dc1237f5d523ed9a273c9ee9f06cba"
+  },
+  "2025-09-26": {
+   "bytes": 484286,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-26.zip",
+   "sha256": "54e1855274e91d58e0aff7de55add2656926df7ba9afa4a4ac9b481355912bfa"
+  },
+  "2025-09-27": {
+   "bytes": 411525,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-27.zip",
+   "sha256": "256b8a69981b0f73e2efee2e486c21b397be833cdb291b5db0c0d1dfe7aceda1"
+  },
+  "2025-09-28": {
+   "bytes": 409973,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-28.zip",
+   "sha256": "068800d1225042d001b5cb7241315184768ecfb86b1869e0102555b679596c9f"
+  },
+  "2025-09-29": {
+   "bytes": 439217,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-29.zip",
+   "sha256": "684de6f764e017281a0f4b87372caa0e576c66de59784652c52a6c729c8f9ee6"
+  },
+  "2025-09-30": {
+   "bytes": 446816,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-09-30.zip",
+   "sha256": "7b26774fb314debb0ac083ef976ae8b76759768ae0d18a42e413cff92097c837"
+  },
+  "2025-10-01": {
+   "bytes": 450233,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-01.zip",
+   "sha256": "6b7b548a5a7a21ae7ce7f1883373c0ff3aeb374941bd7650967e5c8241d06038"
+  },
+  "2025-10-02": {
+   "bytes": 452458,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-02.zip",
+   "sha256": "05d573f050904cb131658b311f8980ce479c78c191fee82ac2acf0ccf764cd8d"
+  },
+  "2025-10-03": {
+   "bytes": 442428,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-03.zip",
+   "sha256": "208e49d52d164ed7c6399262c1214b1c6c0eb3c2afcc21fd0a1e0119e40904b3"
+  },
+  "2025-10-04": {
+   "bytes": 424896,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-04.zip",
+   "sha256": "72966172e66ff24b579963072d4084f6c84c35c0590d679817892363a5a5787f"
+  },
+  "2025-10-05": {
+   "bytes": 445179,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-05.zip",
+   "sha256": "250a4edb0183fc06b9d6aeeac1dcbfb67a7dbcabb1a2def99d0ba8deadcf58b7"
+  },
+  "2025-10-06": {
+   "bytes": 443454,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-06.zip",
+   "sha256": "b3c662929104f3f5b25c9d238c195fdec32f63b0be01cebc2c27a8f020c56d15"
+  },
+  "2025-10-07": {
+   "bytes": 443644,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-07.zip",
+   "sha256": "a627c452b6091a95e6e4d14265d18233465b59a66665dbe8ac9a5573eb6afeaa"
+  },
+  "2025-10-08": {
+   "bytes": 438030,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-08.zip",
+   "sha256": "3787213b06abd87c521f5658c63d8a8fba6b6d4dc38d1557419deda3b8362594"
+  },
+  "2025-10-09": {
+   "bytes": 435640,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-09.zip",
+   "sha256": "caab653d0dd75d639213fc622027aac33f45cb17015acb30edcd1249c9737188"
+  },
+  "2025-10-10": {
+   "bytes": 430076,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-10.zip",
+   "sha256": "5a0f919d1579a4d4940d255fc32872c0370b1124474245643233a54ad254cf70"
+  },
+  "2025-10-11": {
+   "bytes": 483555,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-11.zip",
+   "sha256": "ef380505ec496fc8793a0b6447abf328895c0fefd8616f8da8bc641dfe510102"
+  },
+  "2025-10-12": {
+   "bytes": 481857,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-12.zip",
+   "sha256": "d7cbfbf4f24cbb4ba73fba35f1214cfce1e5495ee2948d1a7fe62ba84df6c6dd"
+  },
+  "2025-10-13": {
+   "bytes": 449214,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-13.zip",
+   "sha256": "631070e3f37ea260b7c8e3244de29b747052cf1628b264042467baa0f1d84808"
+  },
+  "2025-10-14": {
+   "bytes": 477802,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-14.zip",
+   "sha256": "18072171aaf5344f72280f57c0eb63b018b2f4a590defd1a2037871c79770b10"
+  },
+  "2025-10-15": {
+   "bytes": 459439,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-15.zip",
+   "sha256": "1a67a535353dde0bce1c265c8dd28aa46dfcdc30edbcae06c95e3aa226b24832"
+  },
+  "2025-10-16": {
+   "bytes": 496354,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-16.zip",
+   "sha256": "978518f44f829ca7de5c6559cf390b7724a01f448223df4f1a5ad911733c5513"
+  },
+  "2025-10-17": {
+   "bytes": 499655,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-17.zip",
+   "sha256": "ffd1cc2871e8f65afae1ed581b6adfd6237a356d91bbe52b616a916f5b2e7aae"
+  },
+  "2025-10-18": {
+   "bytes": 444148,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-18.zip",
+   "sha256": "607058037a51d81179c1015a4c6709f074a867917aaf273d445dad3462974546"
+  },
+  "2025-10-19": {
+   "bytes": 443126,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-19.zip",
+   "sha256": "165950ff6d08b58d1156f99caeac851e949893088bb60299f73d741f53d50e42"
+  },
+  "2025-10-20": {
+   "bytes": 457381,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-20.zip",
+   "sha256": "e833227f7b960188dec5934d6d88a962d7a67d1ba0f3528db741d56ab3cc7aa8"
+  },
+  "2025-10-21": {
+   "bytes": 472332,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-21.zip",
+   "sha256": "6322c3fce1685989c06df592d6c3ee6852a6166153e72d9d7c69af00f73e8c44"
+  },
+  "2025-10-22": {
+   "bytes": 472471,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-22.zip",
+   "sha256": "fe83817c83aea567cdbd4882fa9946b2d995663c43374f88cffa4b46243d40a1"
+  },
+  "2025-10-23": {
+   "bytes": 487370,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-23.zip",
+   "sha256": "d2acb42b7304774959e5e237d5a0a29d8ece70f69fa7c1c82ce4ab38ca4fabd3"
+  },
+  "2025-10-24": {
+   "bytes": 497939,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-24.zip",
+   "sha256": "3ba415d67207239fbeb2c5f44e6b8f3a97deb4eab703fa17d42cb8d6cce05b5d"
+  },
+  "2025-10-25": {
+   "bytes": 482185,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-25.zip",
+   "sha256": "580c6dde3b957787f01d28b71d0ef6c5f04fcfa4413e008783eb3d2e84a29a1b"
+  },
+  "2025-10-26": {
+   "bytes": 478268,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-26.zip",
+   "sha256": "516513f6b651cd4b18892b0b82b4b3f66ba22fcac66596663db7acdce621d303"
+  },
+  "2025-10-27": {
+   "bytes": 450419,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-27.zip",
+   "sha256": "128af117aed87b236366fb33bc1ee3351137f1b786cf63de74068de248dd093f"
+  },
+  "2025-10-28": {
+   "bytes": 448825,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-28.zip",
+   "sha256": "64778b73d40a44b2d1c5c478d8a026944e1cc13835bd7e4fcbe32f74182ea815"
+  },
+  "2025-10-29": {
+   "bytes": 450926,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-29.zip",
+   "sha256": "a4069850ab62af95182125fd2ef1a395a84998dd4ca9a096c316b08f6f2257b5"
+  },
+  "2025-10-30": {
+   "bytes": 479353,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-30.zip",
+   "sha256": "509b98f2ba7c65954ce2d063d1bdb4d7d950d1a1ed51b8e772a92b8ad6427126"
+  },
+  "2025-10-31": {
+   "bytes": 460995,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-10-31.zip",
+   "sha256": "71637b8ec9e4f2a1bfb1ec153f7778ad2a5be2498269291c90c3505d80702c7d"
+  },
+  "2025-11-01": {
+   "bytes": 423232,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-01.zip",
+   "sha256": "d8922d23cd566cf10a0b2cbdc75c6bed4d403303abf76f5b9851c5e1d484cbaf"
+  },
+  "2025-11-02": {
+   "bytes": 422392,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-02.zip",
+   "sha256": "62e13cab94c1a8a59ab38a6b48611f4ddefff95ac5e84f4028944b46143fe5f4"
+  },
+  "2025-11-03": {
+   "bytes": 467824,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-03.zip",
+   "sha256": "e5ea8a9dea16a3ae20fbfa4e72ad5ca8be38747b716672135ccc11f6f667bf30"
+  },
+  "2025-11-04": {
+   "bytes": 482876,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-04.zip",
+   "sha256": "946b390a0703004dbef9479b32c123659777487cbc2fafdf710d5ce587ffc2a8"
+  },
+  "2025-11-05": {
+   "bytes": 470157,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-05.zip",
+   "sha256": "f8dfa5025bec7f1d0aa0621e06f71a14f84f7aa88979ded673652f4a63b65644"
+  },
+  "2025-11-06": {
+   "bytes": 475172,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-06.zip",
+   "sha256": "2ed28510ace4b8cc12d97ff4a3cd4827940b02738fded7e192dbdcbe2666f4a6"
+  },
+  "2025-11-07": {
+   "bytes": 471387,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-07.zip",
+   "sha256": "38f3cea44f3ea870b820c10fcd375efc8947c9e39e90fc7bc5f3bf97e59205d9"
+  },
+  "2025-11-08": {
+   "bytes": 440212,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-08.zip",
+   "sha256": "328b40c0df6b9b0f6c7413dfd92e8d9f34d85656a0f7e39e15e0d793ae4edb10"
+  },
+  "2025-11-09": {
+   "bytes": 454829,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-09.zip",
+   "sha256": "a53c91b96e765275a84a2c17a64cff46d018f1ba42103b106798eded7601f53b"
+  },
+  "2025-11-10": {
+   "bytes": 443765,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-10.zip",
+   "sha256": "6d370f868dc173487c5eb38b266edd676b6967ee7f1aa2f5cf355f3f32c936b1"
+  },
+  "2025-11-11": {
+   "bytes": 462004,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-11.zip",
+   "sha256": "4ca9144617e50e141930f6cc4e14a201a5d663d845ccc9842f4adcde2b92ab9d"
+  },
+  "2025-11-12": {
+   "bytes": 452115,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-12.zip",
+   "sha256": "4d761ded1b194ff780b5fa6e33d1122d7bbd9e2c8685bd844c7003c2eb0c850e"
+  },
+  "2025-11-13": {
+   "bytes": 498160,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-13.zip",
+   "sha256": "9fd61a06e998291e07c555baa70d030909c47d4ea7ea7c8816aa9f4da9dd49d3"
+  },
+  "2025-11-14": {
+   "bytes": 493639,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-14.zip",
+   "sha256": "40e6048df85deb0c4abc2a2ff04f0b4bf091e76e99fcf38b428c3c18349d7c5c"
+  },
+  "2025-11-15": {
+   "bytes": 449270,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-15.zip",
+   "sha256": "4f3b52b275a139fe75cf8d1b073b4fbc375e8c97f8eda88428928e249a87813f"
+  },
+  "2025-11-16": {
+   "bytes": 466024,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-16.zip",
+   "sha256": "a62fe063dbc66599428c8c3f36219f5b01940a5c360f2e108e415eb54748414a"
+  },
+  "2025-11-17": {
+   "bytes": 481423,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-17.zip",
+   "sha256": "634ed60c9cc3c5940a29ad402ebb2640edcda9a2daae85b91a1d46cc57bb84a6"
+  },
+  "2025-11-18": {
+   "bytes": 490596,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-18.zip",
+   "sha256": "2756310a667dbe5a963908cf916d015cdd8391402b0d6e2d47a515d4e1b7ec9f"
+  },
+  "2025-11-19": {
+   "bytes": 477205,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-19.zip",
+   "sha256": "2c5e892fe8b497d1562885acc3fb64a01bfb4ae4ae25f6c7bafb5eb6ce2a14d2"
+  },
+  "2025-11-20": {
+   "bytes": 492717,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-20.zip",
+   "sha256": "6f63fbf6b28b027aea6449fa40ec8c5b593bcbe0a3d54c39e343535b0d4adb26"
+  },
+  "2025-11-21": {
+   "bytes": 513266,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-21.zip",
+   "sha256": "40c9ed4e38471f69fcd69210860b631ad4f6bcc2ca9dd92a2cc9fec2488be107"
+  },
+  "2025-11-22": {
+   "bytes": 502785,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-22.zip",
+   "sha256": "60622846d7dfdb11ba2004b111ebc4d32e22fe75d6f13899bb3abc66cb403881"
+  },
+  "2025-11-23": {
+   "bytes": 472143,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-23.zip",
+   "sha256": "df590189926eecdfee834ec1a714789f1bd718354baff16201bfb803c029bc67"
+  },
+  "2025-11-24": {
+   "bytes": 477995,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-24.zip",
+   "sha256": "1fb552e71dc372d0d52e0dc57c79a0e9637a5ca98ad0a5dee33240babace5d69"
+  },
+  "2025-11-25": {
+   "bytes": 469811,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-25.zip",
+   "sha256": "fd29dfa038e786d9ee54b712623fce7a91094153abfcd5a10bfa358ab002de43"
+  },
+  "2025-11-26": {
+   "bytes": 479348,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-26.zip",
+   "sha256": "15a7388f91c53831a2bf832f490f2f364d015e8cab4e3825a8daec93a6a3769c"
+  },
+  "2025-11-27": {
+   "bytes": 447661,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-27.zip",
+   "sha256": "d39cc93aba9bd0973a2eb29eb988065a14c92e2d45ed148e55c67d9a1610eb9b"
+  },
+  "2025-11-28": {
+   "bytes": 463481,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-28.zip",
+   "sha256": "9ed8df9e96a451b7d26e9546f6b893c0155c16bb197896be0d888229e2866cc6"
+  },
+  "2025-11-29": {
+   "bytes": 422225,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-29.zip",
+   "sha256": "f5b6d59ebc31ae955420ec1448bd39dde62303d9c929b12190a8d7c20489beb4"
+  },
+  "2025-11-30": {
+   "bytes": 425307,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-11-30.zip",
+   "sha256": "7247ae0df64fa52708d5e5a20e127388c926061b61e7a5b0d7c2f7ca5eebefdb"
+  },
+  "2025-12-01": {
+   "bytes": 484022,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-12-01.zip",
+   "sha256": "22484376e5887065fef44ec5c040b3c02e69882362cf19a2e9ad8ebcfec681c2"
+  },
+  "2025-12-02": {
+   "bytes": 462623,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-12-02.zip",
+   "sha256": "79d73e83115db36b550132c74eba256f8a026bdd1b4f00fee4c56ace5aff6830"
+  },
+  "2025-12-03": {
+   "bytes": 466786,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-12-03.zip",
+   "sha256": "6c41136c5760c2210640f2ca4a6c3e2d9c1b68a46ffa154fefedb26fe907203f"
+  },
+  "2025-12-04": {
+   "bytes": 455348,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-12-04.zip",
+   "sha256": "edeb0948d27aa12e6d07910600cca785a7d3efb9816b864a0189a5d915c86368"
+  },
+  "2025-12-05": {
+   "bytes": 462985,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-12-05.zip",
+   "sha256": "3e484780d57f319c0bd3a7b0e478ac92083f69a42e9c27e029e6b16b557233ed"
+  },
+  "2025-12-06": {
+   "bytes": 424739,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-12-06.zip",
+   "sha256": "5c8cbc573cd24db8505365df4c69fa30fb03ed789f8c771c140bee04021c8668"
+  },
+  "2025-12-07": {
+   "bytes": 448815,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-12-07.zip",
+   "sha256": "e6b35b5b37655eb2c1102d92209b2e82aa879bf9c4e826e782f069e3e1f4b3e7"
+  },
+  "2025-12-08": {
+   "bytes": 454192,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-12-08.zip",
+   "sha256": "cd4e13b1d62f140179ae6b0d428e5d695235a298cc17bdfe3b02a9b80a55cd99"
+  },
+  "2025-12-09": {
+   "bytes": 442876,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-12-09.zip",
+   "sha256": "74d8d8d5c0373f7c9ae2721cb81327cd7ded91bd77fc3efc44d03f59146ce82c"
+  },
+  "2025-12-10": {
+   "bytes": 444012,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-12-10.zip",
+   "sha256": "a58472cf0f1a187156f84ccc047170c1d481942d1d77fe20714f0562bea469cb"
+  },
+  "2025-12-11": {
+   "bytes": 504594,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-12-11.zip",
+   "sha256": "5031a75dfcbbb4af6f2c8e5699ae52233a1ecee19247787e5c486f326e23beeb"
+  },
+  "2025-12-12": {
+   "bytes": 491009,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-12-12.zip",
+   "sha256": "7f8e0b90d78250c35194266338973d113b5ad7c0bbcf0e1e834cadc427f5908c"
+  },
+  "2025-12-13": {
+   "bytes": 396900,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-12-13.zip",
+   "sha256": "fa7349f1dc424ef794f60b16acb9a7e2c5f5dcba5132011459dbb297e80bcf5a"
+  },
+  "2025-12-14": {
+   "bytes": 104037,
+   "file": "BTCBVOLUSDT-BVOLIndex-2025-12-14.zip",
+   "sha256": "0f49e38d4b054ef4963643fcb0326eac1a7a8e57d4edf7e8f22a2122d022dab8"
+  },
+  "2026-01-05": {
+   "bytes": 216602,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-05.zip",
+   "sha256": "d68d763233be69f72a5925af0a36e7c264f647edf1c1cf3f863ac74a988ad537"
+  },
+  "2026-01-06": {
+   "bytes": 431505,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-06.zip",
+   "sha256": "6540e3002028e9e108a8de3e92a61a6db7d00d24c22078035154c973f500c973"
+  },
+  "2026-01-07": {
+   "bytes": 423914,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-07.zip",
+   "sha256": "e228c65a5055838a791ae25c8fc565ea76c54e64d00c366f64ab8e7ef51d3af3"
+  },
+  "2026-01-08": {
+   "bytes": 423115,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-08.zip",
+   "sha256": "99ab9c89349a6cb143bfa4dafa2d7d7afe1c345ca3e18fea699df216815f5c3c"
+  },
+  "2026-01-09": {
+   "bytes": 423270,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-09.zip",
+   "sha256": "6916873140bf3a493c1c02d35336de534142004caaa1f7961da81b0860e8f8f1"
+  },
+  "2026-01-10": {
+   "bytes": 380372,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-10.zip",
+   "sha256": "fc3d0f686d104c6ef76f0f64f66e7fc64d47efce4da94b4ac5b39e72f8e8dcac"
+  },
+  "2026-01-11": {
+   "bytes": 390074,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-11.zip",
+   "sha256": "bfdd9a546ce0b74e54ab93d082f70c97ade443321f4ef4d6392c2abb1502df1a"
+  },
+  "2026-01-12": {
+   "bytes": 421865,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-12.zip",
+   "sha256": "5ea691a4b8e6004965c57dc9cbe808d24cbbd8f225ad1f581442d9b656a65783"
+  },
+  "2026-01-13": {
+   "bytes": 435234,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-13.zip",
+   "sha256": "e8fb17b75f27524e869acfcf5c9baeda96c203e58566a4fcce56ff0ab94bb43e"
+  },
+  "2026-01-14": {
+   "bytes": 438847,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-14.zip",
+   "sha256": "b32cfdc11ed4e064cf53317487f1192d3e979a8fac49fe33440b694dbe635c53"
+  },
+  "2026-01-15": {
+   "bytes": 458930,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-15.zip",
+   "sha256": "815d5a95984b18bed6b33f3dcd2588e99551e1f5e21685e1777bbba1cc3fc347"
+  },
+  "2026-01-16": {
+   "bytes": 433548,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-16.zip",
+   "sha256": "99f86c67a0fa141dc8c9398072852ee5880a49caede2b9792953ee2da53051a2"
+  },
+  "2026-01-17": {
+   "bytes": 389689,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-17.zip",
+   "sha256": "082bb5df25c9e6b5b2c574466d9c20f420f25ee86cdfdccc2746267e4b31bf1c"
+  },
+  "2026-01-18": {
+   "bytes": 397822,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-18.zip",
+   "sha256": "03fedf923d085edbec1eb2d58d8694c395bf58a8e8ab710b8d5fc6411fc3729e"
+  },
+  "2026-01-19": {
+   "bytes": 434235,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-19.zip",
+   "sha256": "f31026caf5a427ce1d1287290dde6145e08d3cd1a54fbb1715e0e9eebfa4c089"
+  },
+  "2026-01-20": {
+   "bytes": 445789,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-20.zip",
+   "sha256": "c97f33586bf65b3b37e090d8b0e6077ffcad1394abc7f5cf2e24aed695facde8"
+  },
+  "2026-01-21": {
+   "bytes": 449077,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-21.zip",
+   "sha256": "37316fef0c027221650238beeaf2d162ba9abb3dfae2c8a56ad77ffd2a803e8a"
+  },
+  "2026-01-22": {
+   "bytes": 459719,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-22.zip",
+   "sha256": "9f04ced200b80c8d000d8d4624b17f079eae520d007a8fab00159751df9f71b5"
+  },
+  "2026-01-23": {
+   "bytes": 453837,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-23.zip",
+   "sha256": "5250902eed716de065d71f90f1e9ce0f0e9eda68154ca650b04a30f0e09a572f"
+  },
+  "2026-01-24": {
+   "bytes": 396608,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-24.zip",
+   "sha256": "024d51fb933aa959aaa63f4d0f0cd3fcc23e37497110f6e1f790f43146353123"
+  },
+  "2026-01-25": {
+   "bytes": 460617,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-25.zip",
+   "sha256": "50686bd5bdc7fc0eb0fdd0531b942ae65ea2a3caee123782d0f0d6da6f2ffd6e"
+  },
+  "2026-01-26": {
+   "bytes": 453913,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-26.zip",
+   "sha256": "a5c391e807e670444c1f10ef10a74044d62a1e12d78bafa49f8b3e5b97ef82e6"
+  },
+  "2026-01-27": {
+   "bytes": 441632,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-27.zip",
+   "sha256": "4ffe8a26fba95e7a8be70bbfa5cdee516c4c4c4d5ad16f41d3c534f45e26d853"
+  },
+  "2026-01-28": {
+   "bytes": 444077,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-28.zip",
+   "sha256": "65162207ef0d0ee5963ca62177efbe34bb5f09908151cca128dd59b911b5f6db"
+  },
+  "2026-01-29": {
+   "bytes": 461187,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-29.zip",
+   "sha256": "8a11aa42e69abd7d2378439df4ab80c0554063ebafe3ed7f38deb6790c3686b5"
+  },
+  "2026-01-30": {
+   "bytes": 481989,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-30.zip",
+   "sha256": "05ecb1bbed4f51efd4b13b79829e1438ee9eb716ae471f4b7b356014a9851a99"
+  },
+  "2026-01-31": {
+   "bytes": 477764,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-01-31.zip",
+   "sha256": "d6cd77fad871f6ed91818a916ecbcd5bc1f5f07b56fde3c5ad7f39fe57a6dfd3"
+  },
+  "2026-02-01": {
+   "bytes": 508477,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-01.zip",
+   "sha256": "b77e4c211ab124c9b115723708e84772cd3f69db89c916bed85fb90e47a8e226"
+  },
+  "2026-02-02": {
+   "bytes": 489009,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-02.zip",
+   "sha256": "f5089003d1050af6c5eda80cd4f3ce442abba761d2979324c503a2bb6d4c57c9"
+  },
+  "2026-02-03": {
+   "bytes": 482041,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-03.zip",
+   "sha256": "8d5d450434d7dcfd2cf5760576b025cc80a97827e9c50d68a71d9b5930a698a5"
+  },
+  "2026-02-04": {
+   "bytes": 496583,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-04.zip",
+   "sha256": "119245351dd615589eda625a78292b538396ef372c75a2a70e9e5a6ebda093a9"
+  },
+  "2026-02-05": {
+   "bytes": 527686,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-05.zip",
+   "sha256": "4ba3f04197cd01a9fb497c169fdd38cf9847fe78c7c1b4807963abaa3de36a25"
+  },
+  "2026-02-06": {
+   "bytes": 525209,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-06.zip",
+   "sha256": "ac09441e786bde360b558742200e890d633cc66187694be13a5b182f40a7493d"
+  },
+  "2026-02-07": {
+   "bytes": 513759,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-07.zip",
+   "sha256": "72d1773450f9fc9efded29f335a5a2f5ed9708168637b19cab91fad637564fb2"
+  },
+  "2026-02-08": {
+   "bytes": 499521,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-08.zip",
+   "sha256": "a86274014c2c1d3143af4e2fcd636a93f1758e365c72e34cfed735c61f433628"
+  },
+  "2026-02-09": {
+   "bytes": 499170,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-09.zip",
+   "sha256": "885c1f3211739029012f7529afbd1f41763ffbe4ffadede6881eced6ab09d07e"
+  },
+  "2026-02-10": {
+   "bytes": 509411,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-10.zip",
+   "sha256": "922dbeb5ad16eacd84b4ab5b6c6b898b2f32d859832f4a05bcc5175239dbaaf5"
+  },
+  "2026-02-11": {
+   "bytes": 501712,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-11.zip",
+   "sha256": "7baaa7c52cadf64fb228e176b2fa00f5e8d3d3237531a89eb1603bef73b3900c"
+  },
+  "2026-02-12": {
+   "bytes": 497289,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-12.zip",
+   "sha256": "dd07bd4fdbc26e7736ed551dc92a63263127d6302f83c1eb2f456748e5bf1cf2"
+  },
+  "2026-02-13": {
+   "bytes": 503595,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-13.zip",
+   "sha256": "6ac68a751e9fde6b80181a95d345ba599857008309182130f89ccd8b71f02301"
+  },
+  "2026-02-14": {
+   "bytes": 507360,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-14.zip",
+   "sha256": "b2c01fa0afd1b5b6558bc99813c33b354f4796cdbcb0a860b2efbb9bdfa5c92b"
+  },
+  "2026-02-15": {
+   "bytes": 503471,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-15.zip",
+   "sha256": "ba880deaa389dbe8c951daba17a8ba515d86fa7b2a1ab4dd41d18bd7e128a8ec"
+  },
+  "2026-02-16": {
+   "bytes": 497919,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-16.zip",
+   "sha256": "1568430de5d209c6a098b3f5688855e05c98557528a7e5b384d1fd264f874315"
+  },
+  "2026-02-17": {
+   "bytes": 494679,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-17.zip",
+   "sha256": "90cf9590983504decdd53361fa0b57fa7e73491fba9e20a1a2f24208a946324e"
+  },
+  "2026-02-18": {
+   "bytes": 477726,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-18.zip",
+   "sha256": "d7c6268a412b2b0cbf873c2765e8d35e1421f6afd586c7412c95d808f2b80bbc"
+  },
+  "2026-02-19": {
+   "bytes": 512834,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-19.zip",
+   "sha256": "26ed85d699a03f859345f84b012f6d31269ba3bcc128d02bfe5e07346ad3002a"
+  },
+  "2026-02-20": {
+   "bytes": 529321,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-20.zip",
+   "sha256": "998c9a186c07315526d11baf5fddb26408828d2feaceed7acf5f36ffeee7b3c0"
+  },
+  "2026-02-21": {
+   "bytes": 519996,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-21.zip",
+   "sha256": "1f1d2636e2207337b638ea7ac9c3f68cd3c4f0c0777e91a8ffd7930abcd31961"
+  },
+  "2026-02-22": {
+   "bytes": 501164,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-22.zip",
+   "sha256": "491820f23677775959298569fe266b68f273eaaef7f8a9f2a29dd6b7d7781784"
+  },
+  "2026-02-23": {
+   "bytes": 512663,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-23.zip",
+   "sha256": "984bedb9439566f04776920e5719ea17a22b9c9aa01fa474fca4acdc5a37e9c8"
+  },
+  "2026-02-24": {
+   "bytes": 505121,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-24.zip",
+   "sha256": "eea07318cbf46eef0b29d809bf6676eff72e1cff82695454926441f790e5ea4e"
+  },
+  "2026-02-25": {
+   "bytes": 496192,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-25.zip",
+   "sha256": "57096bc1fc74af73d586fdca9aa37a499859c4460bab05ae74f55970b1fa818a"
+  },
+  "2026-02-26": {
+   "bytes": 487088,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-26.zip",
+   "sha256": "72155e5a708f0f193f51c6da8492421b0e7625433fe0d3f071b0574b174c4269"
+  },
+  "2026-02-27": {
+   "bytes": 482822,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-27.zip",
+   "sha256": "41949cb024c0a9fd49dd2e58d5c237955dba5e621dd9a6998f9b135869569d76"
+  },
+  "2026-02-28": {
+   "bytes": 485955,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-02-28.zip",
+   "sha256": "89e5f2d255b8f587b6ac6724b2977d3a8e482d6d062956443bbe0795703fa843"
+  },
+  "2026-03-01": {
+   "bytes": 488846,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-01.zip",
+   "sha256": "bbc7d578d6a470cd238ac6108b47cce788fe8dd8677cedd51477a83d73790e76"
+  },
+  "2026-03-02": {
+   "bytes": 481425,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-02.zip",
+   "sha256": "711169126e33cb69dbc3d10336c8f3bec8fab664e94461bb29635eb73c7785ef"
+  },
+  "2026-03-03": {
+   "bytes": 479408,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-03.zip",
+   "sha256": "cd8382d0697dd1eb7ab6e5f85c968a7b93f36ca069d0369798d09cbc6f277952"
+  },
+  "2026-03-04": {
+   "bytes": 498762,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-04.zip",
+   "sha256": "b51bce282c0e1ea5ef9979788112eb98bc454dce536450ecbace7edf92e61468"
+  },
+  "2026-03-05": {
+   "bytes": 481681,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-05.zip",
+   "sha256": "3a63f10e3ed3186ff7a8166d1d99aefec40d21e87424ba2dcdfbda81ca8e4a23"
+  },
+  "2026-03-06": {
+   "bytes": 478985,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-06.zip",
+   "sha256": "6e01855c32b2d8d7f0ee5a44ac4d8c67c1b438cd33835f8ccd8c958ca0075c2e"
+  },
+  "2026-03-07": {
+   "bytes": 447353,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-07.zip",
+   "sha256": "9d7e5447a04767aeab8a6d964da4bd2492543f6b95e50516ecf7f28b17ecad60"
+  },
+  "2026-03-08": {
+   "bytes": 474177,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-08.zip",
+   "sha256": "f8333caa5b8fddceeb3a864a69b3a15ce534ad612e74c8af1f59f3d8d6d70658"
+  },
+  "2026-03-09": {
+   "bytes": 481624,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-09.zip",
+   "sha256": "1398ae2cdf73158de8ad6648bdaf97bf46f332bf52c936d264ef708c53768d37"
+  },
+  "2026-03-10": {
+   "bytes": 468610,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-10.zip",
+   "sha256": "80dc94e69df9a4659ef6948750814d32aa847fa8535bdc0f161ff1ce68b28745"
+  },
+  "2026-03-11": {
+   "bytes": 451880,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-11.zip",
+   "sha256": "93729925879c59e7e0034e0a733a2cfbcebd5f859a3f5ccb98637bba2de40ef0"
+  },
+  "2026-03-12": {
+   "bytes": 482769,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-12.zip",
+   "sha256": "d0f9de6160ae4620cda3b8d59b35e5800a10ded33c52e5e209863fd48bc2e7e9"
+  },
+  "2026-03-13": {
+   "bytes": 499350,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-13.zip",
+   "sha256": "d0b092846311a3aa6be63b2a12566c57114c241ea0f7fdf13500bd405c00751d"
+  },
+  "2026-03-14": {
+   "bytes": 465404,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-14.zip",
+   "sha256": "7ed7402893fca972b609ce982f6b9c823a07332e3c5f4f3a9162971b965d111e"
+  },
+  "2026-03-15": {
+   "bytes": 454179,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-15.zip",
+   "sha256": "d7343af491b14bff367d96799ba35891fd2a6ede55b3153da6edd7abf8dca132"
+  },
+  "2026-03-16": {
+   "bytes": 472604,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-16.zip",
+   "sha256": "b1cb749a9eb6aac7e4e4a5885fbad6f7c48249c5966231655831d12ff1128a9d"
+  },
+  "2026-03-17": {
+   "bytes": 465344,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-17.zip",
+   "sha256": "88548d0d0876436a218da11af9fc43419ac2cc86dac87ff03433f60d3ddae812"
+  },
+  "2026-03-18": {
+   "bytes": 456691,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-18.zip",
+   "sha256": "dcc0c31163b4c94d3eefb4de7b002e5a257f0055bc0f330af75b8c5e94b20545"
+  },
+  "2026-03-19": {
+   "bytes": 471685,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-19.zip",
+   "sha256": "3c3ae4b6dccea7c7c6d897062859bd3c7014964700ed5baa322018e2253ad69f"
+  },
+  "2026-03-20": {
+   "bytes": 460796,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-20.zip",
+   "sha256": "d440c08ef1622e60c7bc926389cec2b19b06887f84d5e04f71636e9c36dbf18d"
+  },
+  "2026-03-21": {
+   "bytes": 435467,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-21.zip",
+   "sha256": "4d0f8028609ef0c6cfbd7b4b8addae34054d98e6cd5347ee5835b594e5d4ae77"
+  },
+  "2026-03-22": {
+   "bytes": 477926,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-22.zip",
+   "sha256": "924040bd34c7272b16e62c8dbe20cc2ee3f876528326eb7e24769527e88bf7c6"
+  },
+  "2026-03-23": {
+   "bytes": 474581,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-23.zip",
+   "sha256": "a518648c54cae1586712f36ad9d63ed64bb6f833572e49324be48053099ae9b2"
+  },
+  "2026-03-24": {
+   "bytes": 454256,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-24.zip",
+   "sha256": "c1d8c83faec09358f474725e06f56714c9492f0a6843e618b5a147c5ec00d0b3"
+  },
+  "2026-03-25": {
+   "bytes": 448575,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-25.zip",
+   "sha256": "3b3b60b9514b474b66c064c76fa9405f5e91020698ce387e59afc0935eb0fe02"
+  },
+  "2026-03-26": {
+   "bytes": 446944,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-26.zip",
+   "sha256": "7d928849e75b34bc71df38fc7c4ea39432a3bc42bc3a1b8bc161bc52dcec3036"
+  },
+  "2026-03-27": {
+   "bytes": 473053,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-27.zip",
+   "sha256": "86ff331a25a8ce6a1eac64a76eee3b4c5a4332842d6c23dbb9ed6b794424e54e"
+  },
+  "2026-03-28": {
+   "bytes": 444543,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-28.zip",
+   "sha256": "d37d797f1202846b72c84cd551c39d3546029bbd07e173a9e1045e82d9348c55"
+  },
+  "2026-03-29": {
+   "bytes": 457189,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-29.zip",
+   "sha256": "4c024ee9995cdbc773761399fb7439596038806538aa325fff1b962c345f4343"
+  },
+  "2026-03-30": {
+   "bytes": 470057,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-30.zip",
+   "sha256": "78e6f1eef4732146523fb5c6e4ab46b58a6d5e9b7740ea7a5d21972bb458cdf5"
+  },
+  "2026-03-31": {
+   "bytes": 471927,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-03-31.zip",
+   "sha256": "f1c6be5089b5c0e66aea91b6b05b23ce02a6b552d4d8050b9153832ec21783b2"
+  },
+  "2026-04-01": {
+   "bytes": 460341,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-01.zip",
+   "sha256": "5a3a9a5004ed17a34d11f9ce140cd1db5487b0e5d48790eb4499b6f504588764"
+  },
+  "2026-04-02": {
+   "bytes": 461322,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-02.zip",
+   "sha256": "b1eb72dc1c44249d3f3f0ee1213668b684e549f68e96899b6bd2b5e30b85c5d1"
+  },
+  "2026-04-03": {
+   "bytes": 455387,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-03.zip",
+   "sha256": "1ed00de6349271d2312b524f9ae3206c058ec6b58d8a2f75fb922aa3db315d12"
+  },
+  "2026-04-04": {
+   "bytes": 453772,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-04.zip",
+   "sha256": "202dcd5cfa17fee30ba8e8829be67a3d8f70943224392771244e8b7f50ae7018"
+  },
+  "2026-04-05": {
+   "bytes": 473599,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-05.zip",
+   "sha256": "f2e0d156cb9e7dd8ecbe3f224a6d695c42a53d5df7cfd7352fe5192db89416c0"
+  },
+  "2026-04-06": {
+   "bytes": 455633,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-06.zip",
+   "sha256": "e797fc04f6133e2df3930805cf0be6b601ad6c321552d4b79b722ba91733632d"
+  },
+  "2026-04-07": {
+   "bytes": 471033,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-07.zip",
+   "sha256": "f57d60a8c15f85b250eb587171595df22e7eb3c84899d345f35d7b8105897486"
+  },
+  "2026-04-08": {
+   "bytes": 460663,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-08.zip",
+   "sha256": "a4097af397d2888f0086c15ec8d0871a98ed08809c192dac0412026e6236f9fc"
+  },
+  "2026-04-09": {
+   "bytes": 481385,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-09.zip",
+   "sha256": "92cc8341699a3a99678760d10bed97ee504fbe49793ce86f65e254586b030829"
+  },
+  "2026-04-10": {
+   "bytes": 478114,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-10.zip",
+   "sha256": "abf9dcaad0b5f2d1ea610fcfaecbc97ac7680fb652fb14ae588b15c732635647"
+  },
+  "2026-04-11": {
+   "bytes": 425584,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-11.zip",
+   "sha256": "2559fe5c149586ddd7105f8e9fb6ecf7f1228a84997fffafab1487042ecb4d83"
+  },
+  "2026-04-12": {
+   "bytes": 432888,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-12.zip",
+   "sha256": "f44184fff942d07ce26125ed8d6656b344ea78576fddc276cbfbbd2abb4f3f28"
+  },
+  "2026-04-13": {
+   "bytes": 448014,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-13.zip",
+   "sha256": "9115f7175c46c3c56f6c45dce4dcab2bf871d87235c97861dcf625bfb2c73b64"
+  },
+  "2026-04-14": {
+   "bytes": 443427,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-14.zip",
+   "sha256": "30722730810da39b1a2367567fb9e28b8f7ac0765ad1dc3dc3f9804bb910318c"
+  },
+  "2026-04-15": {
+   "bytes": 433578,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-15.zip",
+   "sha256": "c39b60d36e12162cac5266ee7f1f0fbab64587da4fe31a344a61fed745058167"
+  },
+  "2026-04-16": {
+   "bytes": 473921,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-16.zip",
+   "sha256": "f255d951b4ef39db34fce5d5648a2fbba512610454e097b2dc35b8bfb9dbc7e0"
+  },
+  "2026-04-17": {
+   "bytes": 489328,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-17.zip",
+   "sha256": "c887697e3966be2c8795d8b37083fdb59e28d60b81219362c38fe3c97d0b6e30"
+  },
+  "2026-04-18": {
+   "bytes": 440500,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-18.zip",
+   "sha256": "78656b491dbee16d864d4946ce645cbe0c2b7fb442827e0e5443c5f53fb4bd25"
+  },
+  "2026-04-19": {
+   "bytes": 455301,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-19.zip",
+   "sha256": "ac7c473dbb3f47789dc6f41126369e61d3bac2f6b87995e21acf614d15a3ca0d"
+  },
+  "2026-04-20": {
+   "bytes": 455955,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-20.zip",
+   "sha256": "a4dd1de9fb2b2e6cc9bcf924e6d24bcf9d04286f0f14c238af81d7fd4badb98d"
+  },
+  "2026-04-21": {
+   "bytes": 451730,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-21.zip",
+   "sha256": "5c6cbdc8798cf5a644ec50e41032d2b8415e24e4ac2ab7964ab66aac52360ad7"
+  },
+  "2026-04-22": {
+   "bytes": 460256,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-22.zip",
+   "sha256": "9b51893ddf4a3f4bba5bb0b343881e9ce4852938de723165fcbba8c1b3198eca"
+  },
+  "2026-04-23": {
+   "bytes": 465370,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-23.zip",
+   "sha256": "cb04f6aa95e7cc3e4c963fa5bc6681242a7c026c479044891415925a8d8612cd"
+  },
+  "2026-04-24": {
+   "bytes": 462207,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-24.zip",
+   "sha256": "c45ced44ca595e5b103d57e23aab10a0056b7a8cbe31fd94d03ee88e4b238256"
+  },
+  "2026-04-25": {
+   "bytes": 442074,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-25.zip",
+   "sha256": "3d35994ab54e6eeb39337ae387d514f567c71c75ecbf73d65608683651a7c024"
+  },
+  "2026-04-26": {
+   "bytes": 449856,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-26.zip",
+   "sha256": "bdb5dfa67f794b32ea8ec028b9b6bded6362ce365e014efb52f060a202845d4d"
+  },
+  "2026-04-27": {
+   "bytes": 442775,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-27.zip",
+   "sha256": "c8f13b26268b0a27114bb51a9bafddcad661932da07b5d636a01a1ffe1b78df2"
+  },
+  "2026-04-28": {
+   "bytes": 437946,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-28.zip",
+   "sha256": "1c7c3eb9acbc0f22377d9def4a28225fcb142fe4b4f8db1a2cdfb93247432542"
+  },
+  "2026-04-29": {
+   "bytes": 440076,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-29.zip",
+   "sha256": "8a7b9d4e0741af55f6833b49478ff34ae96f8f70b3e9ff8ba6683a4883181054"
+  },
+  "2026-04-30": {
+   "bytes": 447576,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-04-30.zip",
+   "sha256": "74c56f7e67f4ea0f020eceb6a740f915fec136359b89c12ddf58ca3399559057"
+  },
+  "2026-05-01": {
+   "bytes": 444984,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-01.zip",
+   "sha256": "b6059e939864a3e6c25a3701d7d3969d23330159dbbe8b6135a9b9c4d01ba99f"
+  },
+  "2026-05-02": {
+   "bytes": 396681,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-02.zip",
+   "sha256": "d8922f091390ddae68f7e3531d2e3af87f7a0a42cae5ea2f3690f8eef6de5213"
+  },
+  "2026-05-03": {
+   "bytes": 426060,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-03.zip",
+   "sha256": "48ac24f90a49d0507ce2cd681f321ec9545ac4baee6d92bbddf340673c2d4c98"
+  },
+  "2026-05-04": {
+   "bytes": 451895,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-04.zip",
+   "sha256": "88e34d4a67270551f8834fafe60d880692ebbf5e89b5d9928a89a9c3f32aecbd"
+  },
+  "2026-05-05": {
+   "bytes": 455478,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-05.zip",
+   "sha256": "0f0343735659c048a78d497c0098a2f80c4c7f92ed27d042b8a79b7eceb36ecc"
+  },
+  "2026-05-06": {
+   "bytes": 437023,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-06.zip",
+   "sha256": "3b770ffb7a644d1804a789e85a2561f33d3035d3a92b90d328d15b151f3c226f"
+  },
+  "2026-05-07": {
+   "bytes": 437882,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-07.zip",
+   "sha256": "f270ccaeced7559a8cd85f82c4db29631e914435d7ce393127066108069c3af3"
+  },
+  "2026-05-08": {
+   "bytes": 426968,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-08.zip",
+   "sha256": "a8e68512149e6408ec516a1cd6e971dd9d9e46b7b6ab6cb13eb62c6d4b9bfefe"
+  },
+  "2026-05-09": {
+   "bytes": 401237,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-09.zip",
+   "sha256": "84ed89cd71b8bc766083712476ae47e85db29566adc5945ffcb2fdeb57a9e508"
+  },
+  "2026-05-10": {
+   "bytes": 422794,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-10.zip",
+   "sha256": "9ee23097d9d37e9345d89540a2a0872bb0225a0ea1171cfa7b1cd53a2f46e471"
+  },
+  "2026-05-11": {
+   "bytes": 422272,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-11.zip",
+   "sha256": "cf25e7e5c117c1f50dbc85bd9911e9c676601f1c2eaf09d20372ffdd0e9bed10"
+  },
+  "2026-05-12": {
+   "bytes": 409590,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-12.zip",
+   "sha256": "16f3358c600d8bcbfc146805540f4cb7dd81d0cfc6a21b3478c74d15c98ef3d0"
+  },
+  "2026-05-13": {
+   "bytes": 425396,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-13.zip",
+   "sha256": "86d70ea9019f48265d3d45301b351537f616a887f4a9f5cb0043ce82349a1581"
+  },
+  "2026-05-14": {
+   "bytes": 463026,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-14.zip",
+   "sha256": "910b568e35c085fca603c0ffbd3417519a84fa2698b35920ccbf617fb052f2b1"
+  },
+  "2026-05-15": {
+   "bytes": 472483,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-15.zip",
+   "sha256": "062fe2d45c9928ad36819e53a3e9f947796115d5c812fe7238710691614097ba"
+  },
+  "2026-05-16": {
+   "bytes": 463245,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-16.zip",
+   "sha256": "e018e1eed719ee810e0343dafef5b1fb367f3be47600ac0738bf2b818ed581e2"
+  },
+  "2026-05-17": {
+   "bytes": 472832,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-17.zip",
+   "sha256": "24254f7642ee8c5f5dc6cf674829d4177797bd62648089e8ac9cebd457b86bde"
+  },
+  "2026-05-18": {
+   "bytes": 471942,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-18.zip",
+   "sha256": "0a1dfc6edb7949c04e170485eede333430050d249d7b67dcb2017439fdbcbce0"
+  },
+  "2026-05-19": {
+   "bytes": 454887,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-19.zip",
+   "sha256": "3ebac2fb3a459374ea8c3fbee00047fe127e9f296044c6fa6e2812ce862d4f72"
+  },
+  "2026-05-20": {
+   "bytes": 429508,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-20.zip",
+   "sha256": "e390910ff18dac665aa3b211039189f431c70eb3930b2642b976c0c546a77ae2"
+  },
+  "2026-05-21": {
+   "bytes": 439477,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-21.zip",
+   "sha256": "42a673b080ee79c50fbe0f04c6b2280eb9acbd30382b3112b44701bd0d0a8a7d"
+  },
+  "2026-05-22": {
+   "bytes": 444254,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-22.zip",
+   "sha256": "8bd228dca9798df66f9faac0806f613d5d409a91924b2a3ce680a8c05c7119eb"
+  },
+  "2026-05-23": {
+   "bytes": 454927,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-23.zip",
+   "sha256": "bbe26a7cbf1381cc3433b8c3ddead76615d9436fed479029dc36470a852a8319"
+  },
+  "2026-05-24": {
+   "bytes": 433737,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-24.zip",
+   "sha256": "35eae4983454690e71777c508a84544dc56aae5295a4cea87d76ad2682d4cf9a"
+  },
+  "2026-05-25": {
+   "bytes": 429529,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-25.zip",
+   "sha256": "f3d4173537ff9e0654a3cc626eb6616f3181ae6c384fa00241bd12007b0adcd8"
+  },
+  "2026-05-26": {
+   "bytes": 445129,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-26.zip",
+   "sha256": "3c42a97bd8d352ebe003f02482ffbdb790db87c78eba8d57720d5eb7c490ab6f"
+  },
+  "2026-05-27": {
+   "bytes": 441658,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-27.zip",
+   "sha256": "eb074d8e7267d3800df5bfcc748ebf0675aae6afef8445e4ce0dcfa00e546169"
+  },
+  "2026-05-28": {
+   "bytes": 462447,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-28.zip",
+   "sha256": "984c9b7a8d91ce83035fb05bcd4759b1b97e4af0eeb52f9795fa422b12ab91fa"
+  },
+  "2026-05-29": {
+   "bytes": 456296,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-29.zip",
+   "sha256": "c77ef056c4371175ed4d96744f8d3e7b62695e58ddc6843430af3f763e31ccaf"
+  },
+  "2026-05-30": {
+   "bytes": 432686,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-30.zip",
+   "sha256": "e7cf70a51efc907952d47ae403bc7b7b50cb612fd3d4960e2c3f2f76bc085ddb"
+  },
+  "2026-05-31": {
+   "bytes": 439119,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-05-31.zip",
+   "sha256": "a064da5f6d7aba1c84af69610c566c739abf9275806f0690c52adce9016009ec"
+  },
+  "2026-06-01": {
+   "bytes": 456561,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-01.zip",
+   "sha256": "57728bec0bbc7b4beee08e18bf4a5239151e34b8049e75f2c86e3611ec9c7b88"
+  },
+  "2026-06-02": {
+   "bytes": 482017,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-02.zip",
+   "sha256": "0cb87ad50b41da42e2e60cda41a05f548fd7b632deceeb2fa69484459b3ab5e5"
+  },
+  "2026-06-03": {
+   "bytes": 484852,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-03.zip",
+   "sha256": "5adce61f83d1625bb00c9dcb8752bc88703bb230c1efdd6fb4f96ca037704684"
+  },
+  "2026-06-04": {
+   "bytes": 500887,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-04.zip",
+   "sha256": "f999d1f0f2f13251021bceb5ede06a78e7d7995eeab8266a4356339a509b71a7"
+  },
+  "2026-06-05": {
+   "bytes": 502478,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-05.zip",
+   "sha256": "b5451ef73ec6718b28e14cb4a68ac5ae2c8bfa18d8ab432dab126b91b7ea21d5"
+  },
+  "2026-06-06": {
+   "bytes": 486906,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-06.zip",
+   "sha256": "14de0e2ab8268375d2b65b137d7fd537eac7e981c83bd2dc99af8ab8baf41ddd"
+  },
+  "2026-06-07": {
+   "bytes": 480253,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-07.zip",
+   "sha256": "cce38a2eccac78a5e255f7db960956b6588a79d72cf97334d59b33c64e0543f8"
+  },
+  "2026-06-08": {
+   "bytes": 475814,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-08.zip",
+   "sha256": "a05ff458f85de990b1a0b8bfbabd5c7748a5040a9bea9989f61bd348627f7e8d"
+  },
+  "2026-06-09": {
+   "bytes": 471250,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-09.zip",
+   "sha256": "0302dd19269caa62199bf2dd6a30895c96342ceab7f251a3977813c62c403a19"
+  },
+  "2026-06-10": {
+   "bytes": 470164,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-10.zip",
+   "sha256": "6cd16c85da8720b7756739962e9da5cd206cc9df13b508e1b1d3c297945f07b8"
+  },
+  "2026-06-11": {
+   "bytes": 487476,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-11.zip",
+   "sha256": "d17e370bf89b406a92117d121d9cceba3eb923d77ecfece1b9b0bcde97da0268"
+  },
+  "2026-06-12": {
+   "bytes": 458806,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-12.zip",
+   "sha256": "7604e591be0dbb80ec62d8d66ddccd0c72e4321b454062ece377a86c2ae27173"
+  },
+  "2026-06-13": {
+   "bytes": 430138,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-13.zip",
+   "sha256": "cb4de746095ed5fbe9293bc1f6784d95172dfb1df3f516f72d4f8c4edaa85dd5"
+  },
+  "2026-06-14": {
+   "bytes": 439199,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-14.zip",
+   "sha256": "4ecd93b07583b862dca3d2bd600fbd936213c464372b17ba992f4414fd6141f9"
+  },
+  "2026-06-15": {
+   "bytes": 448981,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-15.zip",
+   "sha256": "d25389bdf61be7090300830437d66aaef5f419c92ba32f6532322a3e4688061f"
+  },
+  "2026-06-16": {
+   "bytes": 458946,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-16.zip",
+   "sha256": "f3fea5a7636d76f79f05f33af274b805e8c471433fc965a0fa46bf88d08f179d"
+  },
+  "2026-06-17": {
+   "bytes": 466351,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-17.zip",
+   "sha256": "79f555160a618c2fa02d226bf50bb84f04a9c9879ba8e720712e36ba4bc00dac"
+  },
+  "2026-06-18": {
+   "bytes": 458593,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-18.zip",
+   "sha256": "a278615ad483b5d06792b03d5e983ad203269bb6969070d5f823ae9a61635ded"
+  },
+  "2026-06-19": {
+   "bytes": 441112,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-19.zip",
+   "sha256": "2aa24705ecd4e2fe5c2f2f27189c77b97a6cc8ae4541c9c6ed98697350708e05"
+  },
+  "2026-06-20": {
+   "bytes": 420631,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-20.zip",
+   "sha256": "646218e56a0f21a7b65ace260255b5a7a098515f910f118484d30d38a0d12db4"
+  },
+  "2026-06-21": {
+   "bytes": 417818,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-21.zip",
+   "sha256": "4bac8270d847eccf15387c8428f293dbab637db558c1b90b7be9f2809666b4a9"
+  },
+  "2026-06-22": {
+   "bytes": 447420,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-22.zip",
+   "sha256": "7c821f1351a836ac0fd4dcc9dddad5168f17e0c4e1623b7c3ae7423d8b7b21be"
+  },
+  "2026-06-23": {
+   "bytes": 454320,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-23.zip",
+   "sha256": "a69b6d134c6a8a8529da8bef67c79e1c960b16bb79d04991f2a1c769f97f344c"
+  },
+  "2026-06-24": {
+   "bytes": 463635,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-24.zip",
+   "sha256": "b583c9a743518be6767c04bdbd626e23f900349329ab39cc479265e6c5cb3123"
+  },
+  "2026-06-25": {
+   "bytes": 490649,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-25.zip",
+   "sha256": "2f1d9de31181ac4e94590dd03479c2c416ca71dadc4d3758f7463e6ea2b53b44"
+  },
+  "2026-06-26": {
+   "bytes": 487298,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-26.zip",
+   "sha256": "4779d6c918b61023d1c4ba6a063ebb7bc5d113ab21b2b5390671b75dd3b78e5f"
+  },
+  "2026-06-27": {
+   "bytes": 427783,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-27.zip",
+   "sha256": "ca09f11d691b5a55ac24a350906b0c2b3ad8215128d959bbbfdf53d3a342ee4e"
+  },
+  "2026-06-28": {
+   "bytes": 453634,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-28.zip",
+   "sha256": "9e5fbf69ffd15eacfab72da04a53a6db6ce000df206b08efcdf23236bce5edd7"
+  },
+  "2026-06-29": {
+   "bytes": 470154,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-29.zip",
+   "sha256": "9a3da5e3d318879b765197aaced7e400074995726fd313bf89298062740298ac"
+  },
+  "2026-06-30": {
+   "bytes": 473107,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-06-30.zip",
+   "sha256": "816d4445324cff326b7b1afb129e2e1cf9a7060cff7dbc33a5d44b25d1c05090"
+  },
+  "2026-07-01": {
+   "bytes": 470303,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-01.zip",
+   "sha256": "8c8b7f35b1de9f8cb611477c6a548a052ff2237c367f03f006f07e2f84c53116"
+  },
+  "2026-07-02": {
+   "bytes": 453844,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-02.zip",
+   "sha256": "be02e29c92fd3fda125f66aee95568eeea690a0ba2499b350f5c9b19a307f926"
+  },
+  "2026-07-03": {
+   "bytes": 444848,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-03.zip",
+   "sha256": "4bc4a5a3422e93ddce9c9fbbc4616ca085a98e847e26de537459b0ff9267ff76"
+  },
+  "2026-07-04": {
+   "bytes": 444727,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-04.zip",
+   "sha256": "2ae6105cc558e01f3ea45c23505b08bb123492e592f1f9d9a966e04044e2db1b"
+  },
+  "2026-07-05": {
+   "bytes": 445783,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-05.zip",
+   "sha256": "8fa2c7f5a061a305222f6f3ba9e4fce7719439f2a5dd6d6c5fbcb39beea8a5b1"
+  },
+  "2026-07-06": {
+   "bytes": 459122,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-06.zip",
+   "sha256": "546cc313eaa56da31dcfa4c5abb60d9a8c7d8b288768bdf751f0fb71cb5e3d55"
+  },
+  "2026-07-07": {
+   "bytes": 448566,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-07.zip",
+   "sha256": "bfd8b34d9d1f612b801569c3be48cae6e4eda2095eb7a1d4aae3785996b12cad"
+  },
+  "2026-07-08": {
+   "bytes": 452746,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-08.zip",
+   "sha256": "5eef0cf8e9fe765f92f76cdb9e990440adcc05965739ba4714dbddbd41417db9"
+  },
+  "2026-07-09": {
+   "bytes": 438661,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-09.zip",
+   "sha256": "7e6a504aad78a74f2144dd0d6247f4c6add1985acf94789b434c348944a4aed5"
+  },
+  "2026-07-10": {
+   "bytes": 427153,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-10.zip",
+   "sha256": "e4feb9c01a76f9db0a22dee7dabd38773ad27bc1d5f3b2109404311ef95cb958"
+  },
+  "2026-07-11": {
+   "bytes": 392455,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-11.zip",
+   "sha256": "e2bbdf39d5d636dd9e85b40885db0f0af920641fba217736597e576e9c627ef8"
+  },
+  "2026-07-12": {
+   "bytes": 399430,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-12.zip",
+   "sha256": "724303e7d7390a672ff450aca92db3637803f3a229a3f5be6704747de9dd67a1"
+  },
+  "2026-07-13": {
+   "bytes": 440064,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-13.zip",
+   "sha256": "c341c271c837aa82245b26ddedb9e8ae2bb732ca6e94ebdee4bd193479a14117"
+  },
+  "2026-07-14": {
+   "bytes": 423406,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-14.zip",
+   "sha256": "d524c5298ca03195032194ca4f852c42963e6ea08ea3e47cb2fd99e49d58f82a"
+  },
+  "2026-07-15": {
+   "bytes": 406602,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-15.zip",
+   "sha256": "32c9dd729ad692308c3d88ae3003c6bd35fb811cae92c8b7694d5047b54c2761"
+  },
+  "2026-07-16": {
+   "bytes": 432318,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-16.zip",
+   "sha256": "9c35a9fec2ec7227224e8cf95ec8897b78c7bed2e28413b5d1411e6b67427578"
+  },
+  "2026-07-17": {
+   "bytes": 453487,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-17.zip",
+   "sha256": "1bc0afeb51ccb993a3b8546dca35c26bf857ea3c12b0bd9989992eef06576c20"
+  },
+  "2026-07-18": {
+   "bytes": 397107,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-18.zip",
+   "sha256": "ebc0db31a56409b39c9cab1cf367b4daf2904052d29b9dd628d994a3d832f634"
+  },
+  "2026-07-19": {
+   "bytes": 395519,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-19.zip",
+   "sha256": "781dcf62314db50990c56707d23e3d00c25b7d6a821766220c043d5bb7480d94"
+  },
+  "2026-07-20": {
+   "bytes": 422188,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-20.zip",
+   "sha256": "6520b0084086106dea06d26fb8210ed66a3d7f4f42d0286e05680dab635c5afc"
+  },
+  "2026-07-21": {
+   "bytes": 419711,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-21.zip",
+   "sha256": "0cb68b77f103dae82717f66f877165a3872c0fed2846f154d455d79041f114f4"
+  },
+  "2026-07-22": {
+   "bytes": 405989,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-22.zip",
+   "sha256": "b93f18f03ad658bc1a3720c93134bed17d3a3398ae6fbb9b22a30c7cd8071abf"
+  },
+  "2026-07-23": {
+   "bytes": 408304,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-23.zip",
+   "sha256": "c3524e97cbf8d94fb6c4dee6feaf432fb3c7a98a5141855d10cdebce50a1804b"
+  },
+  "2026-07-24": {
+   "bytes": 412638,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-24.zip",
+   "sha256": "2459c00a0c5dd728590f6b40161b661570f4aa26c8acc69116508fe49d67637c"
+  },
+  "2026-07-25": {
+   "bytes": 385417,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-25.zip",
+   "sha256": "a59daf25bfcfd1c6dcb4100a172809696cad57bf9f69cf9d778372432183f8d3"
+  },
+  "2026-07-26": {
+   "bytes": 403923,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-26.zip",
+   "sha256": "d5914a31d7dd53afc0d055eaa55485113f6efc4bbb5524ad5d221baa7cca1345"
+  },
+  "2026-07-27": {
+   "bytes": 415013,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-27.zip",
+   "sha256": "14656819067956eb8eb069589e68bb0011b21a8fc788691086c5b1afba910355"
+  },
+  "2026-07-28": {
+   "bytes": 429445,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-28.zip",
+   "sha256": "0897cc6506b60640929d45f87892b9ab398396a435cd7e07bcedac7f01d9e479"
+  },
+  "2026-07-29": {
+   "bytes": 440313,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-29.zip",
+   "sha256": "10450382b2c76b47def898461b9e853b79826ff37f70097f6d8c54b78e09d18f"
+  },
+  "2026-07-30": {
+   "bytes": 418118,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-30.zip",
+   "sha256": "688116b29f3865986e557be0dd751beef91c86fa449a79c8bf38ffb2415f5043"
+  },
+  "2026-07-31": {
+   "bytes": 429126,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-07-31.zip",
+   "sha256": "b8e0ebe89f40445f207cb09f56441a6d3bcaeb3436318b260d3e72921a154f77"
+  },
+  "2026-08-01": {
+   "bytes": 389454,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-01.zip",
+   "sha256": "3cf9ead636bcca4b4a6ffbd810d922ac2596e6bcda185fa0b1a76bdfa83652aa"
+  },
+  "2026-08-02": {
+   "bytes": 407902,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-02.zip",
+   "sha256": "d56d16522a537fa7d0a96dae449aa18f0dc4b12e26569eab3f2da1f8088f159a"
+  },
+  "2026-08-03": {
+   "bytes": 422228,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-03.zip",
+   "sha256": "dc6bc82bf0a0a662bc004579a600f04bee473317f9a93942e62422e32f0a07ee"
+  },
+  "2026-08-04": {
+   "bytes": 410955,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-04.zip",
+   "sha256": "7ddd2f087ccfae16a27e89216d69979ea03dd97876e6dbf814ada44cb7bad311"
+  },
+  "2026-08-05": {
+   "bytes": 415265,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-05.zip",
+   "sha256": "4264a3f83ab834b6faef118a6f9c777fc84429e9c8891aebbad440a04a6d8690"
+  },
+  "2026-08-06": {
+   "bytes": 398143,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-06.zip",
+   "sha256": "f23911a1badcc782174789b18ec1c9d3ae1b5d59a5a55821d0d9a767e408f176"
+  },
+  "2026-08-07": {
+   "bytes": 411108,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-07.zip",
+   "sha256": "0e31e5d3cd5cd38b1abf94ee283b16b788dea4456c48a2adbbaefd039eab3a7d"
+  },
+  "2026-08-08": {
+   "bytes": 388787,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-08.zip",
+   "sha256": "77f63747b23b3fd6d8bd87fb4b1f8f253f601fbcce7acc5da9cec551073e36a0"
+  },
+  "2026-08-09": {
+   "bytes": 390616,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-09.zip",
+   "sha256": "98bd68577da661875965b0b8a7277365953302dcf08c0be3a77cdcf2c157c2b6"
+  },
+  "2026-08-10": {
+   "bytes": 404579,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-10.zip",
+   "sha256": "c90758b620bf372287b8404ac8c270458a8ed4272078e1f98abdeededaf236b2"
+  },
+  "2026-08-11": {
+   "bytes": 414305,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-11.zip",
+   "sha256": "c917fab0971ffec5c433f714361ae0d5b14bdf20587a3291cab6b879967433a9"
+  },
+  "2026-08-12": {
+   "bytes": 423001,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-12.zip",
+   "sha256": "8fa3f55c0f7e07db064dea969123cce0e6213e23f986f3b6b5d664573d325ea5"
+  },
+  "2026-08-13": {
+   "bytes": 430194,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-13.zip",
+   "sha256": "2da4178805197ea3a8bdc43866170d7ddb468b09a88c7909921d756bce36ddc0"
+  },
+  "2026-08-14": {
+   "bytes": 419192,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-14.zip",
+   "sha256": "53cda78e1649c0b936516922a0ed54d1b34a5e6f0d83c35e16af04963e6674f1"
+  },
+  "2026-08-15": {
+   "bytes": 395920,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-15.zip",
+   "sha256": "db123788e24aafbdf2a403ef4c1ba374cf9a6edca2a109a23bd50c478349700d"
+  },
+  "2026-08-16": {
+   "bytes": 392259,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-16.zip",
+   "sha256": "1c510c991330b2a701da40a8fb1b3bce3a9c9968effd65242c7154cd412e45a7"
+  },
+  "2026-08-17": {
+   "bytes": 419930,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-17.zip",
+   "sha256": "878bbd38325c5b15e40b7de218e92feb0e0540dfed1ff7e52818c676ed3bc9b2"
+  },
+  "2026-08-18": {
+   "bytes": 402192,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-18.zip",
+   "sha256": "e48ed5eed52b78b99db8cb5b5d87072eaec15ce845d0afc69561e7d282fe7a4d"
+  },
+  "2026-08-19": {
+   "bytes": 429428,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-19.zip",
+   "sha256": "5aa2f3c7ec85c54fe2987925ffcf343603f7101b4e0fef43ab7456b897c35897"
+  },
+  "2026-08-20": {
+   "bytes": 477922,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-20.zip",
+   "sha256": "9229c4120949b02f5820290b82a10d8bdbb831e8ea213bf64ca758b478996ed2"
+  },
+  "2026-08-21": {
+   "bytes": 500390,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-21.zip",
+   "sha256": "d5134f1fe90a2826380c0894b4fbe7de25b3fe51ab450990be3cab81c60b1d65"
+  },
+  "2026-08-22": {
+   "bytes": 480732,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-22.zip",
+   "sha256": "ea0db9cdfbfd10a62afa7f076dd75a08b2947c71263bc2c1f4344a7116080a71"
+  },
+  "2026-08-23": {
+   "bytes": 456549,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-23.zip",
+   "sha256": "1ed891c8922851c80614980fb95cf83f005643e4f58f505b33103da26a299720"
+  },
+  "2026-08-24": {
+   "bytes": 461492,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-24.zip",
+   "sha256": "5b0c1a0630e0fb21c9f8aa596bf982675a2cedc57545a057fbec82f7053337e9"
+  },
+  "2026-08-25": {
+   "bytes": 468626,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-25.zip",
+   "sha256": "f25e97a64890c42775a2eca944e20ab6e966a0805cdd89599e7e45e1f5994207"
+  },
+  "2026-08-26": {
+   "bytes": 449933,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-26.zip",
+   "sha256": "c44d9a08aebfc9927ae7277d8f805b9271f237701f041dce429ccd8d8ddf4d34"
+  },
+  "2026-08-27": {
+   "bytes": 450345,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-27.zip",
+   "sha256": "16ea691623bc6d32860e2edea59aa84ab52f8885c01c34f1a58b1b34bf53f7a2"
+  },
+  "2026-08-28": {
+   "bytes": 456026,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-28.zip",
+   "sha256": "c479ef6f2cf2b7e9fe28951b5d1e170886a150778890edf9f0ad9e8d8b922568"
+  },
+  "2026-08-29": {
+   "bytes": 411353,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-29.zip",
+   "sha256": "40e974abecbfd2daf25df19d14931163a52951579f46092b03290630ab5eb33e"
+  },
+  "2026-08-30": {
+   "bytes": 414397,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-30.zip",
+   "sha256": "f6e0ba640710785df1be33df7158d0c8b91cd675acf3f3cf68b103b194aec533"
+  },
+  "2026-08-31": {
+   "bytes": 437765,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-08-31.zip",
+   "sha256": "76c681a7323ae1b62f12a7b797dccc4785b96d8d895dc72671b202d533fb6c1d"
+  },
+  "2026-09-01": {
+   "bytes": 430930,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-01.zip",
+   "sha256": "c814a55f255a6d92dd4502f7d71438cb775ed213d835f2c6e2162e8b7098ebfe"
+  },
+  "2026-09-02": {
+   "bytes": 427574,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-02.zip",
+   "sha256": "60ebfb96d5b39ffe56006f22d16db7fda2194c1b7629ce6847f991906c0cf6e1"
+  },
+  "2026-09-03": {
+   "bytes": 445963,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-03.zip",
+   "sha256": "dc7386a8bcf40b4f05a1925d6cc7382f5d5f1881f436ff532ecc236de28c852c"
+  },
+  "2026-09-04": {
+   "bytes": 436908,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-04.zip",
+   "sha256": "d426793803f58d8c3b29706c329c4a8af4d205650c26fcb8b4af45028da34119"
+  },
+  "2026-09-05": {
+   "bytes": 415368,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-05.zip",
+   "sha256": "db5208591ad75fba6a70b2fa9a4858225104eb56d85c295156507dc9c1fe9288"
+  },
+  "2026-09-06": {
+   "bytes": 391029,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-06.zip",
+   "sha256": "4a246e9cd69999a1b4ec767885c521afff1bdfe16c48d91d6759622526c565ce"
+  },
+  "2026-09-07": {
+   "bytes": 403544,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-07.zip",
+   "sha256": "ab5d366e9547b42970ac3a21497c6769da17c9041afdc83d8a349216b1b13fe7"
+  },
+  "2026-09-08": {
+   "bytes": 417847,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-08.zip",
+   "sha256": "1d394f7a4725cc78ebecb59d4498adc32bafbf7bbc577c215db061f84df3af23"
+  },
+  "2026-09-09": {
+   "bytes": 419498,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-09.zip",
+   "sha256": "ea1b7f82133ba3e1db99a63e0278a041c5fe91880d8c37db8c370e2afe87d015"
+  },
+  "2026-09-10": {
+   "bytes": 431329,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-10.zip",
+   "sha256": "9adb3bdfa455db0b538b99f6932f8b773ecd6e0e5cf32948002394e67486a685"
+  },
+  "2026-09-11": {
+   "bytes": 440322,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-11.zip",
+   "sha256": "792d50496603b08157c1728d2e16a4dc8f225bc06e6aa6327349438a8762a459"
+  },
+  "2026-09-12": {
+   "bytes": 408339,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-12.zip",
+   "sha256": "26f187cd70bb1b029fcbc4773f3ff2c96a5c21abfe4f892bf21c873d14f253a0"
+  },
+  "2026-09-13": {
+   "bytes": 407833,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-13.zip",
+   "sha256": "2ebf25029aaff6a0a35d1665ca76932a649e16ee41fc6a485fda3b4edb9d921d"
+  },
+  "2026-09-14": {
+   "bytes": 417678,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-14.zip",
+   "sha256": "6b3380ddcf64e87571879e6dafc11ec0793776ad4bf01ec17dd2e9a34ab9c8a3"
+  },
+  "2026-09-15": {
+   "bytes": 439184,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-15.zip",
+   "sha256": "35268ca50e9fdb5f19b9144e408f850de877bf9b3d3ca5e5d16c31c721c0db2a"
+  },
+  "2026-09-16": {
+   "bytes": 423721,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-16.zip",
+   "sha256": "51bc6aefbbea4ef59aa2c88f0109b99a877221584d892662002038c4679a2ce8"
+  },
+  "2026-09-17": {
+   "bytes": 434017,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-17.zip",
+   "sha256": "37c1538f1b4eb3c30cd9727e3bbf5b454993dff3e3b9bf0a43a05261d25ec60c"
+  },
+  "2026-09-18": {
+   "bytes": 435504,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-18.zip",
+   "sha256": "64b555cc30ed26d1728bfa5d9037c127c53c993a35f81c86af11ab598c1635f2"
+  },
+  "2026-09-19": {
+   "bytes": 423197,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-19.zip",
+   "sha256": "491e752782ca07c22cc8e0d0731c1259932cd56de354f107fe26292122477da9"
+  },
+  "2026-09-20": {
+   "bytes": 411029,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-20.zip",
+   "sha256": "87ba904ccde2f3787bcc34067094b8e58d7fbeb1fde8560a1140211369be4355"
+  },
+  "2026-09-21": {
+   "bytes": 456338,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-21.zip",
+   "sha256": "1c1d71b8a1c2c8687547f0cc3a1a4d8719c0fc3a6d7356c53e77e4e9e07c346d"
+  },
+  "2026-09-22": {
+   "bytes": 437197,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-22.zip",
+   "sha256": "73cd9a60e4f23816c7fef302d248e0bc88f1af2c7ab61dcd2322abef0ae3b84c"
+  },
+  "2026-09-23": {
+   "bytes": 418365,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-23.zip",
+   "sha256": "218d8d887e0e15b9feffe19cf04914ccb652aa5e014dad81b361673316b6ca1b"
+  },
+  "2026-09-24": {
+   "bytes": 425158,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-24.zip",
+   "sha256": "e8ab5556d92693c394c02eebd29670d25c75b4390457ebadb6828b6dc1bc8159"
+  },
+  "2026-09-25": {
+   "bytes": 415834,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-25.zip",
+   "sha256": "144dba933ff4cb232977e596c04369f54cf84964fc0e04126f2d61a1f410f088"
+  },
+  "2026-09-26": {
+   "bytes": 366913,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-26.zip",
+   "sha256": "cb23f9667992760c64f6a58e3901adc77a5330ce49d624510223b850ad0a5720"
+  },
+  "2026-09-27": {
+   "bytes": 388012,
+   "file": "BTCBVOLUSDT-BVOLIndex-2026-09-27.zip",
+   "sha256": "273d89016e164ef7beb75ddc02386f90a481b2ebb760b7ed7559035650d44abd"
+  }
+ },
+ "manifest_dates": 703,
+ "missing_dates": [
+  "2025-12-15",
+  "2025-12-16",
+  "2025-12-17",
+  "2025-12-18",
+  "2025-12-19",
+  "2025-12-20",
+  "2025-12-21",
+  "2025-12-22",
+  "2025-12-23",
+  "2025-12-24",
+  "2025-12-25",
+  "2025-12-26",
+  "2025-12-27",
+  "2025-12-28",
+  "2025-12-29",
+  "2025-12-30",
+  "2025-12-31",
+  "2026-01-01",
+  "2026-01-02",
+  "2026-01-03",
+  "2026-01-04"
+ ],
+ "total_bytes": 312434907
+}

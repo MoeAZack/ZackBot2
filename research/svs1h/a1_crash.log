@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/home/claude/ZackBot2/research/svs1h/svs_run.py", line 97, in <module>
+    main(a[0], a[1], '--verify-only' in sys.argv)
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/ZackBot2/research/svs1h/svs_run.py", line 31, in main
+    syms = M['symbols']; assert syms == sorted(F['coins']) == F['coins']
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

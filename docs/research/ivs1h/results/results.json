@@ -1,0 +1,88 @@
+{
+  "id": "IVS-1H",
+  "freeze_sha256": "ef2c4cc17805a539984430885434029addab828e09f1178d7481c745d7e85673",
+  "stage_b": {
+    "distinct_fill_times": 153,
+    "calendar_weeks": 102.32142857142857,
+    "upper_bound_per_week": 1.4952879581151832,
+    "FREQUENCY_FAIL": true,
+    "distinct_fill_times_le_T1": 153,
+    "distinct_raw_signal_times": 153,
+    "global_events_in_window": 230,
+    "z_defined_hours_in_window": 15976,
+    "valid_V_hours_in_window": 16652,
+    "window_hours": 17191,
+    "raw_signals": 826,
+    "eligible_decisions": 826,
+    "refusals": {
+      "ineligible": 0,
+      "missing_next_hour": 0
+    },
+    "per_coin_side": {
+      "ADAUSDT": {
+        "long": 58,
+        "short": 27
+      },
+      "AVAXUSDT": {
+        "long": 63,
+        "short": 22
+      },
+      "BNBUSDT": {
+        "long": 66,
+        "short": 28
+      },
+      "BTCUSDT": {
+        "long": 69,
+        "short": 44
+      },
+      "DOGEUSDT": {
+        "long": 61,
+        "short": 32
+      },
+      "ETHUSDT": {
+        "long": 66,
+        "short": 29
+      },
+      "LINKUSDT": {
+        "long": 62,
+        "short": 22
+      },
+      "SOLUSDT": {
+        "long": 58,
+        "short": 30
+      },
+      "XRPUSDT": {
+        "long": 64,
+        "short": 25
+      }
+    },
+    "by_month_distinct_fill_times": {
+      "2024-10": 5,
+      "2024-11": 4,
+      "2024-12": 8,
+      "2025-01": 11,
+      "2025-02": 8,
+      "2025-03": 4,
+      "2025-04": 10,
+      "2025-05": 7,
+      "2025-06": 5,
+      "2025-07": 8,
+      "2025-08": 7,
+      "2025-09": 6,
+      "2025-10": 4,
+      "2025-11": 6,
+      "2025-12": 5,
+      "2026-01": 7,
+      "2026-02": 7,
+      "2026-03": 5,
+      "2026-04": 3,
+      "2026-05": 6,
+      "2026-06": 10,
+      "2026-07": 4,
+      "2026-08": 7,
+      "2026-09": 6
+    }
+  },
+  "verdict": "FREQUENCY_FAIL",
+  "economics": "NOT_EVALUATED"
+}

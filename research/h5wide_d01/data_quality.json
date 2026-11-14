@@ -1,0 +1,242 @@
+{
+ "ADAUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "AVAXUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "BNBUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "BTCUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "DOGEUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "ETHUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "LINKUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "SOLUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "XRPUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "1000PEPEUSDT": {
+  "first": "2023-05-05",
+  "bars": 29941,
+  "eligible_hours": 29213,
+  "rule": true
+ },
+ "AAVEUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "APTUSDT": {
+  "first": "2022-10-19",
+  "bars": 34707,
+  "eligible_hours": 33965,
+  "rule": true
+ },
+ "ARBUSDT": {
+  "first": "2023-03-23",
+  "bars": 30974,
+  "eligible_hours": 30245,
+  "rule": true
+ },
+ "ARKUSDT": {
+  "first": "2023-09-19",
+  "bars": 26653,
+  "eligible_hours": 11112,
+  "rule": true
+ },
+ "BCHUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "DOTUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "ENAUSDT": {
+  "first": "2024-04-02",
+  "bars": 21953,
+  "eligible_hours": 21221,
+  "rule": true
+ },
+ "ENJUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 19080,
+  "rule": true
+ },
+ "ETCUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "FETUSDT": {
+  "first": "2023-01-17",
+  "bars": 32547,
+  "eligible_hours": 31805,
+  "rule": true
+ },
+ "FILUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "GALAUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 33725,
+  "rule": true
+ },
+ "INJUSDT": {
+  "first": "2022-08-17",
+  "bars": 36219,
+  "eligible_hours": 34709,
+  "rule": true
+ },
+ "LTCUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "MANAUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 29376,
+  "rule": true
+ },
+ "MOVRUSDT": {
+  "first": "2023-12-26",
+  "bars": 24305,
+  "eligible_hours": 4752,
+  "rule": true
+ },
+ "NEARUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "ONDOUSDT": {
+  "first": "2024-01-20",
+  "bars": 23704,
+  "eligible_hours": 22973,
+  "rule": true
+ },
+ "ONEUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 13469,
+  "rule": true
+ },
+ "QNTUSDT": {
+  "first": "2022-10-20",
+  "bars": 34683,
+  "eligible_hours": 10800,
+  "rule": true
+ },
+ "SANDUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 33581,
+  "rule": true
+ },
+ "STRKUSDT": {
+  "first": "2024-02-20",
+  "bars": 22956,
+  "eligible_hours": 18605,
+  "rule": true
+ },
+ "SUIUSDT": {
+  "first": "2023-05-03",
+  "bars": 29989,
+  "eligible_hours": 29261,
+  "rule": true
+ },
+ "SUPERUSDT": {
+  "first": "2023-11-26",
+  "bars": 25024,
+  "eligible_hours": 11544,
+  "rule": true
+ },
+ "TAOUSDT": {
+  "first": "2024-04-11",
+  "bars": 21735,
+  "eligible_hours": 21005,
+  "rule": true
+ },
+ "UNIUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "WLDUSDT": {
+  "first": "2023-07-24",
+  "bars": 28025,
+  "eligible_hours": 27293,
+  "rule": true
+ },
+ "XLMUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 35885,
+  "rule": true
+ },
+ "ZECUSDT": {
+  "first": "2022-08-01",
+  "bars": 36605,
+  "eligible_hours": 29309,
+  "rule": true
+ },
+ "ZROUSDT": {
+  "first": "2024-06-20",
+  "bars": 20055,
+  "eligible_hours": 17501,
+  "rule": true
+ }
+}

@@ -1,0 +1,87 @@
+{
+ "contract": "EBI-A #337 6831737001",
+ "gate": 0.8,
+ "coins": [
+  {
+   "file": "BTCUSDT-aggTrades-2026-09-01.zip",
+   "sha256": "8ee2432189e091f8df2181a7bf894f6458cf4c24ffcb0de904e7bbb80f0245ba",
+   "events": 1324889,
+   "first_ts": 1788220800003,
+   "last_ts": 1788307199987,
+   "defect_pairs": {
+    "raw_trade_gap": 14723,
+    "agg_id_gap": 0,
+    "ts_decrease": 0,
+    "silence_gt_5s": 0
+   },
+   "defect_clock_ms": {
+    "raw_trade_gap": 6695696,
+    "agg_id_gap": 0,
+    "ts_decrease": 0,
+    "silence_gt_5s": 0
+   },
+   "bins": 2880,
+   "usable_bins": 72,
+   "usable_fraction": 0.025,
+   "bins_lost_by_cause": {
+    "no_anchor": 1,
+    "tail_unobserved": 0,
+    "raw_trade_gap": 2808,
+    "agg_id_gap": 0,
+    "ts_decrease": 0,
+    "silence_gt_5s": 0
+   },
+   "clock_s_lost_by_cause": {
+    "no_anchor": 30,
+    "tail_unobserved": 0,
+    "raw_trade_gap": 84240,
+    "agg_id_gap": 0,
+    "ts_decrease": 0,
+    "silence_gt_5s": 0
+   },
+   "bins_lost_union": 2808,
+   "passes_80pct": false
+  },
+  {
+   "file": "ETHUSDT-aggTrades-2026-09-01.zip",
+   "sha256": "3c3440d01bf6dac778c803393cc8c592ab2e4be568c2fb7b6f1aab09d741c1aa",
+   "events": 1119715,
+   "first_ts": 1788220800000,
+   "last_ts": 1788307199913,
+   "defect_pairs": {
+    "raw_trade_gap": 18880,
+    "agg_id_gap": 0,
+    "ts_decrease": 0,
+    "silence_gt_5s": 3
+   },
+   "defect_clock_ms": {
+    "raw_trade_gap": 8851210,
+    "agg_id_gap": 0,
+    "ts_decrease": 0,
+    "silence_gt_5s": 15628
+   },
+   "bins": 2880,
+   "usable_bins": 27,
+   "usable_fraction": 0.009375,
+   "bins_lost_by_cause": {
+    "no_anchor": 1,
+    "tail_unobserved": 0,
+    "raw_trade_gap": 2853,
+    "agg_id_gap": 0,
+    "ts_decrease": 0,
+    "silence_gt_5s": 3
+   },
+   "clock_s_lost_by_cause": {
+    "no_anchor": 30,
+    "tail_unobserved": 0,
+    "raw_trade_gap": 85590,
+    "agg_id_gap": 0,
+    "ts_decrease": 0,
+    "silence_gt_5s": 90
+   },
+   "bins_lost_union": 2853,
+   "passes_80pct": false
+  }
+ ],
+ "verdict": "DATA_INADEQUATE"
+}
