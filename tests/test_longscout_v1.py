@@ -1011,3 +1011,59 @@ def test_v32_helper_values_match_on_every_prefix():
         part = c.iloc[:cut].reset_index(drop=True)
         for f, x in zip(fns, full):
             np.testing.assert_array_equal(f(part), x[:cut])
+
+
+import longscout_v33 as L33
+L33.register()
+
+
+def _v33_pair(seed, n=2600, churn=False):
+    btc = _mk(n, '4h', seed + 100)
+    rng = np.random.default_rng(seed)
+    lb = np.diff(np.log(btc.c.values), prepend=np.log(btc.c.values[0]))
+    w = ((np.arange(n) // 360) % 2 == 0).astype(float)            # 60-day coupled / decoupled blocks
+    lr = w * 1.5 * lb + rng.normal(0.0004, 0.015, n)
+    c = 100 * np.exp(np.cumsum(lr))
+    o = np.r_[c[0], c[:-1]]
+    h = np.maximum(o, c) * (1 + abs(rng.normal(0, .01, n))); l = np.minimum(o, c) * (1 - abs(rng.normal(0, .01, n)))
+    v = rng.lognormal(10, 0.3, n)
+    if churn:                                                    # every 40th day: big spike high, close near the low, 6x volume
+        day = np.arange(n) // 6; ev = (day % 40 == 39)
+        h = np.where(ev & (np.arange(n) % 6 == 0), h * 1.25, h); v = np.where(ev, v * 6, v)
+    coin = pd.DataFrame(dict(t=btc.t, o=o, h=h, l=l, c=c, v=v))
+    return _ms(coin), _ms(btc)
+
+
+@pytest.mark.parametrize('key', sorted(L33.CANDIDATES))
+def test_v33_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _v33_pair(1 if 'beta' in key else 3, churn='churn' in key)
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v33_btc_future_rows_do_not_change_coin_signals():
+    coin, btc = _v33_pair(3, churn=True)
+    for key in sorted(L33.CANDIDATES):
+        a = _sig(key, coin.iloc[:2000].reset_index(drop=True), btc.iloc[:2000].reset_index(drop=True))
+        b = _sig(key, coin.iloc[:2000].reset_index(drop=True), btc)        # BTC frame runs 600 bars past the coin
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (a[k] == b[k]).all(), (key, k)
+
+
+def test_v33_helper_values_match_on_every_prefix():
+    P = {k: v['params'] for k, v in L33.CANDIDATES.items()}
+    out = []
+    for seed, fn, key in ((3, L33._churn, 's33_churn_exhaustion_4h'), (3, L33._decouple, 'l33_btc_decoupling_4h'),
+                          (1, L33._beta_turn, 'l33_high_beta_btc_up_4h')):
+        coin, btc = _v33_pair(seed, churn=True)
+        L.set_btc(btc); c = S.indicators(coin)
+        full = fn(c, P[key]); assert full.sum() > 0, key
+        for cut in range(700, 2600, 23):
+            L.set_btc(btc.iloc[:cut].reset_index(drop=True))
+            np.testing.assert_array_equal(fn(c.iloc[:cut].reset_index(drop=True), P[key]), full[:cut])
