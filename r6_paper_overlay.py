@@ -85,8 +85,10 @@ _TL = threading.local()        # per-thread evaluation phase + the frames THIS t
 
 
 def _fp(df):
-    """Row fingerprint of a produced frame: rows, last candle open, last close. A frame whose rows changed after it was
-    produced no longer matches its provenance."""
+    """Checkpoint of a produced frame: row count, last candle open time and last close ONLY. A change to any of these after
+    production breaks the provenance match. It is NOT a whole-frame or equal-history guarantee: earlier rows and indicator
+    columns are not compared (no ordinary installed path mutates a produced frame, and a separate producer refresh may
+    legitimately carry revised history)."""
     return (len(df), int(pd.Timestamp(df.t.iloc[-1]).value), float(df.c.iloc[-1]))
 
 
@@ -169,8 +171,10 @@ def _provenance_checked(engine, d):
     if tf != '4h': return None, f'wrong timeframe {tf}'
     if sym not in _FROZEN: return None, f'{sym} not in the frozen list'
     if _fp(d) != fp: return None, 'frame rows changed after it was produced'
-    got = getattr(_TL, 'got', None)
-    if got is not None and id(d) in got:                        # the evaluating thread's own request for this object
+    got = getattr(_TL, 'got', None)                            # CONDITIONAL: checked only when this exact object is in
+    if got is not None and id(d) in got:                        # the evaluating thread's receipt map (inside its own
+                                                                # compute_signals); otherwise the trusted producer registry
+                                                                # plus the shared-candle check below decide
         gref, gsym, gtf = got[id(d)]
         if gref() is d and (gsym, gtf) != (sym, tf): return None, f'evaluator asked for {gsym}/{gtf}'
     hit = getattr(engine, '_kc', {}).get((sym, '4h'))          # cross-check: the engine's current frame for that symbol

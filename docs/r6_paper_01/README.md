@@ -198,15 +198,21 @@ The fix is overlay-only (engine.py unchanged):
   returned by the engine's own producer (fresh fetch or cache hit) goes into a registry owned by the overlay. The registry
   is keyed by object identity with a weak reference, so it never pins frames in memory and is bounded (4,096 entries).
   `df.attrs` is never used: pandas copies attrs onto derived frames.
-- `frame_resolver` keeps cache identity as the primary path. A displaced frame resolves only if every check passes:
-  - the same live object was produced by the engine;
+- `frame_resolver` keeps cache identity as the primary path, unchanged. A frame that IS the engine's current cached object
+  resolves to that cache key directly; the registry is not consulted (and so cannot override it). A displaced frame
+  resolves only if every check below passes:
+  - the registry entry refers to this same live object, recorded by the engine's own producer wrapper (the trusted scope
+    is that in-process wrapper; it is not revalidated against a deliberately corrupted registry);
   - it has one identity (an object claimed by two symbols is poisoned);
   - its timeframe is 4h and its symbol is in the frozen list;
-  - its rows are unchanged since it was produced;
-  - the evaluating thread itself asked the producer for that symbol;
-  - the engine's current cached frame for that symbol has the same candle (open/high/low/close) at the frame's last
+  - its checkpoint is unchanged since production: row count, last candle open time and last close only. This is not a
+    whole-frame or equal-history guarantee; earlier rows and indicator columns are not compared;
+  - conditionally, when this exact object is in the evaluating thread's receipt map (it was returned to that thread by the
+    producer inside its own `compute_signals`), the symbol that thread asked for must match. With no receipt entry, the
+    trusted registry and the shared-candle check decide;
+  - the engine's current cached frame for that symbol has an identical candle (open/high/low/close) at the frame's last
     time. When a slower refresh left an older frame in the cache, the check uses the cache's last candle instead, which
-    the newer frame must also hold.
+    the newer frame must also hold. Only that one candle is compared.
 
   Anything else fails closed. Resolution needs no network fetch.
 - Every fallback resolution (info) and every failure (warning) is logged as one JSON line. Each line carries the reason,
