@@ -1564,3 +1564,44 @@ def test_v45_long_side_follows_the_low_extreme():
         for i in np.flatnonzero(sig):
             k = D.index.get_loc(pd.Timestamp(t[i]) - pd.Timedelta(days=1))
             assert (D.c.iloc[k] < ma.iloc[k] - 2 * sd.iloc[k]) if below else (D.c.iloc[k] > ma.iloc[k] + 2 * sd.iloc[k])
+
+
+import longscout_v46 as L46
+L46.register()
+
+
+def _v46_crash_coin(seed=4):
+    c = _mk(2600, '4h', seed)
+    day = np.arange(len(c)) // 6; ph = day % 30; f = np.ones(len(c))
+    for i in np.flatnonzero((ph >= 25) & (ph <= 27) & (np.arange(len(c)) % 6 == 5)): f[i:] *= 0.90   # three -10% days
+    for i in np.flatnonzero((ph < 25) & (np.arange(len(c)) % 6 == 5)): f[i:] *= 1.004
+    return _ms(c.assign(**{k: c[k] * f for k in ('o', 'h', 'l', 'c')}))
+
+
+_V46_COIN = {'l46_falling_oversold_bounce_4h': lambda: _v36_coin(2, drift=-0.001),
+             's46_rising_overbought_fade_4h': lambda: _v36_coin(1),
+             'l46_falling_crash_bounce_4h': _v46_crash_coin}
+
+
+@pytest.mark.parametrize('key', sorted(L46.CANDIDATES))
+def test_v46_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V46_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    cr = L.coin_regime(S.indicators(coin))
+    assert (cr[ent] == (1 if key.startswith('s46') else -1)).all()          # counter-regime by construction
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v46_helper_values_match_on_every_prefix():
+    for c, fn in ((S.indicators(_v36_coin(2, drift=-0.001)), lambda x: L46._rsi_x(x, dict(lvl=20.0), True)),
+                  (S.indicators(_v36_coin(1)), lambda x: L46._rsi_x(x, dict(lvl=85.0), False)),
+                  (S.indicators(_v46_crash_coin()), lambda x: L46._crash(x, dict(days=3, fall=0.25)))):
+        full = fn(c); assert full.sum() > 0
+        for cut in range(700, 2600, 23):
+            np.testing.assert_array_equal(fn(c.iloc[:cut].reset_index(drop=True)), full[:cut])
