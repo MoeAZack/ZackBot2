@@ -2374,3 +2374,82 @@ def test_v55_right_shoulder_window_stops_two_days_before_the_break():
     assert L55._hs_v(D, L55.HS, True).iloc[j]
     D.loc[idx[j - 2], 'h'] = 125.0                                        # a later spike is outside the shoulder window
     assert L55._hs_v(D, L55.HS, True).iloc[j]
+
+
+import longscout_v56 as L56
+L56.register()
+
+_V56_COIN = {'s56_daily_upthrust_4h': lambda: _ms(_mk(2600, '4h', 55)),
+             'l56_daily_spring_4h': lambda: _ms(_mk(2600, '4h', 56)),
+             'r56_key_reversal_4h': lambda: _v36_coin(2, drift=-0.001)}
+
+
+@pytest.mark.parametrize('key', sorted(L56.CANDIDATES))
+def test_v56_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V56_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    if key.startswith('r56'):
+        assert le.sum() and se.sum()
+    else:
+        assert (se if key.startswith('s56') else le).sum()
+        cr = L.coin_regime(S.indicators(coin))
+        assert np.isin(cr[le], (0, 1)).all() and np.isin(cr[se], (0, -1)).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v56_ref(D, kind, n):
+    days = list(D.index); H, Lo, C = list(D.h), list(D.l), list(D.c); res = []
+    for j in range(len(days)):
+        if j < n or days[j] - days[j - n] != pd.Timedelta(days=n):
+            res.append(False); continue
+        hi, lo = max(H[j - n:j]), min(Lo[j - n:j]); rng = H[j] - Lo[j]
+        pos = (C[j] - Lo[j]) / rng if rng > 0 else np.nan
+        if kind == 'up':
+            res.append(H[j] > hi and C[j] < hi and pos < 0.5)
+        elif kind == 'spring':
+            res.append(Lo[j] < lo and C[j] > lo and pos > 0.5)
+        elif kind == 'ktop':
+            res.append(H[j] > hi and C[j] < Lo[j - 1])
+        else:
+            res.append(Lo[j] < lo and C[j] > H[j - 1])
+    return np.array(res, bool)
+
+
+def test_v56_flags_match_an_independent_loop_and_prefixes():
+    hits = dict(up=0, spring=0, ktop=0, kbot=0)
+    for seed in list(range(50, 70)) + ['v2']:
+        coin = _v36_coin(2, drift=-0.001) if seed == 'v2' else _ms(_mk(2600, '4h', seed))
+        D = L27._days_v(S.indicators(coin))
+        for kind, v in (('up', L56._fail_v(D, dict(n=30), True)), ('spring', L56._fail_v(D, dict(n=30), False)),
+                        ('ktop', L56._key_v(D, dict(n=20), True)), ('kbot', L56._key_v(D, dict(n=20), False))):
+            np.testing.assert_array_equal(v.values, _v56_ref(D, kind, 30 if kind in ('up', 'spring') else 20),
+                                          err_msg=str((seed, kind)))
+            hits[kind] += int(v.sum())
+            if seed in (55, 'v2'):
+                for cut in range(60, len(D), 37):
+                    f = L56._fail_v if kind in ('up', 'spring') else L56._key_v
+                    arg = dict(n=30) if kind in ('up', 'spring') else dict(n=20)
+                    np.testing.assert_array_equal(f(D.iloc[:cut], arg, kind in ('up', 'ktop')).values, v.values[:cut])
+    assert all(hits.values()), hits
+
+
+def test_v56_entries_are_next_day_hour_zero_and_gaps_block():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for key in sorted(L56.CANDIDATES):
+        coin = _V56_COIN[key](); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig(key, coin, btc)
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se'])):
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            for back in (2, 10):
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
+    assert fired
