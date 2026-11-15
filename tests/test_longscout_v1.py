@@ -2603,3 +2603,120 @@ def test_v58_entries_are_next_day_hour_zero_and_gaps_block():
                 fired += 1
                 assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
     assert fired
+
+
+import longscout_v59 as L59
+L59.register()
+
+_V59_COIN = {'r59_weekly_engulfing_4h': lambda: _ms(_mk(2600, '4h', 57)),
+             'l59_range_top_persist_4h': lambda: _ms(_mk(2600, '4h', 56)),
+             's59_range_low_persist_4h': lambda: _ms(_mk(2600, '4h', 54))}
+
+
+@pytest.mark.parametrize('key', sorted(L59.CANDIDATES))
+def test_v59_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V59_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'r59': le.sum() and se.sum(), 'l59': le.sum(), 's59': se.sum()}[key[:3]]
+    cr = L.coin_regime(S.indicators(coin))
+    assert (cr[le] == 1).all() and (cr[se] == -1).all()
+    if key.startswith('r59'):
+        assert (pd.to_datetime(coin.t[le | se]).dt.dayofweek == 0).all()            # Mondays only
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v59_week_ref(D, bull):
+    days = list(D.index); O, C = list(D.o), list(D.c)
+    pos = {dd: i for i, dd in enumerate(days)}
+    res = np.zeros(len(days), bool)
+    for i, dd in enumerate(days):
+        if dd.dayofweek != 6:
+            continue
+        wk = [dd - pd.Timedelta(days=k) for k in range(6, -1, -1)]
+        pw = [w - pd.Timedelta(days=7) for w in wk]
+        if not all(w in pos for w in wk + pw):
+            continue
+        o1, c1 = O[pos[pw[0]]], C[pos[pw[-1]]]; o2, c2 = O[pos[wk[0]]], C[pos[wk[-1]]]
+        res[i] = (c1 < o1 and c2 > o2 and o2 <= c1 and c2 > o1) if bull else (c1 > o1 and c2 < o2 and o2 >= c1 and c2 < o1)
+    return res
+
+
+def _v59_persist_ref(D, top, n=50, k=10, q=0.25):
+    days = list(D.index); H, Lo, C = list(D.h), list(D.l), list(D.c); m = len(days)
+    zone = []
+    for j in range(m):
+        if j < n - 1:
+            zone.append(False); continue
+        hi, lo = max(H[j - n + 1:j + 1]), min(Lo[j - n + 1:j + 1])
+        p = (C[j] - lo) / (hi - lo) if hi > lo else np.nan
+        zone.append(bool(p >= 1 - q) if top else bool(p <= q))
+    res = np.zeros(m, bool)
+    for j in range(n + k, m):
+        if days[j] - days[j - n - k] != pd.Timedelta(days=n + k):
+            continue
+        res[j] = all(zone[j - k + 1:j + 1]) and not zone[j - k]
+    return res
+
+
+def test_v59_flags_match_an_independent_loop_and_prefixes():
+    hits = dict(wb=0, ws=0, pt=0, pl=0)
+    for seed in range(50, 64):
+        c = S.indicators(_ms(_mk(2600, '4h', seed)))
+        Do, Dv = L17._days(c), L27._days_v(c)
+        for name, v, ref in (('wb', L59._weekly_v(Do, True), _v59_week_ref(Do, True)),
+                             ('ws', L59._weekly_v(Do, False), _v59_week_ref(Do, False)),
+                             ('pt', L59._persist_v(Dv, L59.PP, True), _v59_persist_ref(Dv, True)),
+                             ('pl', L59._persist_v(Dv, L59.PP, False), _v59_persist_ref(Dv, False))):
+            np.testing.assert_array_equal(v.values, ref, err_msg=str((seed, name)))
+            hits[name] += int(ref.sum())
+        if seed in (54, 57):
+            for cut in range(80, len(Do), 29):
+                np.testing.assert_array_equal(L59._weekly_v(Do.iloc[:cut], True).values,
+                                              L59._weekly_v(Do, True).values[:cut])
+                np.testing.assert_array_equal(L59._persist_v(Dv.iloc[:cut], L59.PP, False).values,
+                                              L59._persist_v(Dv, L59.PP, False).values[:cut])
+    assert all(hits.values()), hits
+
+
+def test_v59_entries_are_hour_zero_and_gaps_block():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for key in sorted(L59.CANDIDATES):
+        coin = _V59_COIN[key](); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig(key, coin, btc)
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se'])):
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            for back in ((3, 10) if key.startswith('r59') else (2, 30)):
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
+    assert fired
+
+
+def test_v59_weekly_engulfing_synthetic_open_and_week_gap_rules():
+    def weeks(spec):                                                       # spec: list of (monday, open, close)
+        rows = []
+        for mon, o, c in spec:
+            for k in range(7):
+                dd = pd.Timestamp(mon) + pd.Timedelta(days=k)
+                rows.append((dd, o if k == 0 else (o + c) / 2, max(o, c) + 1, min(o, c) - 1, c if k == 6 else (o + c) / 2))
+        D = pd.DataFrame(rows, columns=['day', 'o', 'h', 'l', 'c']).set_index('day')
+        return D
+    sun = pd.Timestamp('2024-01-14')
+    D = weeks([('2024-01-01', 110, 100), ('2024-01-08', 100, 115)])       # red then engulfing green
+    assert L59._weekly_v(D, True).loc[sun]
+    D = weeks([('2024-01-01', 110, 100), ('2024-01-08', 103, 115)])       # opened above prior close
+    assert not L59._weekly_v(D, True).loc[sun]
+    D = weeks([('2024-01-01', 100, 110), ('2024-01-08', 110, 95)])        # green then engulfing red
+    assert L59._weekly_v(D, False).loc[sun]
+    D = weeks([('2024-01-01', 100, 110), ('2024-01-08', 107, 95)])        # opened below prior close
+    assert not L59._weekly_v(D, False).loc[sun]
+    D = weeks([('2023-12-25', 110, 100), ('2024-01-08', 100, 115)])       # a missing week between them
+    assert not L59._weekly_v(D, True).any()
