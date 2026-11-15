@@ -2243,3 +2243,134 @@ def test_v54_shallow_pattern_is_rejected_by_the_depth_rule():
         D = pd.DataFrame({'h': h, 'l': l, 'c': c, 'v': 1.0}, index=idx)
         assert not L54._pattern_v(D, L54.DP, bottom).iloc[j], bottom
         assert L54._pattern_v(D, dict(tol=0.03, depth=0.02), bottom).iloc[j], bottom
+
+
+import longscout_v55 as L55
+L55.register()
+
+_V55_COIN = {'s55_head_shoulders_4h': lambda: _v36_coin(2, drift=-0.001),
+             'l55_inverse_head_shoulders_4h': lambda: _ms(_mk(2600, '4h', 57)),
+             'l55_bull_flag_4h': lambda: _v36_coin(1)}
+
+
+@pytest.mark.parametrize('key', sorted(L55.CANDIDATES))
+def test_v55_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V55_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert (se if key.startswith('s55') else le).sum(), key
+    cr = L.coin_regime(S.indicators(coin))
+    ok = {'s55_head_shoulders_4h': (0, -1), 'l55_inverse_head_shoulders_4h': (0, 1), 'l55_bull_flag_4h': (1,)}[key]
+    assert np.isin(cr[le | se], ok).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v55_hs_ref(D, top, head=0.05, tol=0.05):
+    days = list(D.index); H, Lo, C = list(D.h), list(D.l), list(D.c); res = []
+    for j in range(len(days)):
+        if j < 61 or days[j] - days[j - 60] != pd.Timedelta(days=60):
+            res.append(False); continue
+        pick = (lambda w: max(w, key=lambda k: (H[k], -k))) if top else (lambda w: min(w, key=lambda k: (Lo[k], k)))
+        a, b, r = pick(range(j - 60, j - 40)), pick(range(j - 40, j - 20)), pick(range(j - 20, j - 2))
+        if top:
+            ls, hd, rs = H[a], H[b], H[r]
+            shape = hd >= (1 + head) * max(ls, rs) and abs(rs / ls - 1) <= tol
+            neck = min(min(Lo[a:b + 1]), min(Lo[b:r + 1]))
+            res.append(shape and C[j] < neck <= C[j - 1])
+        else:
+            ls, hd, rs = Lo[a], Lo[b], Lo[r]
+            shape = hd <= (1 - head) * min(ls, rs) and abs(rs / ls - 1) <= tol
+            neck = max(max(H[a:b + 1]), max(H[b:r + 1]))
+            res.append(shape and C[j] > neck >= C[j - 1])
+    return np.array(res)
+
+
+def _v55_flag_ref(D, pole=0.20, flag=0.12):
+    days = list(D.index); H, Lo, C = list(D.h), list(D.l), list(D.c); res = []
+    for j in range(len(days)):
+        if j < 21 or days[j] - days[j - 20] != pd.Timedelta(days=20):
+            res.append(False); continue
+        q = max(range(j - 10, j - 3), key=lambda k: (C[k], -k))
+        ok = C[q] / min(Lo[q - 5:q + 1]) - 1 >= pole and max(H[q + 1:j]) <= H[q] and min(Lo[q + 1:j]) >= (1 - flag) * C[q]
+        res.append(ok and C[j] > H[q] >= C[j - 1])
+    return np.array(res)
+
+
+def test_v55_patterns_match_an_independent_loop_and_prefixes():
+    hits = {'hs': 0, 'ihs': 0, 'fl': 0}
+    for seed in list(range(50, 80)) + ['v1', 'v2']:
+        coin = _v36_coin(1) if seed == 'v1' else _v36_coin(2, drift=-0.001) if seed == 'v2' else _ms(_mk(2600, '4h', seed))
+        D = L27._days_v(S.indicators(coin))
+        for name, v, ref in (('hs', L55._hs_v(D, L55.HS, True).values, _v55_hs_ref(D, True)),
+                             ('ihs', L55._hs_v(D, L55.HS, False).values, _v55_hs_ref(D, False)),
+                             ('fl', L55._flag_v(D, dict(pole=0.20, flag=0.12)).values, _v55_flag_ref(D))):
+            np.testing.assert_array_equal(v, ref, err_msg=str((seed, name)))
+            hits[name] += int(v.sum())
+        if seed in (57, 'v1', 'v2'):
+            for cut in range(100, len(D), 41):
+                Dp = D.iloc[:cut]
+                np.testing.assert_array_equal(L55._hs_v(Dp, L55.HS, True).values, L55._hs_v(D, L55.HS, True).values[:cut])
+                np.testing.assert_array_equal(L55._hs_v(Dp, L55.HS, False).values, L55._hs_v(D, L55.HS, False).values[:cut])
+                np.testing.assert_array_equal(L55._flag_v(Dp, dict(pole=0.20, flag=0.12)).values,
+                                              L55._flag_v(D, dict(pole=0.20, flag=0.12)).values[:cut])
+    assert all(hits.values()), hits
+
+
+def test_v55_synthetic_shapes_respect_each_threshold():
+    idx = pd.date_range('2024-01-01', periods=65, freq='D')
+    def hs(head_pct, rs_pct, top=True):
+        base = np.full(65, 100.0); h, l, c = base + 0.5, base - 0.5, base.copy(); j = 64
+        sgn = 1 if top else -1
+        h_, l_ = (h, l) if top else (l, h)
+        h_[j - 50] = 100 + sgn * 10; h_[j - 30] = 100 + sgn * (10 + head_pct); h_[j - 10] = 100 + sgn * (10 + rs_pct)
+        c[j] = 100 - sgn * 1.0
+        if top: l[j] = 98.5
+        else: h[j] = 101.5
+        return pd.DataFrame({'h': h, 'l': l, 'c': c, 'v': 1.0}, index=idx), j
+    for top in (True, False):
+        D, j = hs(8.0, 1.0, top); assert L55._hs_v(D, L55.HS, top).iloc[j], top           # good shape fires
+        D, j = hs(3.0, 1.0, top); assert not L55._hs_v(D, L55.HS, top).iloc[j], top       # head too small
+        D, j = hs(8.0, 6.5, top); assert not L55._hs_v(D, L55.HS, top).iloc[j], top       # shoulders too uneven
+    idx = pd.date_range('2024-01-01', periods=25, freq='D')
+    def fl(rise, dip):
+        c = np.full(25, 100.0); j = 24; q = j - 6
+        c[q - 5:q + 1] = np.linspace(100, 100 * (1 + rise), 6)
+        c[q + 1:j] = c[q] * (1 - dip); c[j] = c[q] * 1.05
+        h, l = c + 0.1, c - 0.1
+        return pd.DataFrame({'h': h, 'l': l, 'c': c, 'v': 1.0}, index=idx), j
+    P = dict(pole=0.20, flag=0.12)
+    D, j = fl(0.30, 0.05); assert L55._flag_v(D, P).iloc[j]
+    D, j = fl(0.15, 0.05); assert not L55._flag_v(D, P).iloc[j]                        # pole too short
+    D, j = fl(0.30, 0.15); assert not L55._flag_v(D, P).iloc[j]                        # flag too deep
+
+
+def test_v55_a_missing_day_inside_the_pattern_blocks_it():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for key in sorted(L55.CANDIDATES):
+        coin = _V55_COIN[key](); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig(key, coin, btc)
+        span = 20 if key == 'l55_bull_flag_4h' else 60
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se'])):
+            for back in (2, span // 2, span + 1):
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
+    assert fired
+
+
+def test_v55_right_shoulder_window_stops_two_days_before_the_break():
+    idx = pd.date_range('2024-01-01', periods=65, freq='D')
+    base = np.full(65, 100.0); h, l, c = base + 0.5, base - 0.5, base.copy(); j = 64
+    h[j - 50], h[j - 30], h[j - 10] = 110.0, 118.0, 111.0
+    c[j] = 99.0; l[j] = 98.5
+    D = pd.DataFrame({'h': h, 'l': l, 'c': c, 'v': 1.0}, index=idx)
+    assert L55._hs_v(D, L55.HS, True).iloc[j]
+    D.loc[idx[j - 2], 'h'] = 125.0                                        # a later spike is outside the shoulder window
+    assert L55._hs_v(D, L55.HS, True).iloc[j]
