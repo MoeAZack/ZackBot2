@@ -1437,3 +1437,53 @@ def test_v42_helper_values_match_on_every_prefix():
         L.set_btc(btc.iloc[:cut].reset_index(drop=True))
         for (f, x), v in zip(fns, full):
             np.testing.assert_array_equal(f(x.iloc[:cut].reset_index(drop=True)), v[:cut])
+
+
+import longscout_v43 as L43
+L43.register()
+
+_V43_COIN = {'l43_big_up_week_4h': (1, 0.0006), 's43_big_down_week_4h': (2, -0.001), 'l43_down_week_in_uptrend_4h': (3, 0.0006)}
+
+
+@pytest.mark.parametrize('key', sorted(L43.CANDIDATES))
+def test_v43_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    s, dr = _V43_COIN[key]
+    coin, btc = _v36_coin(s, drift=dr), _ms(_mk(2600, '4h', 55))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v43_week_event_matches_independent_resample_and_prefixes():
+    for up, mv, seed in ((True, 0.2, 1), (False, 0.15, 3)):
+        c = S.indicators(_v36_coin(seed)); t = pd.to_datetime(c.t)
+        got = L43._week_event(c, dict(move=mv), up)
+        s = pd.Series(c.c.values, index=t); cnt = s.resample('W-SUN').count(); W = s.resample('W-SUN').last()[cnt == 42]
+        r = W / W.shift() - 1; ok = W[(r >= mv) if up else (r <= -mv)]
+        ok = ok[ok.index.isin(W.index[1:][np.diff(W.index.values) == np.timedelta64(7, 'D')])]
+        assert got.sum() > 0 and (got == np.isin(t.values, (ok.index + pd.Timedelta(days=1)).values)).all()
+        for cut in range(700, 2600, 23):
+            np.testing.assert_array_equal(L43._week_event(c.iloc[:cut].reset_index(drop=True), dict(move=mv), up), got[:cut])
+
+
+def test_v43_week_after_a_broken_week_does_not_fire():
+    c = S.indicators(_v36_coin(1)); t = pd.to_datetime(c.t)
+    s = pd.Series(c.c.values, index=t); W = s.resample('W-SUN').last()
+    got = L43._week_event(c, dict(move=0.2), True)
+    done = 0
+    for i in np.flatnonzero(got):
+        sun = t.values[i] - np.timedelta64(1, 'D') - np.timedelta64(0, 'h')
+        sun = pd.Timestamp(sun).normalize()
+        prev, prev2 = sun - pd.Timedelta(days=7), sun - pd.Timedelta(days=14)
+        if prev2 not in W.index or W[sun] / W[prev2] - 1 < 0.2: continue        # want a case the 2-week move also clears
+        j = int(np.flatnonzero((t >= prev - pd.Timedelta(days=2)) & (t < prev))[0])   # a bar inside week prev
+        drop = c.drop(index=j).reset_index(drop=True)
+        k = int(np.flatnonzero(pd.to_datetime(drop.t).values == t.values[i])[0])
+        assert not L43._week_event(drop, dict(move=0.2), True)[k]
+        done += 1
+    assert done > 0
