@@ -1067,3 +1067,41 @@ def test_v33_helper_values_match_on_every_prefix():
         for cut in range(700, 2600, 23):
             L.set_btc(btc.iloc[:cut].reset_index(drop=True))
             np.testing.assert_array_equal(fn(c.iloc[:cut].reset_index(drop=True), P[key]), full[:cut])
+
+
+import longscout_v34 as L34
+L34.register()
+
+
+@pytest.mark.parametrize('key', sorted(L34.CANDIDATES))
+def test_v34_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    a = 52 if key.startswith('s34') else 56
+    coin, btc = _ms(_mk(2600, '4h', a)), _ms(_mk(2600, '4h', 55))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v34_band_edges_and_helper_prefixes():
+    np.testing.assert_array_equal(L34._band([0.9, 1, 1.99, 2, 4.99, 5, 9.99, 10, 0.05]), [-1, 0, 0, 1, 1, 2, 2, 3, -4])
+    for seed, up in ((56, True), (52, False)):
+        c = S.indicators(_ms(_mk(2600, '4h', seed)))
+        full = L34._half_retrace(c, L34.HR, up); rc = L34._round_cross(c, {})
+        assert full.sum() > 0 and rc.sum() > 0
+        for cut in range(700, 2600, 23):
+            part = c.iloc[:cut].reset_index(drop=True)
+            np.testing.assert_array_equal(L34._half_retrace(part, L34.HR, up), full[:cut])
+            np.testing.assert_array_equal(L34._round_cross(part, {}), rc[:cut])
+
+
+def test_v34_swing_mid_needs_the_extreme_order():
+    c = pd.Series([10, 8, 6, 7, 8.5], dtype=float)                 # high 10 then low 6: decline swing, mid 8
+    mid, size = L34._swing_mid(c, 5, True)
+    assert mid.iloc[-1] == 8 and abs(size.iloc[-1] - 0.4) < 1e-12
+    mid2, _ = L34._swing_mid(pd.Series([6, 7, 8, 9, 10], dtype=float), 5, True)   # no decline: high is last
+    assert np.isnan(mid2.iloc[-1])
