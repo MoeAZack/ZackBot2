@@ -37,6 +37,24 @@ def load_freeze(check=True):
     return fz
 
 
+CODE = {'run_fwd.py': os.path.join(HERE, 'run_fwd.py'), 'fetch_fwd.py': os.path.join(HERE, 'fetch_fwd.py'),
+        'longscout_run.py': os.path.join(X31, 'longscout_run.py'), 'sieve_v1_panel.py': os.path.join(X31, 'sieve_v1_panel.py'),
+        'sieve_v1.py': os.path.join(X31, 'sieve_v1.py'), 'run_screen.py': os.path.join(X31, 'run_screen.py'),
+        'contract.json': os.path.join(X31, 'contract.json'), 'sieve_v1_panel_cases.json': os.path.join(X31, 'sieve_v1_panel_cases.json'),
+        'sieve_v1_mp_variant.json': os.path.join(X31, 'sieve_v1_mp_variant.json'), 'longscout_v1_cases.json': os.path.join(X31, 'longscout_v1_cases.json')}
+
+
+def code_shas():
+    return {k: sha(p) for k, p in CODE.items()}
+
+
+def verify_code(fz):
+    """A real row runs only on the pinned runner code (the leads' own code is pinned by commit through git archive)."""
+    got = code_shas()
+    bad = [k for k, v in fz['code_sha256'].items() if got.get(k) != v]
+    if bad or set(got) != set(fz['code_sha256']): raise SystemExit(f'runner code differs from the freeze: {bad or sorted(set(got) ^ set(fz["code_sha256"]))}')
+
+
 # ------------------------------------------------------------------ data
 def read_1h(path):
     """1h csv (t as open ms or a UTC datetime string) -> DataFrame with integer t (ms) and float o,h,l,c,v,qv.
@@ -61,11 +79,11 @@ def merge_coin(base, fwd, B):
     MISMATCH an overlapping bar differs (merged None);
     NO_FWD   no forward rows at all (merged = base, which ends long before B-1h: treated as CUT at the base end)."""
     import numpy as np, pandas as pd
+    base = base[base.t < B].reset_index(drop=True)
     info = dict(base_last_ms=int(base.t.iloc[-1]) if len(base) else None)
     if fwd is None or not len(fwd):
         info.update(status='NO_FWD', cut_after_ms=info['base_last_ms'])
         return base.copy(), info
-    base = base[base.t < B]
     fwd = fwd[fwd.t < B]
     ov = base.merge(fwd, on='t', suffixes=('_b', '_f'))
     info['overlap_bars'] = int(len(ov))
@@ -157,8 +175,9 @@ def build_data(base_paths, fwd_paths, B, work):
 
 
 # ------------------------------------------------------------------ worker (one lead, inside its exported source)
-def open_positions(tr, log, book, T, management):
-    """Entries in the fill log without a closed trade = positions still open at the last closed bar."""
+def open_positions(tr, log, book, T, management, slip):
+    """Entries in the fill log without a closed trade = positions still open at the last closed bar. The log holds the
+    reference price before slippage; the backtest sets stop and target from the fill = ref * (1 + side * SLIP)."""
     import numpy as np
     closed = set(zip(tr.sym, tr.i_in)) if len(tr) else set()
     out = []
@@ -169,10 +188,11 @@ def open_positions(tr, log, book, T, management):
         ok = np.flatnonzero(~np.isnan(c))
         li = int(ok[-1]) if len(ok) else -1
         mark = float(c[li])
-        out.append(dict(sym=s, side=side, t_in=str(T[f['i']]), entry_ref=ref, qty=qty, risk_usd=f['risk'], stop_dist=R,
-                        initial_stop=ref - side * R, target=ref + side * R * management['tp_r'], bars_held=len(T) - 1 - int(f['i']),
+        px = ref if f.get('liq') == 'maker' else ref * (1 + side * slip)
+        out.append(dict(sym=s, side=side, t_in=str(T[f['i']]), entry_ref=ref, entry_fill=px, qty=qty, risk_usd=f['risk'], stop_dist=R,
+                        initial_stop=px - side * R, target=px + side * R * management['tp_r'], bars_held=len(T) - 1 - int(f['i']),
                         max_bars=management['max_bars'], mark_t=str(T[li]), mark=mark,
-                        unrealized_R_before_costs=round(side * (mark - ref) * qty / 8.0, 4),
+                        unrealized_R_before_costs=round(side * (mark - px) * qty / 8.0, 4),
                         stale=bool(li < len(T) - 1)))
     return out
 
@@ -209,7 +229,7 @@ def worker(a):
     mg = cases['cases'][a.case]['management']
     opens = {}
     for i, c in enumerate(CAP):
-        opens[(i // 2, c['scen'])] = open_positions(c['tr'], c['log'], book, T, mg)
+        opens[(i // 2, c['scen'])] = open_positions(c['tr'], c['log'], book, T, mg, BT.SLIP)
     sig = pd.read_csv(os.path.join(a.out, f'{a.case}_signals.csv'))
     sig = sig[pd.to_datetime(sig.decision_bar_open_utc) >= pd.Timestamp(t_fwd)].sort_values(['decision_bar_open_utc', 'sym'])
 
@@ -244,19 +264,28 @@ def worker(a):
 
 # ------------------------------------------------------------------ parity with earlier rows
 def parity(prev, cur):
-    """Every closed trade and every signal of an earlier row must be present, identical, in the new row. Returns a list of problems."""
+    """The new row must reproduce the earlier row's past exactly, in both directions: its closed trades that exited before the
+    earlier boundary == the earlier closed trades; its signals decided before the earlier boundary == the earlier signals;
+    every earlier open position is still open or has closed, with the same entry. Returns a list of problems."""
     probs = []
+    pb = prev.get('boundary_utc', '9999')
+    key = lambda r: (r['sym'], r['t_in'])
+    skey = lambda r: (r['sym'], r['decision_bar_open_utc'], r['side'])
     for k, p in prev.get('leads', {}).items():
         c = cur['leads'].get(k)
-        if c is None or 'primary' not in c or 'primary' not in p: continue
-        pc, cc = p['primary']['closed'], c['primary']['closed']
-        key = lambda r: (r['sym'], r['t_in'])
-        cm = {key(r): r for r in cc}
-        for r in pc:
-            if cm.get(key(r)) != r: probs.append(f'{k}: closed trade {key(r)} of the earlier row is missing or differs')
-        cs = {(r['sym'], r['decision_bar_open_utc'], r['side']): r for r in c['signals']['rows']}
-        for r in p['signals']['rows']:
-            if cs.get((r['sym'], r['decision_bar_open_utc'], r['side'])) != r: probs.append(f'{k}: signal {r["sym"]} {r["decision_bar_open_utc"]} missing or differs')
+        if 'primary' not in p: continue
+        if c is None or 'primary' not in c: probs.append(f'{k}: earlier row has this book, new row does not (missing or differs)'); continue
+        pc = {key(r): r for r in p['primary']['closed']}
+        cc = {key(r): r for r in c['primary']['closed'] if r['t_out'] < pb}
+        for kk in sorted(set(pc) | set(cc)):
+            if pc.get(kk) != cc.get(kk): probs.append(f'{k}: closed trade {kk} before the earlier boundary is missing or differs')
+        ps = {skey(r): r for r in p['signals']['rows']}
+        cs = {skey(r): r for r in c['signals']['rows'] if r['decision_bar_open_utc'] < pb}
+        for kk in sorted(set(ps) | set(cs)):
+            if ps.get(kk) != cs.get(kk): probs.append(f'{k}: signal {kk} before the earlier boundary is missing or differs')
+        now = {key(r) for r in c['primary']['closed']} | {key(r) for r in c['primary']['open']}
+        for r in p['primary']['open']:
+            if key(r) not in now: probs.append(f'{k}: earlier open position {key(r)} is missing or differs')
     return probs
 
 
@@ -311,6 +340,7 @@ def main():
     ap.add_argument('--boundary-ms', type=int); ap.add_argument('--fresh'); ap.add_argument('--extra'); ap.add_argument('--orders', type=int, default=40)
     ap.add_argument('--worker'); ap.add_argument('--data'); ap.add_argument('--out'); ap.add_argument('--case'); ap.add_argument('--universe')
     ap.add_argument('--t-fwd')
+    ap.add_argument('--keep-work', action='store_true', help='keep the merged data and source exports (_work/<B>) for inspection')
     ap.add_argument('--leads', help='test only: subset of leads (a row with a subset is never written under rows/)')
     ap.add_argument('--skip-base-verify', action='store_true', help='test only: never used for a real row (the row is marked TEST)')
     a = ap.parse_args()
@@ -319,7 +349,8 @@ def main():
     import run_screen as RS
     B = a.boundary_ms
     if B is None or B % 86400000: raise SystemExit('--boundary-ms must be a 00:00 UTC boundary')
-    test = bool(a.leads or a.skip_base_verify or a.t_fwd)
+    test = bool(a.leads or a.skip_base_verify or a.t_fwd or a.orders != fz['rule']['orders'])
+    if not test: verify_code(fz)
     pre = B <= fz['t_fwd_ms']
     rows_root = os.path.join(a.rows, 'test' if test else ('dryrun' if pre else ''))
     rdir = os.path.join(rows_root, str(B))
@@ -335,7 +366,8 @@ def main():
     work = os.path.join(a.rows, '_work', str(B))
     if os.path.exists(work): shutil.rmtree(work)
     cov, problems = build_data(base_paths, fwd_paths, B, os.path.join(work, 'data'))
-    universe = [s for s in sorted(base_paths) if s != 'BTCUSDT' and os.path.exists(os.path.join(work, 'data', f'{s}_1h.csv'))]
+    universe = [s for s in sorted(base_paths) if s != 'BTCUSDT' and cov.get(s, {}).get('status') == 'OK']
+    dropped = sorted(s for s in base_paths if s != 'BTCUSDT' and s not in universe)
     leads = {}
     if not any(p.startswith('BTCUSDT') or 'overlap mismatch' in p for p in problems):   # a cut coin: leads still run, the row stays INCOMPLETE
         for k in (a.leads.split(',') if a.leads else list(fz['leads'])):
@@ -352,8 +384,8 @@ def main():
     pooled = [r for v in leads.values() for r in (v.get('primary') or {}).get('closed', [])]
     row = dict(id='LEADFWD-01', boundary_ms=B, boundary_utc=time.strftime('%Y-%m-%d %H:%M', time.gmtime(B / 1000)),
                t_fwd_utc=a.t_fwd or fz['t_fwd_utc'], kind='TEST' if test else ('DRYRUN_BEFORE_START' if pre else 'FORWARD'),
-               freeze_sha256=sha(FREEZE), runner_sha256=sha(os.path.abspath(__file__)), fetch_manifest_sha256=fetch_sha,
-               coverage=cov, leads=leads,
+               freeze_sha256=sha(FREEZE), runner_sha256=sha(os.path.abspath(__file__)), code_sha256=code_shas(), fetch_manifest_sha256=fetch_sha,
+               coverage=cov, dropped_from_universe=dropped, leads=leads,
                pooled=dict(label='DIAGNOSTIC ONLY: the six books pooled, never a pass or decision', n=len(pooled), sumR15=round(sum(r['R15'] for r in pooled), 4)),
                problems=problems, runtime_s=round(time.time() - t_start, 1))
     prev = latest_row(rows_root, B)
@@ -369,6 +401,7 @@ def main():
     os.replace(tmp, os.path.join(rdir, 'row.json'))
     json.dump({'row.json': sha(os.path.join(rdir, 'row.json')), 'summary.md': sha(os.path.join(rdir, 'summary.md'))},
               open(os.path.join(rdir, 'receipts.json'), 'w', encoding='utf-8'), indent=1)
+    if not a.keep_work: shutil.rmtree(work, ignore_errors=True)
     print('ROW', B, row['status'], row['kind'], 'pooled', row['pooled'], 'problems', len(problems), flush=True)
 
 

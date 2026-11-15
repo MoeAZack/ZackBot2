@@ -1,6 +1,6 @@
 {
  "id": "LEADFWD-01",
- "status": "FROZEN before the first forward bar; no row exists yet",
+ "status": "FROZEN before the first forward bar; no row exists yet. Re-frozen (A0) at 2026-11-15 ~04:30 UTC, still before t_fwd and before any forward row, after an adversarial review (see amendments)",
  "approval": "moe 2026-11-15 ~03:17 UTC chose \"Do both\" (keep LONGSCOUT running and start a public-data forward book for the leads), relayed by the project coordinator; Codex GO (#347 6888567553, 2026-11-15): six independent research books, start flat, score only post-freeze bars, keep max1/$8/$3,333.33, s36/s40 labelled count-failed exploratory controls, pooled basket only as a labelled diagnostic, missing prices/costs = INCOMPLETE, preserve the actual frozen clock",
  "purpose": "record forward signals and hypothetical trades of six LONGSCOUT leads on NEW closed bars only, with the same rule v1 accounting, so new data can confirm or kill each lead. RESEARCH ONLY.",
  "t_fwd_utc": "2026-11-16 00:00",
@@ -347,11 +347,12 @@
   "start_ms": 1790812800000,
   "boundary": "B = the latest 00:00 UTC at or before the fetch time; only 1h bars with open time < B and close time < B are kept (closed bars only)",
   "overlap": "bars present in both base and forward fetch (2026-10-01 00:00 .. base last bar) must be equal in o,h,l,c,v,qv, else the row is INCOMPLETE",
-  "runs_on": "owner Windows PC only (the cloud gets HTTP 403 from Binance)"
+  "runs_on": "owner Windows PC only (the cloud gets HTTP 403 from Binance)",
+  "settle": "a boundary B is fetched only from B + 10 minutes, so the last kline before B is final"
  },
  "merge_rules": {
   "btc": "BTC must have every 1h bar from its base start to B-1h, else the row is INCOMPLETE",
-  "coin_gap": "a coin whose forward data has a missing 1h bar, or ends before B-1h, makes the row INCOMPLETE and is named. The row still reports what the leads do on the data up to the coin's last contiguous bar (labelled INCOMPLETE, never COMPLETE). A permanent delisting needs a disclosed amendment; it is never handled silently.",
+  "coin_gap": "a coin whose forward data has a missing 1h bar, ends before B-1h, or is absent from the fetch, is CUT: the row is INCOMPLETE and names it, and the coin is left out of that row's traded universe (no price is ever invented; the leads read only their own coin and BTC, so other coins' signals are unchanged). If leaving it out changes any earlier COMPLETE row's past (for example a trade it held), the row is NONPARITY. A permanent delisting needs a disclosed amendment.",
   "extra": "a coin listed by the forward fetch but absent from the universe is ignored"
  },
  "rule": {
@@ -363,12 +364,14 @@
   "liquidity": "D01 point-in-time rule (prior 30 complete days median quote volume >= $10m, >= 720 consecutive 1h bars)",
   "primary_book": "order 0 (alphabetical coin priority), path intrabar scenario",
   "diagnostics": "40 coin orders (seed 20261112) median, and the worst-case intrabar scenario of order 0",
-  "only_change": "backtest.run is called with t0 = t_fwd instead of 2022-08-26 06:00; nothing else in the rule, sizing, cost or signal code changes"
+  "only_change": "backtest.run is called with t0 = t_fwd instead of 2022-08-26 06:00; nothing else in the rule, sizing, cost or signal code changes",
+  "orders": 40,
+  "test_mode": "--orders other than 40, --leads, --t-fwd or --skip-base-verify make a TEST row under rows/test/; a real row also requires the pinned code_sha256 below"
  },
  "rows": {
   "layout": "research/lead_fwd/rows/<B_ms>/row.json (+ summary.md, receipts.json)",
   "immutable": "a row is never rewritten; a second run at the same B is refused",
-  "replay": "each row is a pure re-run from t_fwd over closed bars < B; the latest earlier COMPLETE row must be reproduced exactly (every earlier closed trade and every earlier signal still present and identical), else NONPARITY",
+  "replay": "each row is a pure re-run from t_fwd over closed bars < B. Against the latest earlier COMPLETE row (boundary B0): its closed trades with exit before B0 and its signals with decision bar before B0 must EQUAL the earlier row's (nothing missing, changed or added), and every earlier open position must still be open or closed with the same entry; else NONPARITY",
   "statuses": "COMPLETE | INCOMPLETE (data/coverage problem, named) | NONPARITY (replay differs from an earlier row, named)"
  },
  "review": {
@@ -385,5 +388,27 @@
   "account 1 and the account-4 R6 canary are never touched"
  ],
  "clock": "unchanged backtest clock: a lead's daily condition is judged on COMPLETED UTC days; the signal sits on the 00:00 UTC 4h candle of the next day (02:00 Cairo in winter) and the modeled entry is the NEXT bar open, 04:00 UTC (06:00 Cairo), after that candle closes. It is never moved to a 00:00 UTC fill. Rows record decision_bar_open_utc for signals and t_in (fill bar open, UTC) for trades. The daily-loss halt uses Africa/Cairo calendar days, as in the backtest. A signal on the t_fwd candle itself (2026-11-16 00:00 UTC) is post-freeze and counts.",
- "costs_proxy": "15 bp primary / 7 bp / 23 bp stress on turnover, plus the backtest's adverse funding proxy (0.5 bp per 4h bar against the position); no historical or live funding prices are used; the STOPPED funding-mark audit is not resumed by this book"
+ "costs_proxy": "15 bp primary / 7 bp / 23 bp stress on turnover, plus the backtest's adverse funding proxy (0.5 bp per 4h bar against the position); no historical or live funding prices are used; the STOPPED funding-mark audit is not resumed by this book",
+ "code_sha256": {
+  "run_fwd.py": "2acc9e6d6475948a5d9ab74134a8f78345d0e67fafdd6ba840d0e28503f57bf9",
+  "fetch_fwd.py": "8221f6562624a4ef22f959f2eed63176f76135cda822c4c51a53c83d7002300c",
+  "longscout_run.py": "5d569f51ea21e87930c712ba96ddf086d821a5b7f3f311db6c4d6c90200ab853",
+  "sieve_v1_panel.py": "6da5a8493a66015ebe2f16f1bb3dff62231b56b37b3b8a3f8b476e6baf5de075",
+  "sieve_v1.py": "49612393fb38b3208b30b42f629b6b9ca0fda5ef49d25a1824c9a45d70a41929",
+  "run_screen.py": "29e92fffec4fea4936330b7b965313a8e7ad5d084129cbb43d6d1969f142e42c",
+  "contract.json": "6ee9c4e6d5c04f26485b9db602e6519c5da0b34fba3495607e6170fdcedd9d57",
+  "sieve_v1_panel_cases.json": "ba3492bf53850e7bb5998a2112ac95179ea4b473d2e34f62c82ece1f2fe79752",
+  "sieve_v1_mp_variant.json": "6fd133b36a823aa05826b3ad4e21abfecc5ec384535c24d701d9c948ec7db2f2",
+  "longscout_v1_cases.json": "2da84a41f321a5a45403c7d81bf83d2ae4db61ed3856e25a01d5399e909a8def"
+ },
+ "amendments": [
+  {
+   "id": "A0",
+   "at_utc": "2026-11-15 ~04:30",
+   "before_t_fwd": true,
+   "rows_existing": 0,
+   "reason": "adversarial review: a CUT coin crashed every worker (shared cut_ctx assumes coins run to the end), parity checked only presence, runner code unpinned, NO_FWD kept bars >= B, open-position stop/target used the pre-slippage price, --orders not a test switch, _work not cleaned, fetch could run before the last kline settled",
+   "change": "coin_gap / replay / code pins / settle / test-mode rules above; leads, coins, t_fwd, costs and rule v1 unchanged"
+  }
+ ]
 }

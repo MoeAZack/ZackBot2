@@ -39,6 +39,14 @@ def test_freeze_matches_committed_sha_and_cases():
     assert fz['forward_fetch']['start_ms'] < pd.Timestamp('2026-10-04 04:00', tz='UTC').value // 10 ** 6   # overlap with the base
 
 
+def test_runner_code_is_pinned(tmp_path, monkeypatch):
+    fz = RF.load_freeze(check=True)
+    RF.verify_code(fz)
+    p = tmp_path / 'sieve_v1_panel.py'; p.write_text('# changed\n', encoding='utf-8')
+    monkeypatch.setitem(RF.CODE, 'sieve_v1_panel.py', str(p))
+    with pytest.raises(SystemExit): RF.verify_code(fz)
+
+
 def test_tampered_freeze_is_refused(tmp_path, monkeypatch):
     p = tmp_path / 'freeze.sha256'; p.write_text('0' * 64 + '\n', encoding='utf-8')
     monkeypatch.setattr(RF, 'FREEZE_SHA_FILE', str(p))
@@ -89,6 +97,8 @@ def test_merge_cuts_early_end_and_no_fwd():
     assert info['status'] == 'CUT' and info['cut_after_ms'] == T0 + 148 * H
     m, info = RF.merge_coin(base, None, T0 + 150 * H)
     assert info['status'] == 'NO_FWD' and len(m) == 100
+    m, info = RF.merge_coin(base, None, T0 + 50 * H)          # never a bar at or after B, even without forward data
+    assert info['status'] == 'NO_FWD' and m.t.max() == T0 + 49 * H
 
 
 def test_merge_drops_bars_at_or_after_the_boundary():
@@ -150,24 +160,35 @@ def test_fetch_keeps_closed_bars_only():
     assert [r[0] for r in FF.closed_rows(k, end)] == [T0, T0 + H]
 
 
-def test_boundary_is_the_last_utc_midnight():
-    assert FF.boundary(T0 + 5 * H) == T0 and FF.boundary(T0) == T0 and FF.boundary(T0 - 1) == T0 - 86400000
+def test_boundary_is_the_last_settled_utc_midnight():
+    assert FF.boundary(T0 + 5 * H) == T0 and FF.boundary(T0 + 600000) == T0
+    assert FF.boundary(T0) == T0 - 86400000 and FF.boundary(T0 + 599999) == T0 - 86400000
 
 
 # ------------------------------------------------------------------ parity / flags / open positions
-def _row(closed, sigs):
-    return dict(leads={'x': dict(primary=dict(closed=closed), signals=dict(rows=sigs))})
+def _row(closed, sigs, opn=(), B='2026-01-05 00:00'):
+    return dict(boundary_utc=B, leads={'x': dict(primary=dict(closed=closed, open=list(opn)), signals=dict(rows=sigs))})
 
 
-def test_parity_detects_changed_missing_trades_and_signals():
-    t1 = dict(sym='A', t_in='2026-01-02 04:00:00', R15=1.0); t2 = dict(sym='B', t_in='2026-01-03 04:00:00', R15=-1.0)
+def test_parity_detects_changed_missing_added_trades_signals_and_opens():
+    t1 = dict(sym='A', t_in='2026-01-02 04:00:00', t_out='2026-01-03 04:00:00', R15=1.0)
+    t2 = dict(sym='B', t_in='2026-01-06 04:00:00', t_out='2026-01-07 04:00:00', R15=-1.0)
+    t0 = dict(sym='C', t_in='2026-01-01 04:00:00', t_out='2026-01-01 12:00:00', R15=0.5)       # exited before the earlier boundary
     s1 = dict(sym='A', decision_bar_open_utc='2026-01-02 00:00:00', side='long', eligible=True)
-    prev = _row([t1], [s1])
-    assert RF.parity(prev, _row([t1, t2], [s1])) == []
-    assert RF.parity(prev, _row([dict(t1, R15=0.9)], [s1]))
-    assert RF.parity(prev, _row([t2], [s1]))
-    assert RF.parity(prev, _row([t1], []))
-    assert RF.parity(prev, _row([t1], [dict(s1, eligible=False)]))
+    s0 = dict(sym='C', decision_bar_open_utc='2026-01-01 00:00:00', side='long', eligible=True)
+    s2 = dict(sym='B', decision_bar_open_utc='2026-01-06 00:00:00', side='long', eligible=True)
+    op = dict(sym='D', t_in='2026-01-04 04:00:00')
+    prev = _row([t1], [s1], [op])
+    assert RF.parity(prev, _row([t1, t2], [s1, s2], [op], '2026-01-08 00:00')) == []
+    assert RF.parity(prev, _row([t1, t2, dict(op, t_out='2026-01-07 00:00:00', R15=2.0)], [s1, s2], [], '2026-01-08 00:00')) == []
+    assert RF.parity(prev, _row([dict(t1, R15=0.9)], [s1], [op]))
+    assert RF.parity(prev, _row([t2], [s1], [op]))
+    assert RF.parity(prev, _row([t1], [], [op]))
+    assert RF.parity(prev, _row([t1], [dict(s1, eligible=False)], [op]))
+    assert RF.parity(prev, _row([t0, t1], [s1], [op]))                  # a new trade in the earlier past
+    assert RF.parity(prev, _row([t1], [s0, s1], [op]))                  # a new signal in the earlier past
+    assert RF.parity(prev, _row([t1], [s1], []))                        # an earlier open position vanished
+    assert RF.parity(prev, dict(boundary_utc='2026-01-08 00:00', leads={}))   # a book vanished
 
 
 def test_review_flags():
@@ -187,9 +208,11 @@ def test_open_positions_from_fill_log():
            dict(kind='entry', sym='B', pos_i=0, side=-1, ref=5.0, qty=1.0, stop_dist=1.0, risk=8.0, i=0),
            dict(kind='exit', sym='B', pos_i=0, side=-1, ref=4.0, qty=1.0, stop_dist=1.0, risk=8.0, i=2)]
     tr = pd.DataFrame(dict(sym=['B'], i_in=[0]))
-    o = RF.open_positions(tr, log, book, T, dict(tp_r=3.0, max_bars=60))
+    o = RF.open_positions(tr, log, book, T, dict(tp_r=3.0, max_bars=60), 0.0)
     assert len(o) == 1 and o[0]['sym'] == 'A' and o[0]['mark'] == 11.0 and o[0]['stale'] is True
     assert o[0]['initial_stop'] == 8.0 and o[0]['target'] == 16.0 and o[0]['unrealized_R_before_costs'] == 0.5
+    o = RF.open_positions(tr, log, book, T, dict(tp_r=3.0, max_bars=60), 0.01)     # stop/target from the slipped fill
+    assert o[0]['entry_fill'] == pytest.approx(10.1) and o[0]['initial_stop'] == pytest.approx(8.1) and o[0]['target'] == pytest.approx(16.1)
 
 
 def test_every_text_open_names_utf8():
@@ -211,7 +234,7 @@ MAP = {'BTCUSDT': 'BTCUSDT', 'ETHUSDT': 'AAVEUSDT', 'SOLUSDT': 'ARBUSDT', 'XRPUS
        'LINKUSDT': 'CRVUSDT', 'AVAXUSDT': 'OPUSDT', 'BNBUSDT': 'TRXUSDT'}
 
 
-def _fixture(tmp, Bs):
+def _fixture(tmp, Bs, drop=None):
     sha = lambda p: hashlib.sha256(open(p, 'rb').read()).hexdigest()
     fz = RF.load_freeze(check=False)
     base = tmp / 'base'; base.mkdir()
@@ -224,7 +247,9 @@ def _fixture(tmp, Bs):
         d[d.t < cut].to_csv(base / f'{dst}_1h.csv', index=False, encoding='utf-8')
         for B in Bs:
             fd = tmp / 'fwd' / str(B); fd.mkdir(parents=True, exist_ok=True)
-            d[(d.t >= cut - 7 * 24 * H) & (d.t < B)].to_csv(fd / f'{dst}_1h.csv', index=False, encoding='utf-8')
+            f = d[(d.t >= cut - 7 * 24 * H) & (d.t < B)]
+            if drop and dst in drop and B in drop[dst]: f = f[f.t != drop[dst][B]]
+            f.to_csv(fd / f'{dst}_1h.csv', index=False, encoding='utf-8')
     for B in Bs:
         fd = tmp / 'fwd' / str(B)
         json.dump(dict(boundary_ms=B, freeze_sha256=sha(RF.FREEZE), start_ms=fz['forward_fetch']['start_ms'],
@@ -233,15 +258,21 @@ def _fixture(tmp, Bs):
     return base
 
 
-@pytest.mark.skipif(not os.path.exists(os.path.join(ROOT, 'data_long', '1h', 'BTCUSDT_1h.csv')), reason='sample data missing')
+def _run(tmp, base, B, rows='rows'):
+    return subprocess.run([sys.executable, os.path.join(HERE, 'run_fwd.py'), str(tmp / 'fwd'), str(tmp / rows), '--boundary-ms', str(B),
+                           '--fresh', str(base), '--skip-base-verify', '--orders', '2', '--t-fwd', '2026-01-01 00:00'],
+                          capture_output=True, text=True, encoding='utf-8')
+
+
+SAMPLE = os.path.exists(os.path.join(ROOT, 'data_long', '1h', 'BTCUSDT_1h.csv'))
+
+
+@pytest.mark.skipif(not SAMPLE, reason='sample data missing')
 def test_two_boundaries_replay_exactly_and_never_rewrite(tmp_path):
     B1 = pd.Timestamp('2026-03-15').value // 10 ** 6; B2 = pd.Timestamp('2026-10-04').value // 10 ** 6
     base = _fixture(tmp_path, [B1, B2])
-    run = lambda B: subprocess.run([sys.executable, os.path.join(HERE, 'run_fwd.py'), str(tmp_path / 'fwd'), str(tmp_path / 'rows'),
-                                    '--boundary-ms', str(B), '--fresh', str(base), '--skip-base-verify', '--orders', '2',
-                                    '--t-fwd', '2026-01-01 00:00'], capture_output=True, text=True, encoding='utf-8')
     for B in (B1, B2):
-        r = run(B); assert r.returncode == 0, r.stderr[-3000:]
+        r = _run(tmp_path, base, B); assert r.returncode == 0, r.stderr[-3000:]
     r1 = json.load(open(tmp_path / 'rows' / 'test' / str(B1) / 'row.json', encoding='utf-8'))
     r2 = json.load(open(tmp_path / 'rows' / 'test' / str(B2) / 'row.json', encoding='utf-8'))
     assert r1['status'] == r2['status'] == 'COMPLETE' and r2['parity_with_boundary_ms'] == B1 and r2['kind'] == 'TEST'
@@ -252,5 +283,25 @@ def test_two_boundaries_replay_exactly_and_never_rewrite(tmp_path):
         for t in v['primary']['closed']: assert t['t_in'] >= '2026-01-01'
         for s in v['signals']['rows']: assert s['decision_bar_open_utc'] >= '2026-01-01'
     assert RF.parity(r1, r2) == []
-    r = run(B1)
+    assert not (tmp_path / 'rows' / '_work' / str(B2)).exists()
+    r = _run(tmp_path, base, B1)
     assert r.returncode != 0 and 'never rewritten' in (r.stderr + r.stdout)
+
+
+@pytest.mark.skipif(not SAMPLE, reason='sample data missing')
+def test_cut_coin_row_is_incomplete_but_books_still_run(tmp_path):
+    B1 = pd.Timestamp('2026-02-10').value // 10 ** 6; B2 = pd.Timestamp('2026-02-20').value // 10 ** 6
+    gap = pd.Timestamp('2026-02-11 03:00').value // 10 ** 6
+    base = _fixture(tmp_path, [B1, B2], drop={'1000SHIBUSDT': {B2: gap}})
+    for B in (B1, B2):
+        r = _run(tmp_path, base, B); assert r.returncode == 0, r.stderr[-3000:]
+    r1 = json.load(open(tmp_path / 'rows' / 'test' / str(B1) / 'row.json', encoding='utf-8'))
+    r2 = json.load(open(tmp_path / 'rows' / 'test' / str(B2) / 'row.json', encoding='utf-8'))
+    assert r1['status'] == 'COMPLETE'
+    assert r2['status'] in ('INCOMPLETE', 'NONPARITY') and r2['dropped_from_universe'] == ['1000SHIBUSDT']
+    assert any(p.startswith('1000SHIBUSDT: missing prices') for p in r2['problems'])
+    assert len(r2['leads']) == 6 and all('primary' in v for v in r2['leads'].values())
+    for v in r2['leads'].values():
+        assert all(t['sym'] != '1000SHIBUSDT' or t['t_out'] < r1['boundary_utc'] for t in v['primary']['closed'])
+    held = any(t['sym'] == '1000SHIBUSDT' for v in r1['leads'].values() for t in v['primary']['closed'] + v['primary']['open'])
+    assert (r2['status'] == 'NONPARITY') == held      # dropping the coin rewrites the past only if it had a trade

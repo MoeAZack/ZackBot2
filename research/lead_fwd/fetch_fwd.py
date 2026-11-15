@@ -64,8 +64,13 @@ def fetch(sym, start, end, path):
     return len(clean), (clean[0][0] if clean else None), (clean[-1][0] if clean else None)
 
 
+SETTLE_MS = 600000      # wait 10 minutes after B so the last 1h kline before B is final
+
+
 def boundary(now_ms):
-    return now_ms - now_ms % DAY
+    """Latest 00:00 UTC whose last kline has settled (B + 10 min <= now)."""
+    t = now_ms - SETTLE_MS
+    return t - t % DAY
 
 
 def main():
@@ -75,7 +80,7 @@ def main():
     fz = json.load(open(FREEZE, encoding='utf-8'))
     now = int(time.time() * 1000)
     B = a.boundary_ms if a.boundary_ms is not None else boundary(now)
-    if B % DAY or B > now: raise SystemExit('boundary must be a past 00:00 UTC')
+    if B % DAY or B + SETTLE_MS > now: raise SystemExit('boundary must be a 00:00 UTC at least 10 minutes in the past (last kline settled)')
     start = fz['forward_fetch']['start_ms']
     coins = ['BTCUSDT'] + sorted(fz['universe']['fresh134'] + fz['universe']['extra31'])
     d = os.path.join(a.out, str(B))

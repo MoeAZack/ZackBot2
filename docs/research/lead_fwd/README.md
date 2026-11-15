@@ -20,12 +20,15 @@ Frozen in `research/lead_fwd/freeze.json` (sha256 in `freeze.sha256`) before the
 - Base history: the two pinned caches on the owner PC (fresh manifest `fb0c0572…`, extra31 manifest `99af9bfb…`), ending 2026-10-04 04:00 UTC.
 - Forward data: `fetch_fwd.py` on the owner PC (the cloud gets 403). It fetches public 1h klines from 2026-10-01 to the boundary B
   (latest 00:00 UTC) and keeps only closed bars. The overlap with the base must match exactly.
-- A missing price for any coin makes the row **INCOMPLETE**, and the coin is named. BTC missing stops the books.
+- A missing price for any coin makes the row **INCOMPLETE** and names the coin. The coin is left out of that row's traded universe, and no price is ever invented.
+  If leaving it out changes an earlier COMPLETE row's past, the row is **NONPARITY**. A missing BTC price stops the books.
+- A boundary is fetched only 10 minutes after it passes, so the last kline is final.
 
 ## Rows
 `research/lead_fwd/rows/<B_ms>/row.json` + `summary.md` + `receipts.json`. Rows are written once and never rewritten.
-Each row is a pure re-run from `t_fwd`. The latest earlier COMPLETE row must be reproduced exactly (all earlier closed trades and
-signals present and identical), otherwise the row is **NONPARITY**. Each row lists closed trades, open positions (entry, stop, target,
+Each row is a pure re-run from `t_fwd`. The past of the latest earlier COMPLETE row must be reproduced exactly: the same closed trades and
+signals before its boundary, with nothing missing, changed or added, and each of its open positions still open or closed with the same entry.
+Otherwise the row is **NONPARITY**. A real row also requires the runner code to match the shas pinned in the freeze. Each row lists closed trades, open positions (entry, stop, target,
 mark), signals since `t_fwd`, the 40-order spread and the worst-intrabar view. The pooled six-book line is a labelled diagnostic only.
 Rows with B ≤ t_fwd go to `rows/dryrun/` (pipeline checks, not evidence).
 
@@ -41,11 +44,32 @@ Rows with B ≤ t_fwd go to `rows/dryrun/` (pipeline checks, not evidence).
 python research/lead_fwd/fetch_fwd.py C:/Dev/ZackBot_research_cache/leadfwd01_fetch
 python research/lead_fwd/run_fwd.py C:/Dev/ZackBot_research_cache/leadfwd01_fetch research/lead_fwd/rows --boundary-ms <B printed by the fetch>
 ```
+Before the start, one **dry run** at B = 2026-11-15 00:00 UTC (1794700800000) checks the base caches, the overlap with the fresh fetch and the
+runtime. It is written under `rows/dryrun/` and is not evidence.
 No scheduler is installed by this code. A daily scheduled task on the PC needs moe's approval written in the project thread.
 
+## Amendment A0 (before t_fwd, no row existed)
+An adversarial review found these problems in the first freeze (eb093eeb), and A0 fixes them:
+- a cut coin crashed every worker, because the shared `cut_ctx` assumes that every coin runs to the end;
+- parity checked only that earlier items were still present;
+- the runner code was unpinned;
+- a coin with no forward data kept bars at or after B;
+- the stop and target of open positions used the price before slippage;
+- `--orders` was not treated as a test switch;
+- `_work/` was not cleaned;
+- the fetch could run before the last kline was final.
+
+Leads, coins, t_fwd, costs and rule v1 are unchanged.
+
 ## Tests (cloud, non-official)
-`python -m pytest -q research/lead_fwd/test_lead_fwd.py`: unit tests for merge, coverage, closed-bar fetch, parity, flags and open positions,
-plus one integration test. That test runs all six leads on sample data at two boundaries and checks that the later row reproduces the earlier
-one exactly (prefix invariance) and that a row is never rewritten. It also runs under a CP1252 shim. A mutation check covered the key lines.
+`python -m pytest -q research/lead_fwd/test_lead_fwd.py` covers:
+- unit tests for merge, coverage, closed-bar fetch with settle time, two-way parity, flags, open positions, and the freeze and code pins;
+- an integration test that runs all six leads on sample data (8 public coins renamed onto universe symbols) at two boundaries. It checks exact
+  replay and that a row is never rewritten.
+- a cut-coin integration test: the row is INCOMPLETE, the books still run, and the result is NONPARITY exactly when the dropped coin had traded.
+
+The suite was also run with an external CP1252 locale shim (a `sitecustomize` that forces cp1252 as the default encoding). It is not part of the test
+file. The two controls (s36 and s40) produce no signals on the sample data, so the replay test does not exercise their signal paths.
+The mutation check on the key lines killed every mutant (see the PR).
 
 No account, key, order, PAPER, runtime, scheduler or installer action. Account 1 and the account-4 R6 canary are not touched.
