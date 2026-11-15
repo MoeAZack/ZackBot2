@@ -1399,3 +1399,41 @@ def test_v41_setup9_reference_and_helper_prefixes():
         full = fn(c); assert full.sum() > 0
         for cut in range(700, 2600, 23):
             np.testing.assert_array_equal(fn(c.iloc[:cut].reset_index(drop=True)), full[:cut])
+
+
+import longscout_v42 as L42
+L42.register()
+
+
+@pytest.mark.parametrize('key', sorted(L42.CANDIDATES))
+def test_v42_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    if 'mfi' in key:
+        coin, btc = _ms(_mk(2600, '4h', 52)), _ms(_mk(2600, '4h', 55))
+    else:
+        coin, btc = _v33_pair(5 if key.startswith('l42') else 1)
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+    a2 = _sig(key, coin.iloc[:2000].reset_index(drop=True), btc.iloc[:2000].reset_index(drop=True))
+    b2 = _sig(key, coin.iloc[:2000].reset_index(drop=True), btc)
+    for k in ('le', 'se', 'lx', 'sx'):
+        assert (a2[k] == b2[k]).all(), (key, k)
+
+
+def test_v42_helper_values_match_on_every_prefix():
+    P = L42.CANDIDATES['r42_daily_mfi_extreme_4h']['params']
+    coin, btc = _v33_pair(5)
+    L.set_btc(btc); c = S.indicators(coin); m = S.indicators(_ms(_mk(2600, '4h', 52)))
+    fns = [(lambda x, u=u: L42._diverge(x, L42.DV, u), c) for u in (True, False)] + \
+          [(lambda x, u=u: L42._mfi(x, P, u), m) for u in (True, False)]
+    full = [f(x) for f, x in fns]
+    assert all(v.sum() > 0 for v in full)
+    for cut in range(700, 2600, 23):
+        L.set_btc(btc.iloc[:cut].reset_index(drop=True))
+        for (f, x), v in zip(fns, full):
+            np.testing.assert_array_equal(f(x.iloc[:cut].reset_index(drop=True)), v[:cut])
