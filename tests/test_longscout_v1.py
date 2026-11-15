@@ -2159,3 +2159,87 @@ def test_v53_cross_across_a_missing_day_does_not_fire():
                     fired += 1
                     assert not same, (key, back)
     assert fired
+
+
+import longscout_v54 as L54
+L54.register()
+
+
+@pytest.mark.parametrize('key', sorted(L54.CANDIDATES))
+def test_v54_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _ms(_mk(2600, '4h', 56)), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert le.sum() if key.startswith('l54') else se.sum(), key
+    cr = L.coin_regime(S.indicators(coin))
+    assert np.isin(cr[le], (0, 1)).all() and np.isin(cr[se], (0, -1)).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v54_ref(D, bottom, tol=0.03, depth=0.05):
+    days = list(D.index); H, Lo, C = list(D.h), list(D.l), list(D.c); res = []
+    for j in range(len(days)):
+        if j < 41 or days[j] - days[j - 40] != pd.Timedelta(days=40):
+            res.append(False); continue
+        ext = (min if bottom else max)
+        side = Lo if bottom else H
+        w1 = list(range(j - 40, j - 20)); w2 = list(range(j - 20, j - 2))
+        i1 = min(w1, key=lambda k: (side[k] if bottom else -side[k], k))
+        i2 = min(w2, key=lambda k: (side[k] if bottom else -side[k], k))
+        a, b = side[i1], side[i2]
+        if bottom:
+            neck = max(H[i1:i2 + 1]); ok = abs(b / a - 1) <= tol and neck >= (1 + depth) * max(a, b)
+            res.append(ok and C[j] > neck >= C[j - 1])
+        else:
+            neck = min(Lo[i1:i2 + 1]); ok = abs(b / a - 1) <= tol and neck <= (1 - depth) * min(a, b)
+            res.append(ok and C[j] < neck <= C[j - 1])
+    return np.array(res)
+
+
+def test_v54_pattern_matches_an_independent_loop_and_prefixes():
+    for seed in range(50, 80):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for bottom in (True, False):
+            v = L54._pattern_v(D, L54.DP, bottom).values
+            np.testing.assert_array_equal(v, _v54_ref(D, bottom), err_msg=str((seed, bottom)))
+            for cut in (range(100, len(D), 37) if seed in (55, 56, 58) else ()):
+                np.testing.assert_array_equal(L54._pattern_v(D.iloc[:cut], L54.DP, bottom).values, v[:cut])
+    D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', 56))))
+    assert L54._pattern_v(D, L54.DP, True).sum() and L54._pattern_v(D, L54.DP, False).sum()
+
+
+def test_v54_a_missing_day_inside_the_pattern_blocks_it():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for key in sorted(L54.CANDIDATES):
+        coin = _ms(_mk(2600, '4h', 56)); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig(key, coin, btc)
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se'])):
+            for back in (2, 20, 41):
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
+    assert fired
+
+
+def test_v54_shallow_pattern_is_rejected_by_the_depth_rule():
+    idx = pd.date_range('2024-01-01', periods=45, freq='D')
+    for bottom in (True, False):
+        base = np.full(45, 100.0)
+        h, l, c = base + 0.5, base - 0.5, base.copy()
+        j = 44
+        if bottom:
+            l[j - 30] = l[j - 10] = 97.0                                    # two troughs 3% under, neckline only ~3.6% up
+            c[j - 1], c[j] = 100.0, 101.0; h[j] = 101.5; h[j - 20] = 100.5
+        else:
+            h[j - 30] = h[j - 10] = 103.0
+            c[j - 1], c[j] = 100.0, 99.0; l[j] = 98.5; l[j - 20] = 99.5
+        D = pd.DataFrame({'h': h, 'l': l, 'c': c, 'v': 1.0}, index=idx)
+        assert not L54._pattern_v(D, L54.DP, bottom).iloc[j], bottom
+        assert L54._pattern_v(D, dict(tol=0.03, depth=0.02), bottom).iloc[j], bottom
