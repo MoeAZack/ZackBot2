@@ -1519,3 +1519,48 @@ def test_v44_helper_reference_and_prefixes():
         part = c.iloc[:cut].reset_index(drop=True)
         np.testing.assert_array_equal(np.asarray(L44._thrust(part, L44.TB, True)), th[:cut])
         np.testing.assert_array_equal(L44._two_day(part, dict(fall=0.06)), two[:cut])
+
+
+import longscout_v45 as L45
+L45.register()
+
+
+@pytest.mark.parametrize('key', sorted(L45.CANDIDATES))
+def test_v45_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _ms(_mk(2600, '4h', 55)), _ms(_mk(2600, '4h', 53))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert le.sum() and se.sum(), key
+    cr = L.coin_regime(S.indicators(coin))
+    assert (cr[le | se] == 0).all()                              # trades only in the sideways regime
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v45_helper_values_match_on_every_prefix():
+    c = S.indicators(_ms(_mk(2600, '4h', 55)))
+    P = {k: v['params'] for k, v in L45.CANDIDATES.items()}
+    fns = [(f, P[k]) for f, k in ((L45._bb, 'r45_sideways_bollinger_4h'), (L45._don, 'r45_sideways_donchian_fade_4h'),
+                                  (L45._rsi, 'r45_sideways_rsi_4h'))]
+    full = {(i, lo): L45._side(c, p, f, lo) for i, (f, p) in enumerate(fns) for lo in (True, False)}
+    assert all(v.sum() > 0 for v in full.values())
+    for cut in range(700, 2600, 23):
+        part = c.iloc[:cut].reset_index(drop=True)
+        for (i, lo), v in full.items():
+            f, p = fns[i]
+            np.testing.assert_array_equal(L45._side(part, p, f, lo), v[:cut])
+
+
+def test_v45_long_side_follows_the_low_extreme():
+    coin, btc = _ms(_mk(2600, '4h', 55)), _ms(_mk(2600, '4h', 53))
+    c = S.indicators(coin); D = L27._days_v(c); t = pd.to_datetime(c.t).dt.normalize().values
+    ma = D.c.rolling(20).mean(); sd = D.c.rolling(20).std()
+    for side, below in (('le', True), ('se', False)):
+        sig = np.asarray(_sig('r45_sideways_bollinger_4h', coin, btc)[side])
+        for i in np.flatnonzero(sig):
+            k = D.index.get_loc(pd.Timestamp(t[i]) - pd.Timedelta(days=1))
+            assert (D.c.iloc[k] < ma.iloc[k] - 2 * sd.iloc[k]) if below else (D.c.iloc[k] > ma.iloc[k] + 2 * sd.iloc[k])
