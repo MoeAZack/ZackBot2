@@ -30,7 +30,9 @@ def test_freeze_matches_committed_sha_and_cases():
     orig9 = {'ADAUSDT', 'AVAXUSDT', 'BNBUSDT', 'BTCUSDT', 'DOGEUSDT', 'ETHUSDT', 'LINKUSDT', 'SOLUSDT', 'XRPUSDT'}
     assert not orig9 & set(fz['universe']['fresh134'] + fz['universe']['extra31'])
     assert set(fz['leads']) == {'l24_breakaway_day_4h', 's26_weekly_close_breakdown_4h', 's36_max_effect_4h', 'l40_dual_momentum_4h',
-                                's40_relative_weakness_4h', 's51_momentum_accel_4h'}
+                                's40_relative_weakness_4h', 's51_momentum_accel_4h', 's54_double_top_4h'}
+    assert fz['leads']['s54_double_top_4h']['addendum'] == 'LEADFWD-01-A1-S54'
+    assert fz['leads']['s54_double_top_4h']['t_fwd_ms'] >= fz['t_fwd_ms']
     for k, L in fz['leads'].items():
         c = json.load(open(os.path.join(ROOT, L['cases_file']), encoding='utf-8'))
         case = c['cases'][k]
@@ -45,6 +47,26 @@ def test_runner_code_is_pinned(tmp_path, monkeypatch):
     p = tmp_path / 'sieve_v1_panel.py'; p.write_text('# changed\n', encoding='utf-8')
     monkeypatch.setitem(RF.CODE, 'sieve_v1_panel.py', str(p))
     with pytest.raises(SystemExit): RF.verify_code(fz)
+
+
+def test_addendum_is_pinned_and_cannot_touch_existing_books(tmp_path, monkeypatch):
+    fz = json.load(open(RF.FREEZE, encoding='utf-8'))
+    A = json.load(open(os.path.join(HERE, 'freeze_a1_s54.json'), encoding='utf-8'))
+    d = tmp_path / 'lf'; d.mkdir()
+    def setup(addendum, pin=True):
+        (d / 'freeze_a1_s54.json').write_text(json.dumps(addendum), encoding='utf-8')
+        f = dict(fz, addenda=[dict(fz['addenda'][0], sha256=hashlib.sha256((d / 'freeze_a1_s54.json').read_bytes()).hexdigest() if pin else '0' * 64)])
+        (d / 'freeze.json').write_text(json.dumps(f), encoding='utf-8')
+        (d / 'freeze.sha256').write_text(hashlib.sha256((d / 'freeze.json').read_bytes()).hexdigest(), encoding='utf-8')
+    monkeypatch.setattr(RF, 'HERE', str(d)); monkeypatch.setattr(RF, 'FREEZE', str(d / 'freeze.json'))
+    monkeypatch.setattr(RF, 'FREEZE_SHA_FILE', str(d / 'freeze.sha256'))
+    setup(A); assert 's54_double_top_4h' in RF.load_freeze(check=True)['leads']
+    setup(A, pin=False)
+    with pytest.raises(SystemExit): RF.load_freeze(check=True)
+    setup(dict(A, leads={'l24_breakaway_day_4h': A['leads']['s54_double_top_4h']}))
+    with pytest.raises(SystemExit): RF.load_freeze(check=True)
+    setup(dict(A, t_fwd_ms=A['t_fwd_ms'] - 86400000))
+    with pytest.raises(SystemExit): RF.load_freeze(check=True)
 
 
 def test_tampered_freeze_is_refused(tmp_path, monkeypatch):
@@ -276,7 +298,7 @@ def test_two_boundaries_replay_exactly_and_never_rewrite(tmp_path):
     r1 = json.load(open(tmp_path / 'rows' / 'test' / str(B1) / 'row.json', encoding='utf-8'))
     r2 = json.load(open(tmp_path / 'rows' / 'test' / str(B2) / 'row.json', encoding='utf-8'))
     assert r1['status'] == r2['status'] == 'COMPLETE' and r2['parity_with_boundary_ms'] == B1 and r2['kind'] == 'TEST'
-    assert len(r2['leads']) == 6 and all('primary' in v for v in r2['leads'].values())
+    assert len(r2['leads']) == 7 and all('primary' in v for v in r2['leads'].values())
     n1 = sum(v['primary']['stats']['n'] for v in r1['leads'].values()); n2 = sum(v['primary']['stats']['n'] for v in r2['leads'].values())
     assert 0 < n1 < n2
     for v in r2['leads'].values():
@@ -300,7 +322,7 @@ def test_cut_coin_row_is_incomplete_but_books_still_run(tmp_path):
     assert r1['status'] == 'COMPLETE'
     assert r2['status'] in ('INCOMPLETE', 'NONPARITY') and r2['dropped_from_universe'] == ['1000SHIBUSDT']
     assert any(p.startswith('1000SHIBUSDT: missing prices') for p in r2['problems'])
-    assert len(r2['leads']) == 6 and all('primary' in v for v in r2['leads'].values())
+    assert len(r2['leads']) == 7 and all('primary' in v for v in r2['leads'].values())
     for v in r2['leads'].values():
         assert all(t['sym'] != '1000SHIBUSDT' or t['t_out'] < r1['boundary_utc'] for t in v['primary']['closed'])
     held = any(t['sym'] == '1000SHIBUSDT' for v in r1['leads'].values() for t in v['primary']['closed'] + v['primary']['open'])

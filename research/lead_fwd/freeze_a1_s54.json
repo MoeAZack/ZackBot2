@@ -1,0 +1,36 @@
+{
+ "id": "LEADFWD-01-A1-S54",
+ "status": "FROZEN before its first forward bar; no row exists yet",
+ "approval": "moe 2026-11-15 04:06 UTC \"yes\" to adding s54_double_top_4h as a 7th forward book (relayed by the coordinator); Codex reproduction and recommendation #347 6888751194 (111/111 order-0 trades; separate fresh freeze, flat start, no backfill)",
+ "t_fwd_utc": "2026-11-16 00:00",
+ "t_fwd_ms": 1794787200000,
+ "t_fwd_note": "first future 00:00 UTC boundary after this addendum is pushed; same clock as the main freeze; starts flat; no retrospective backfill is scored",
+ "leads": {
+  "s54_double_top_4h": {
+   "cases_file": "research/extra31_screen/longscout_v54_cases.json",
+   "cases_sha256": "9d9a68059931863d0f0fa106fdb7ee3898886f364aea16918fb1a0590db8ea35",
+   "source": "longscout54",
+   "commit": "3fc8b5e571fa6cae9c2279e36b8acd43171036ac",
+   "modules": [
+    "longscout_v1",
+    "longscout_v54"
+   ],
+   "side": "short",
+   "tf": "4h",
+   "params": {
+    "tol": 0.03,
+    "depth": 0.05
+   },
+   "management": {
+    "stop_atr": 2.5,
+    "tp_r": 2.0,
+    "max_bars": 30
+   },
+   "screen": "WIDE165 pass: +0.153 R15, R23 +0.128, early +0.158 / late +0.162, ex-best +0.127, fresh134 +0.183, extra31 +0.093, median 112 closes; one of ~201 consumed-calendar trials",
+   "screen_median_closes_2022_2026": 112,
+   "screen_closes_per_week_approx": 0.52,
+   "label": "WIDE165 PASS: research lead only (separately frozen 7th book; multiple testing; not a PAPER candidate)"
+  }
+ },
+ "unchanged": "universe, base history, forward fetch, merge rules, rule v1 accounting (max1, $8, $3,333.33), costs/proxy, clock, rows, review rule: all exactly as in freeze.json; the six existing books are not changed"
+}

@@ -28,10 +28,21 @@ def sha(p):
 
 
 def load_freeze(check=True):
+    """freeze.json plus its addenda: each addendum is a separately frozen manifest (pinned by sha256 in freeze.json) that adds
+    new books with their own t_fwd; it can never change an existing book."""
     fz = json.load(open(FREEZE, encoding='utf-8'))
     if check:
         want = open(FREEZE_SHA_FILE, encoding='utf-8').read().split()[0]
         if sha(FREEZE) != want: raise SystemExit('freeze.json differs from the committed freeze.sha256')
+    for ad in fz.get('addenda', []):
+        p = os.path.join(HERE, ad['file'])
+        if check and sha(p) != ad['sha256']: raise SystemExit(f'{ad["file"]} differs from the sha pinned in freeze.json')
+        A = json.load(open(p, encoding='utf-8'))
+        if A['t_fwd_ms'] < fz['t_fwd_ms']: raise SystemExit(f'{ad["file"]}: a book cannot start before the main t_fwd')
+        for k, L in A['leads'].items():
+            if k in fz['leads']: raise SystemExit(f'{ad["file"]} would change the existing book {k}')
+            fz['leads'][k] = dict(L, t_fwd_utc=A['t_fwd_utc'], t_fwd_ms=A['t_fwd_ms'], addendum=A['id'])
+    if check:
         for k, L in fz['leads'].items():
             if sha(os.path.join(ROOT, L['cases_file'])) != L['cases_sha256']: raise SystemExit(f'{k}: cases file differs from the freeze')
     return fz
@@ -208,7 +219,7 @@ def worker(a):
     RS.CONTRACT['sources'].update(cases['sources'])
     sys.path[:0] = [a.worker, os.path.join(a.worker, 'research')]
     import backtest as BT
-    t_fwd = a.t_fwd or fz['t_fwd_utc']
+    t_fwd = a.t_fwd or L.get('t_fwd_utc') or fz['t_fwd_utc']      # an addendum book has its own start
     orig, CAP = BT.run, []
 
     def run(book, sleeves, **k):                    # the ONE change: the book starts flat at t_fwd

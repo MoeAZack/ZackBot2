@@ -4,7 +4,7 @@ Owner choice: moe, 15 Nov 2026 ("Do both": keep scouting and start forward books
 Frozen in `research/lead_fwd/freeze.json` (sha256 in `freeze.sha256`) before the first forward bar.
 
 ## What it does
-- **Six independent books**, one per rule, each a hypothetical $8-risk, max-one-position, $3,333.33-cap book (rule v1 accounting):
+- **Six independent books** (seven since A1, see below), one per rule, each a hypothetical $8-risk, max-one-position, $3,333.33-cap book (rule v1 accounting):
   - leads (thin WIDE165 passes): `l24_breakaway_day_4h`, `s26_weekly_close_breakdown_4h`, `l40_dual_momentum_4h`, `s51_momentum_accel_4h`;
   - count-failed exploratory controls: `s36_max_effect_4h`, `s40_relative_weakness_4h`.
 - **Start:** `t_fwd = 2026-11-16 00:00 UTC` (02:00 Cairo). Every book starts flat there. Bars before it are indicator history only.
@@ -60,6 +60,12 @@ An adversarial review found these problems in the first freeze (eb093eeb), and A
 - the fetch could run before the last kline was final.
 
 Leads, coins, t_fwd, costs and rule v1 are unchanged.
+
+## Amendment A1: seventh book s54_double_top_4h (before t_fwd, no row existed)
+moe added `s54_double_top_4h` on 15 Nov at 04:06 UTC. Codex reproduced it in #347 6888751194, with 111/111 order-0 trades. The screen result was a WIDE165 pass: +0.153 R15 with a median of 112 closes, among about 201 consumed-calendar trials.
+- s54 is frozen separately in `research/lead_fwd/freeze_a1_s54.json`, which is pinned by sha in `freeze.json`. It uses its own commits: rules 3fc8b5e5 and cases 347775d8.
+- It has its own t_fwd of 2026-11-16 00:00 UTC. It starts flat, with no backfill.
+- The runner refuses any addendum that changes an existing book or starts before the main t_fwd. The six original books are unchanged.
 
 ## Tests (cloud, non-official)
 `python -m pytest -q research/lead_fwd/test_lead_fwd.py` covers:
