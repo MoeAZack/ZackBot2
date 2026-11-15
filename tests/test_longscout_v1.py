@@ -1207,3 +1207,58 @@ def test_v36_helper_values_and_tstat_reference():
         part = c.iloc[:cut].reset_index(drop=True)
         for f, x in zip(fns, full):
             np.testing.assert_array_equal(f(part), x[:cut])
+
+
+import longscout_v37 as L37
+L37.register()
+
+
+def _v37_hammer_coin(seed=50):
+    c = _mk(2600, '4h', seed)
+    day = np.arange(len(c)) // 6; ph = np.arange(len(c)) % 6
+    ev = day % 15 == 14                                            # every 15th day: flat body, deep lower wick
+    first_o = c.o.values[np.flatnonzero(ph == 0)][day]
+    cl = np.where(ev & (ph == 5), first_o * 1.002, c.c.values)
+    lo = np.where(ev & (ph == 2), np.minimum(c.l.values, first_o * 0.80), c.l.values)
+    hi = np.where(ev, np.minimum(c.h.values, first_o * 1.003), c.h.values)
+    hi = np.maximum(hi, np.maximum(c.o.values, cl)); lo = np.minimum(lo, np.minimum(c.o.values, cl))
+    return _ms(c.assign(c=cl, l=lo, h=hi))
+
+
+@pytest.mark.parametrize('key', sorted(L37.CANDIDATES))
+def test_v37_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin = _v37_hammer_coin() if 'hammer' in key else _ms(_mk(2600, '4h', 56 if key.startswith('l37') else 55))
+    btc = _ms(_mk(2600, '4h', 55 if key.startswith('l37') else 56))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v37_pivot_level_and_helper_prefixes():
+    c = S.indicators(_ms(_mk(2600, '4h', 56))); t = pd.to_datetime(c.t)
+    got = L37._pivot(c, True)
+    i = int(np.flatnonzero(got)[5]); day = t.dt.normalize().values
+    prev = c[day == day[i] - np.timedelta64(1, 'D')]
+    P = (prev.h.max() + prev.l.min() + prev.c.iloc[-1]) / 3; R1 = 2 * P - prev.l.min()
+    assert c.c.values[i] > R1 >= c.c.values[i - 1] and day[i - 1] == day[i]
+    hc = S.indicators(_v37_hammer_coin())
+    for fn, x in ((lambda z: L37._pivot(z, True), c), (lambda z: L37._pivot(z, False), c),
+                  (lambda z: L37._hammer(z, dict(wick=2.0, n=20)), hc)):
+        full = fn(x); assert full.sum() > 0
+        for cut in range(700, 2600, 23):
+            np.testing.assert_array_equal(fn(x.iloc[:cut].reset_index(drop=True)), full[:cut])
+
+
+def test_v37_pivot_needs_yesterday_complete():
+    c = S.indicators(_ms(_mk(2600, '4h', 56))); t = pd.to_datetime(c.t); day = t.dt.normalize().values
+    days = np.unique(day)[5:-1]
+    js = [int(np.flatnonzero(day == x)[2]) for x in days[::2]]           # every other day loses a bar
+    drop = c.drop(index=js).reset_index(drop=True)
+    dd = pd.to_datetime(drop.t).dt.normalize().values
+    after_broken = np.isin(dd, days[::2] + np.timedelta64(1, 'D'))
+    assert not L37._pivot(drop, True)[after_broken].any() and not L37._pivot(drop, False)[after_broken].any()
