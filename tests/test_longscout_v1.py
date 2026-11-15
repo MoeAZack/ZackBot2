@@ -1673,3 +1673,111 @@ def test_v48_btc_day_reference_and_prefixes():
             L.set_btc(btc.iloc[:cut].reset_index(drop=True))
             np.testing.assert_array_equal(fn(c.iloc[:cut].reset_index(drop=True)), full[:cut])
         L.set_btc(btc)
+
+
+import longscout_v49 as L49
+L49.register()
+
+_V49_COIN = {'l49_daily_stoch_up_4h': lambda: _ms(_mk(2600, '4h', 56)),
+             's49_daily_stoch_down_4h': lambda: _v36_coin(2, drift=-0.001),
+             'r49_daily_trix_4h': lambda: _ms(_mk(2600, '4h', 55))}
+
+
+@pytest.mark.parametrize('key', sorted(L49.CANDIDATES))
+def test_v49_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V49_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert le.sum() or se.sum(), key
+    if key.startswith('r49'):
+        assert le.sum() and se.sum()
+    cr = L.coin_regime(S.indicators(coin))
+    assert (cr[le] == 1).all() and (cr[se] == -1).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v49_helper_values_match_on_every_prefix():
+    c = S.indicators(_ms(_mk(2600, '4h', 55)))
+    D = L27._days_v(c)
+    k, x = L49._stoch_k(D, L49.ST), L49._trix_v(D, dict(n=15))
+    full = {(f, up): f(c, p, up) for f, p in ((L49._stoch, L49.ST), (L49._trix, dict(n=15))) for up in (True, False)}
+    assert all(v.sum() > 0 for v in full.values())
+    for cut in range(700, 2600, 23):
+        part = c.iloc[:cut].reset_index(drop=True)
+        Dp = L27._days_v(part)
+        np.testing.assert_allclose(L49._stoch_k(Dp, L49.ST).values, k.values[:len(Dp)], equal_nan=True)
+        np.testing.assert_allclose(L49._trix_v(Dp, dict(n=15)).values, x.values[:len(Dp)], equal_nan=True)
+        for (f, up), v in full.items():
+            np.testing.assert_array_equal(f(part, L49.ST if f is L49._stoch else dict(n=15), up), v[:cut])
+
+
+def test_v49_indicators_match_an_independent_loop():
+    D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', 55))))
+    h, l, c = D.h.values, D.l.values, D.c.values
+    fast = np.full(len(c), np.nan)
+    for i in range(13, len(c)):
+        lo, hi = l[i - 13:i + 1].min(), h[i - 13:i + 1].max()
+        fast[i] = 100 * (c[i] - lo) / (hi - lo)
+    slow = np.full(len(c), np.nan)
+    for i in range(15, len(c)):
+        slow[i] = fast[i - 2:i + 1].mean()
+    np.testing.assert_allclose(L49._stoch_k(D, L49.ST).values, slow, equal_nan=True, rtol=1e-9)
+    e = c.astype(float)
+    for _ in range(3):
+        out = np.empty_like(e); out[0] = e[0]; a = 2 / 16
+        for i in range(1, len(e)):
+            out[i] = a * e[i] + (1 - a) * out[i - 1]
+        e = out
+    ref = np.r_[np.nan, 100 * (e[1:] / e[:-1] - 1)]
+    np.testing.assert_allclose(L49._trix_v(D, dict(n=15)).values, ref, equal_nan=True, rtol=1e-9)
+
+
+def test_v49_entries_follow_the_cross_of_the_day_before():
+    coin, btc = _V49_COIN['s49_daily_stoch_down_4h'](), _ms(_mk(2600, '4h', 52))
+    c = S.indicators(coin); D = L27._days_v(c); k = L49._stoch_k(D, L49.ST)
+    t = pd.to_datetime(c.t).dt.normalize().values
+    sig = np.asarray(_sig('s49_daily_stoch_down_4h', coin, btc)['se'])
+    assert sig.sum()
+    for i in np.flatnonzero(sig):
+        j = D.index.get_loc(pd.Timestamp(t[i]) - pd.Timedelta(days=1))
+        assert k.iloc[j] < 80 <= k.iloc[j - 1]
+        assert pd.Timestamp(c.t.iloc[i]).hour == 0
+
+
+def test_v49_a_cross_across_a_missing_day_does_not_fire():
+    coin, btc = _V49_COIN['s49_daily_stoch_down_4h'](), _ms(_mk(2600, '4h', 52))
+    t = pd.to_datetime(coin.t).dt.normalize()
+    fired = 0
+    for i in np.flatnonzero(np.asarray(_sig('s49_daily_stoch_down_4h', coin, btc)['se'])):
+        gap_day = t.iloc[i] - pd.Timedelta(days=2)                     # remove the day before the cross day
+        cut = coin[t != gap_day].reset_index(drop=True)
+        c = S.indicators(cut); D = L27._days_v(c); k = L49._stoch_k(D, L49.ST)
+        j = D.index.get_loc(t.iloc[i] - pd.Timedelta(days=1))
+        if k.iloc[j] < 80 <= k.iloc[j - 1]:                           # the row-to-row cross still exists across the gap
+            fired += 1
+            sig = np.asarray(_sig('s49_daily_stoch_down_4h', cut, btc)['se'])
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            assert not sig[k0]
+    assert fired
+
+
+def test_v49_trix_cross_across_a_missing_day_does_not_fire():
+    coin, btc = _V49_COIN['r49_daily_trix_4h'](), _ms(_mk(2600, '4h', 52))
+    t = pd.to_datetime(coin.t).dt.normalize()
+    full = _sig('r49_daily_trix_4h', coin, btc)
+    fired = 0
+    for side, up in (('le', True), ('se', False)):
+        for i in np.flatnonzero(np.asarray(full[side])):
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=2)].reset_index(drop=True)
+            D = L27._days_v(S.indicators(cut)); x = L49._trix_v(D, dict(n=15))
+            j = D.index.get_loc(t.iloc[i] - pd.Timedelta(days=1))
+            if (x.iloc[j] > 0 >= x.iloc[j - 1]) if up else (x.iloc[j] < 0 <= x.iloc[j - 1]):
+                fired += 1
+                sig = np.asarray(_sig('r49_daily_trix_4h', cut, btc)[side])
+                assert not sig[np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]]
+    assert fired
