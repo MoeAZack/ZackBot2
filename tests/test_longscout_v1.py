@@ -1160,3 +1160,50 @@ def test_v35_week_break_entries_match_independent_loop():
     cr = L.coin_regime(c)
     le = np.asarray(_sig('l35_prior_week_high_break_4h', coin, btc)['le'])
     assert le.sum() > 5 and (le == (exp & (cr == 1))).all()
+
+
+import longscout_v36 as L36
+L36.register()
+
+
+def _v36_coin(seed, n=2600, drift=0.0006):
+    rng = np.random.default_rng(seed)
+    t = pd.date_range('2021-01-01', periods=n, freq='4h')
+    day = np.arange(n) // 6
+    sd = np.where((day // 30) % 2 == 0, 0.02, 0.004)               # alternating loud / quiet 30-day blocks
+    lr = rng.normal(drift, sd)
+    lr = np.where((day % 45 == 44) & (np.arange(n) % 6 == 5), np.log(1.3), lr)   # a +30% close every 45th day
+    c = 100 * np.exp(np.cumsum(lr)); o = np.r_[c[0], c[:-1]]
+    h = np.maximum(o, c) * (1 + abs(rng.normal(0, .005, n))); l = np.minimum(o, c) * (1 - abs(rng.normal(0, .005, n)))
+    return _ms(pd.DataFrame(dict(t=t, o=o, h=h, l=l, c=c, v=rng.lognormal(10, 1, n))))
+
+
+@pytest.mark.parametrize('key', sorted(L36.CANDIDATES))
+def test_v36_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin = _v36_coin(3, drift=-0.001 if 'max' in key else 0.0006) if 'trend' not in key else _ms(_mk(2600, '4h', 55))
+    btc = _ms(_mk(2600, '4h', 56))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v36_helper_values_and_tstat_reference():
+    y = pd.Series(np.log(np.r_[1.0, 1.1, 1.05, 1.2, 1.3, 1.25, 1.4])); x = np.arange(7.0)
+    b, a = np.polyfit(x, y.values, 1)
+    res = y.values - (a + b * x); se = np.sqrt((res ** 2).sum() / 5 / ((x - x.mean()) ** 2).sum())
+    assert abs(L36._tstat(y, 7).iloc[-1] - b / se) < 1e-9
+    P = {k: v['params'] for k, v in L36.CANDIDATES.items()}
+    c = S.indicators(_v36_coin(3))
+    fns = [lambda x, u=u: L36._trend_t(x, P['r36_trend_tstat_4h'], u) for u in (True, False)] + \
+          [lambda x: L36._max_effect(x, P['s36_max_effect_4h']), lambda x: L36._vol_collapse(x, P['l36_vol_collapse_4h'])]
+    full = [f(c) for f in fns]
+    assert all(x.sum() > 0 for x in full)
+    for cut in range(700, 2600, 23):
+        part = c.iloc[:cut].reset_index(drop=True)
+        for f, x in zip(fns, full):
+            np.testing.assert_array_equal(f(part), x[:cut])
