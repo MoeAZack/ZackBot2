@@ -2064,3 +2064,98 @@ def test_v52_touch_entries_touch_and_close_on_the_right_side():
                 assert e.iloc[j] > eo.iloc[j] and D.l.iloc[j] <= e.iloc[j] < D.c.iloc[j]
             else:
                 assert e.iloc[j] < eo.iloc[j] and D.h.iloc[j] >= e.iloc[j] > D.c.iloc[j]
+
+
+import longscout_v53 as L53
+L53.register()
+
+_V53_COIN = {'r53_daily_tk_cross_4h': lambda: _ms(_mk(2600, '4h', 55)),
+             'l53_daily_coppock_4h': lambda: _ms(_mk(2600, '4h', 56)),
+             'r53_daily_kst_4h': lambda: _ms(_mk(2600, '4h', 56))}
+
+
+@pytest.mark.parametrize('key', sorted(L53.CANDIDATES))
+def test_v53_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V53_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert le.sum() and (se.sum() or key.startswith('l53')), key
+    cr = L.coin_regime(S.indicators(coin))
+    assert (cr[le] == 1).all() and (cr[se] == -1).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v53_helper_values_match_on_every_prefix():
+    c = S.indicators(_ms(_mk(2600, '4h', 56)))
+    D = L27._days_v(c)
+    tk, cp, ks = L53._tk_v(D), L53._coppock_v(D), L53._kst_v(D)
+    full = {'tu': L53._tk(c, {}, True), 'td': L53._tk(c, {}, False), 'cp': L53._coppock(c, {}),
+            'ku': L53._kst(c, {}, True), 'kd': L53._kst(c, {}, False)}
+    assert all(v.sum() for v in full.values())
+    for cut in range(700, 2600, 29):
+        part = c.iloc[:cut].reset_index(drop=True)
+        Dp = L27._days_v(part); m = len(Dp)
+        for a, b in zip(L53._tk_v(Dp) + (L53._coppock_v(Dp),) + L53._kst_v(Dp), tk + (cp,) + ks):
+            np.testing.assert_allclose(a.values, b.values[:m], equal_nan=True)
+        got = {'tu': L53._tk(part, {}, True), 'td': L53._tk(part, {}, False), 'cp': L53._coppock(part, {}),
+               'ku': L53._kst(part, {}, True), 'kd': L53._kst(part, {}, False)}
+        for k, v in got.items():
+            np.testing.assert_array_equal(v, full[k][:cut])
+
+
+def test_v53_indicators_match_an_independent_loop():
+    D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', 56))))
+    h, l, c = D.h.values, D.l.values, D.c.values; n = len(c)
+    mid = lambda i, k: (h[i - k + 1:i + 1].max() + l[i - k + 1:i + 1].min()) / 2 if i >= k - 1 else np.nan
+    t, k = L53._tk_v(D)
+    np.testing.assert_allclose(t.values, [mid(i, 9) for i in range(n)], equal_nan=True, rtol=1e-12)
+    np.testing.assert_allclose(k.values, [mid(i, 26) for i in range(n)], equal_nan=True, rtol=1e-12)
+    roc = lambda i, k: 100 * (c[i] / c[i - k] - 1) if i >= k else np.nan
+    s = [roc(i, 14) + roc(i, 11) for i in range(n)]
+    cop = [np.nan if i < 23 else sum((j + 1) * s[i - 9 + j] for j in range(10)) / 55 for i in range(n)]
+    np.testing.assert_allclose(L53._coppock_v(D).values, cop, equal_nan=True, rtol=1e-9)
+    avg = lambda f, i, w: np.mean([f(j) for j in range(i - w + 1, i + 1)])
+    kst = [np.nan if i < 44 else avg(lambda j: roc(j, 10), i, 10) + 2 * avg(lambda j: roc(j, 15), i, 10)
+           + 3 * avg(lambda j: roc(j, 20), i, 10) + 4 * avg(lambda j: roc(j, 30), i, 15) for i in range(n)]
+    np.testing.assert_allclose(L53._kst_v(D)[0].values, kst, equal_nan=True, rtol=1e-9)
+
+
+def test_v53_entries_follow_the_cross_of_the_day_before():
+    btc = _ms(_mk(2600, '4h', 52))
+    for key, side, f in (('r53_daily_tk_cross_4h', 'se', lambda D: L53._tk_v(D)),
+                         ('r53_daily_kst_4h', 'le', lambda D: L53._kst_v(D))):
+        coin = _V53_COIN[key](); c = S.indicators(coin); D = L27._days_v(c); a, b = f(D)
+        t = pd.to_datetime(c.t).dt.normalize().values
+        sig = np.asarray(_sig(key, coin, btc)[side]); assert sig.sum()
+        for i in np.flatnonzero(sig):
+            j = D.index.get_loc(pd.Timestamp(t[i]) - pd.Timedelta(days=1))
+            assert (a.iloc[j] > b.iloc[j] and a.iloc[j - 1] <= b.iloc[j - 1]) if side == 'le' else \
+                   (a.iloc[j] < b.iloc[j] and a.iloc[j - 1] >= b.iloc[j - 1])
+    coin = _V53_COIN['l53_daily_coppock_4h'](); c = S.indicators(coin); D = L27._days_v(c); x = L53._coppock_v(D)
+    t = pd.to_datetime(c.t).dt.normalize().values
+    sig = np.asarray(_sig('l53_daily_coppock_4h', coin, btc)['le']); assert sig.sum()
+    for i in np.flatnonzero(sig):
+        j = D.index.get_loc(pd.Timestamp(t[i]) - pd.Timedelta(days=1))
+        assert x.iloc[j] < 0 and x.iloc[j] > x.iloc[j - 1] and x.iloc[j - 1] <= x.iloc[j - 2]
+
+
+def test_v53_cross_across_a_missing_day_does_not_fire():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for key in sorted(L53.CANDIDATES):
+        coin = _V53_COIN[key](); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig(key, coin, btc)
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se'])):
+            for back in (2, 3):
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                same = (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0])
+                if back == 2 or key.startswith('l53'):
+                    fired += 1
+                    assert not same, (key, back)
+    assert fired
