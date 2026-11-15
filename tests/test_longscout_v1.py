@@ -3738,3 +3738,104 @@ def test_v70_dryup_synthetic_volume_and_near_low_edges():
     assert not run(vtail=(49.0, 50.0, 49.0))                               # exactly half the median is not quiet
     assert not run(vtail=(49.0, 49.0, 50.0))
     assert run(c20=90.0)                                                   # a lower close 20 days back is outside j-19..j
+
+
+import longscout_v71 as L71
+L71.register()
+
+_V71_COIN = {'l71_rs_leads_high_4h': lambda: _ms(_mk(2600, '4h', 44)),
+             's71_rs_leads_low_4h': lambda: _ms(_mk(2600, '4h', 42))}
+
+
+@pytest.mark.parametrize('key', sorted(L71.CANDIDATES))
+def test_v71_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V71_COIN[key](), _ms(_mk(2600, '4h', 53))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l71': le.sum() and not se.any(), 's71': se.sum() and not le.any()}[key[:3]]
+    cr = L.coin_regime(S.indicators(coin))
+    assert (cr[le] == 1).all() and (cr[se] == -1).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v71_ref(D, J, up, n=50):
+    days = list(D.index); C, B = list(J.c), list(J.b); m = len(C)
+    R = [C[i] / B[i] for i in range(m)]
+    raw = np.zeros(m, bool)
+    for j in range(n, m):
+        if days[j] - days[j - n] != pd.Timedelta(days=n) or any(np.isnan(B[j - n:j + 1])):
+            continue
+        if up:
+            raw[j] = R[j] > max(R[j - n:j]) and C[j] < max(C[j - n:j])
+        else:
+            raw[j] = R[j] < min(R[j - n:j]) and C[j] > min(C[j - n:j])
+    return raw & ~np.r_[False, raw[:-1]]
+
+
+def test_v71_flags_match_an_independent_loop_prefixes_and_btc_gaps():
+    hits = {}
+    for seed, bs in ((40, 52), (42, 53), (44, 53), (45, 53), (41, 52)):
+        btc = _ms(_mk(2600, '4h', bs))
+        for drop in (None, 1500):
+            b = btc if drop is None else btc.drop(range(drop, drop + 6)).reset_index(drop=True)   # remove one BTC day
+            L.set_btc(b)
+            d = S.indicators(_ms(_mk(2600, '4h', seed))); D, J = L33._joint(d)
+            for up in (True, False):
+                v = L71._lead_v(D, J, dict(n=50), up).values
+                np.testing.assert_array_equal(v, _v71_ref(D, J, up), err_msg=str((seed, drop, up)))
+                hits[(up, drop)] = hits.get((up, drop), 0) + int(v.sum())
+                if seed == 44 and drop is None:
+                    for cut in range(55, len(D), 37):
+                        np.testing.assert_array_equal(L71._lead_v(D.iloc[:cut], J.iloc[:cut], dict(n=50), up).values, v[:cut])
+    assert all(hits.values()), hits
+
+
+def test_v71_first_day_and_strictness_synthetic():
+    idx = pd.date_range('2022-01-01', periods=56, freq='D')
+    c = np.full(56, 100.0); c[3] = 120.0                                  # coin's 50-day high (day 3) stays above price
+    def run(tail, cc=c):
+        b = np.full(56, 100.0); b[3] = 130.0; b[51:] = tail                # keeps the ratio of day 3 low
+        D = pd.DataFrame(dict(h=cc, l=cc, c=cc, v=1.0), index=idx); J = pd.DataFrame(dict(c=cc, b=b), index=idx)
+        return L71._lead_v(D, J, dict(n=50), True).values[51:].tolist()
+    assert run([90.0, 90.0, 89.0, 100.0, 100.0]) == [True, False, True, False, False]   # equal ratio is no new high
+    assert run([90.0, 89.0, 88.0, 100.0, 100.0]) == [True, False, False, False, False]  # only the first day of a run
+    c2 = c.copy(); c2[3] = 100.0
+    assert run([90.0, 90.0, 89.0, 100.0, 100.0], c2) == [False] * 5                   # price at its own high: no lead
+
+
+def test_v71_regime_gate_and_hour_zero_with_coin_gaps():
+    btc = _ms(_mk(2600, '4h', 53)); fired = 0; seen = {}
+    for key in sorted(L71.CANDIDATES):
+        up = key.startswith('l71')
+        for seed in (40, 41, 42, 44, 45):
+            coin = _ms(_mk(2600, '4h', seed)); d = S.indicators(coin); cr = L.coin_regime(d)
+            full = _sig(key, coin, btc)
+            f = np.asarray(L71._lead(d, dict(n=50), up))
+            np.testing.assert_array_equal(np.asarray(full['le' if up else 'se']), f & (cr == (1 if up else -1)))
+            seen[key] = seen.get(key, 0) + int((f & (cr == 0)).sum())
+            t = pd.to_datetime(coin.t).dt.normalize()
+            for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))[:5]:
+                assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=30)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), key
+    assert fired and all(seen.values()), seen
+
+
+def test_v71_short_side_strictness_synthetic():
+    idx = pd.date_range('2022-01-01', periods=56, freq='D')
+    c = np.full(56, 100.0); c[3] = 80.0                                   # coin's 50-day low (day 3) stays below price
+    def run(tail, cc=c):
+        b = np.full(56, 100.0); b[3] = 60.0; b[51:] = tail                # keeps the ratio of day 3 high
+        D = pd.DataFrame(dict(h=cc, l=cc, c=cc, v=1.0), index=idx); J = pd.DataFrame(dict(c=cc, b=b), index=idx)
+        return L71._lead_v(D, J, dict(n=50), False).values[51:].tolist()
+    assert run([110.0, 110.0, 111.0, 100.0, 100.0]) == [True, False, True, False, False]
+    c2 = c.copy(); c2[3] = 100.0
+    assert run([110.0, 110.0, 111.0, 100.0, 100.0], c2) == [False] * 5    # price at its own low: no lead
