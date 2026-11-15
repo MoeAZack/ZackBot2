@@ -13,6 +13,7 @@ import run_fwd as RF, fetch_fwd as FF
 
 H = 3600000
 T0 = 1767225600000          # 2026-01-01 00:00 UTC
+FS = T0 + 90 * H            # forward fetch start in the merge unit tests (10 overlap bars with a 100-bar base)
 
 
 def frame(t0, n, px=1.0, skip=()):
@@ -59,6 +60,7 @@ def test_addendum_is_pinned_and_cannot_touch_existing_books(tmp_path, monkeypatc
         (d / 'freeze.json').write_text(json.dumps(f), encoding='utf-8')
         (d / 'freeze.sha256').write_text(hashlib.sha256((d / 'freeze.json').read_bytes()).hexdigest(), encoding='utf-8')
     monkeypatch.setattr(RF, 'HERE', str(d)); monkeypatch.setattr(RF, 'FREEZE', str(d / 'freeze.json'))
+    monkeypatch.setattr(RF, 'INTEGRITY_AMENDMENTS', [])
     monkeypatch.setattr(RF, 'FREEZE_SHA_FILE', str(d / 'freeze.sha256'))
     setup(A); assert 's54_double_top_4h' in RF.load_freeze(check=True)['leads']
     setup(A, pin=False)
@@ -67,6 +69,15 @@ def test_addendum_is_pinned_and_cannot_touch_existing_books(tmp_path, monkeypatc
     with pytest.raises(SystemExit): RF.load_freeze(check=True)
     setup(dict(A, t_fwd_ms=A['t_fwd_ms'] - 86400000))
     with pytest.raises(SystemExit): RF.load_freeze(check=True)
+
+
+def test_integrity_amendment_needs_its_exact_parents(tmp_path, monkeypatch):
+    fz = RF.load_freeze(check=True)
+    assert fz['integrity_amendments'] == ['A2'] and fz['code_sha256'] == RF.code_shas()
+    f = tmp_path / 'freeze.json'; f.write_text(open(RF.FREEZE, encoding='utf-8').read() + '\n', encoding='utf-8')   # a different parent
+    (tmp_path / 'freeze.sha256').write_text(hashlib.sha256(f.read_bytes()).hexdigest(), encoding='utf-8')
+    monkeypatch.setattr(RF, 'FREEZE', str(f)); monkeypatch.setattr(RF, 'FREEZE_SHA_FILE', str(tmp_path / 'freeze.sha256'))
+    with pytest.raises(SystemExit, match='parent freeze'): RF.load_freeze(check=True)
 
 
 def test_tampered_freeze_is_refused(tmp_path, monkeypatch):
@@ -79,7 +90,7 @@ def test_tampered_freeze_is_refused(tmp_path, monkeypatch):
 def test_merge_ok_with_identical_overlap():
     base = frame(T0, 100); fwd = frame(T0 + 90 * H, 60)
     B = T0 + 150 * H
-    m, info = RF.merge_coin(base, fwd, B)
+    m, info = RF.merge_coin(base, fwd, B, FS)
     assert info['status'] == 'OK' and info['overlap_bars'] == 10
     assert len(m) == 150 and (np.diff(m.t) == H).all() and m.t.iloc[-1] == B - H
 
@@ -87,7 +98,7 @@ def test_merge_ok_with_identical_overlap():
 def test_merge_mismatch_names_the_bar():
     base = frame(T0, 100); fwd = frame(T0 + 90 * H, 60)
     fwd.loc[3, 'c'] = 1.5
-    m, info = RF.merge_coin(base, fwd, T0 + 150 * H)
+    m, info = RF.merge_coin(base, fwd, T0 + 150 * H, FS)
     assert m is None and info['status'] == 'MISMATCH' and info['column'] == 'c' and info['t_ms'] == T0 + 93 * H
 
 
@@ -95,38 +106,56 @@ def test_merge_mismatch_names_the_bar():
 def test_merge_mismatch_any_column(col):
     base = frame(T0, 100); fwd = frame(T0 + 90 * H, 60)
     fwd.loc[0, col] = fwd.loc[0, col] + 1e-9
-    assert RF.merge_coin(base, fwd, T0 + 150 * H)[1]['status'] == 'MISMATCH'
+    assert RF.merge_coin(base, fwd, T0 + 150 * H, FS)[1]['status'] == 'MISMATCH'
 
 
 def test_merge_cuts_at_first_forward_gap():
     base = frame(T0, 100); fwd = frame(T0 + 90 * H, 60, skip=(30,))
-    m, info = RF.merge_coin(base, fwd, T0 + 150 * H)
+    m, info = RF.merge_coin(base, fwd, T0 + 150 * H, FS)
     assert info['status'] == 'CUT' and info['cut_after_ms'] == T0 + 119 * H and m.t.iloc[-1] == T0 + 119 * H
     assert (np.diff(m.t) == H).all()
 
 
-def test_merge_cuts_when_forward_starts_after_a_gap():
+def test_merge_forward_starting_after_a_gap_is_missing_overlap():
     base = frame(T0, 100); fwd = frame(T0 + 101 * H, 40)
-    m, info = RF.merge_coin(base, fwd, T0 + 141 * H)
-    assert info['status'] == 'CUT' and m.t.iloc[-1] == T0 + 99 * H
+    m, info = RF.merge_coin(base, fwd, T0 + 141 * H, FS)
+    assert info['status'] == 'OVERLAP_MISSING' and m.t.iloc[-1] == T0 + 99 * H and info['first_missing_ms'] == FS
+
+
+def test_merge_zero_overlap_is_never_ok():                 # Codex A2 witness: forward starts exactly one hour after the base
+    base = frame(T0, 100); fwd = frame(T0 + 100 * H, 50)
+    m, info = RF.merge_coin(base, fwd, T0 + 150 * H, T0 + 100 * H)
+    assert info['status'] == 'OVERLAP_MISSING' and info['overlap_expected'] == 0 and len(m) == 100
+    m, info = RF.merge_coin(base, fwd, T0 + 150 * H, FS)     # fetch claims to start at FS but holds none of the overlap
+    assert info['status'] == 'OVERLAP_MISSING' and info['n_missing'] == 10
+
+
+def test_merge_partial_overlap_is_missing():
+    base = frame(T0, 100); fwd = frame(T0 + 90 * H, 60, skip=(4,))       # one overlap hour absent
+    m, info = RF.merge_coin(base, fwd, T0 + 150 * H, FS)
+    assert info['status'] == 'OVERLAP_MISSING' and info['first_missing_ms'] == T0 + 94 * H and info['n_missing'] == 1
+    m, info = RF.merge_coin(base, frame(T0 + 95 * H, 55), T0 + 150 * H, FS)  # fetch began later than its declared start
+    assert info['status'] == 'OVERLAP_MISSING' and info['n_missing'] == 5
+    m, info = RF.merge_coin(base, frame(T0 + 90 * H, 60), T0 + 150 * H, FS)
+    assert info['status'] == 'OK' and info['overlap_bars'] == info['overlap_expected'] == 10
 
 
 def test_merge_cuts_early_end_and_no_fwd():
     base = frame(T0, 100); fwd = frame(T0 + 90 * H, 40)
-    m, info = RF.merge_coin(base, fwd, T0 + 150 * H)
+    m, info = RF.merge_coin(base, fwd, T0 + 150 * H, FS)
     assert info['status'] == 'CUT' and info['reason'] == 'forward data ends before the boundary'
-    m, info = RF.merge_coin(base, frame(T0 + 90 * H, 59), T0 + 150 * H)     # one bar short of B-1h
+    m, info = RF.merge_coin(base, frame(T0 + 90 * H, 59), T0 + 150 * H, FS)     # one bar short of B-1h
     assert info['status'] == 'CUT' and info['cut_after_ms'] == T0 + 148 * H
-    m, info = RF.merge_coin(base, None, T0 + 150 * H)
+    m, info = RF.merge_coin(base, None, T0 + 150 * H, FS)
     assert info['status'] == 'NO_FWD' and len(m) == 100
-    m, info = RF.merge_coin(base, None, T0 + 50 * H)          # never a bar at or after B, even without forward data
+    m, info = RF.merge_coin(base, None, T0 + 50 * H, FS)          # never a bar at or after B, even without forward data
     assert info['status'] == 'NO_FWD' and m.t.max() == T0 + 49 * H
 
 
 def test_merge_drops_bars_at_or_after_the_boundary():
     base = frame(T0, 100); fwd = frame(T0 + 90 * H, 80)
     B = T0 + 150 * H
-    m, info = RF.merge_coin(base, fwd, B)
+    m, info = RF.merge_coin(base, fwd, B, FS)
     assert info['status'] == 'OK' and m.t.max() == B - H
 
 
@@ -148,7 +177,7 @@ def test_btc_incomplete_blocks_the_row(tmp_path):
     base = tmp_path / 'b'; fwd = tmp_path / 'f'; base.mkdir(); fwd.mkdir()
     frame(T0, 100).to_csv(base / 'BTCUSDT_1h.csv', index=False, encoding='utf-8')
     frame(T0 + 90 * H, 40).to_csv(fwd / 'BTCUSDT_1h.csv', index=False, encoding='utf-8')
-    cov, probs = RF.build_data({'BTCUSDT': str(base / 'BTCUSDT_1h.csv')}, {'BTCUSDT': str(fwd / 'BTCUSDT_1h.csv')}, T0 + 150 * H, str(tmp_path / 'w'))
+    cov, probs = RF.build_data({'BTCUSDT': str(base / 'BTCUSDT_1h.csv')}, {'BTCUSDT': str(fwd / 'BTCUSDT_1h.csv')}, T0 + 150 * H, str(tmp_path / 'w'), FS)
     assert probs and 'BTCUSDT incomplete' in probs[0]
 
 
@@ -159,7 +188,7 @@ def test_cut_coin_makes_the_row_incomplete_but_btc_ok(tmp_path):
     frame(T0 + 90 * H, 60).to_csv(fwd / 'BTCUSDT_1h.csv', index=False, encoding='utf-8')
     frame(T0 + 90 * H, 60, skip=(40,)).to_csv(fwd / 'AAVEUSDT_1h.csv', index=False, encoding='utf-8')
     paths = lambda d: {s_: str(d / f'{s_}_1h.csv') for s_ in ('BTCUSDT', 'AAVEUSDT')}
-    cov, probs = RF.build_data(paths(base), paths(fwd), T0 + 150 * H, str(tmp_path / 'w'))
+    cov, probs = RF.build_data(paths(base), paths(fwd), T0 + 150 * H, str(tmp_path / 'w'), FS)
     assert cov['BTCUSDT']['status'] == 'OK' and cov['AAVEUSDT']['status'] == 'CUT'
     assert probs == [f'AAVEUSDT: missing prices (CUT, last contiguous bar {T0 + 129 * H})']
 
@@ -211,6 +240,20 @@ def test_parity_detects_changed_missing_added_trades_signals_and_opens():
     assert RF.parity(prev, _row([t1], [s0, s1], [op]))                  # a new signal in the earlier past
     assert RF.parity(prev, _row([t1], [s1], []))                        # an earlier open position vanished
     assert RF.parity(prev, dict(boundary_utc='2026-01-08 00:00', leads={}))   # a book vanished
+
+
+def test_parity_rejects_changed_entry_facts_of_an_earlier_open_position():
+    E = dict(side=-1, entry_ref=100.0, entry_fill=99.98, qty=2.0, risk_usd=8.0, stop_dist=4.0, initial_stop=103.98, target=91.98)
+    op = dict(sym='D', t_in='2026-01-04 04:00:00', mark=101.0, bars_held=3, stale=False, **E)
+    prev = _row([], [], [op])
+    ok_open = dict(op, mark=95.0, bars_held=9)                                   # mark and age legitimately change
+    ok_closed = dict(sym='D', t_in=op['t_in'], t_out='2026-01-06 08:00:00', why='tp', R15=1.9, R7=1.95, R23=1.85, **E)
+    assert RF.parity(prev, _row([], [], [ok_open], '2026-01-08 00:00')) == []
+    assert RF.parity(prev, _row([ok_closed], [], [], '2026-01-08 00:00')) == []
+    for f, v in (('entry_fill', 200.0), ('entry_ref', 200.0), ('side', 1), ('qty', 3.0), ('risk_usd', 9.0), ('stop_dist', 5.0),
+                 ('initial_stop', 110.0), ('target', 80.0)):
+        assert RF.parity(prev, _row([], [], [dict(ok_open, **{f: v})], '2026-01-08 00:00')), f'OPEN->OPEN {f}'
+        assert RF.parity(prev, _row([dict(ok_closed, **{f: v})], [], [], '2026-01-08 00:00')), f'OPEN->CLOSED {f}'
 
 
 def test_review_flags():
@@ -274,7 +317,7 @@ def _fixture(tmp, Bs, drop=None):
             f.to_csv(fd / f'{dst}_1h.csv', index=False, encoding='utf-8')
     for B in Bs:
         fd = tmp / 'fwd' / str(B)
-        json.dump(dict(boundary_ms=B, freeze_sha256=sha(RF.FREEZE), start_ms=fz['forward_fetch']['start_ms'],
+        json.dump(dict(boundary_ms=B, freeze_sha256=sha(RF.FREEZE), start_ms=int(cut - 7 * 24 * H),
                        symbols={s: dict(sha256=sha(fd / f'{s}_1h.csv')) for s in MAP.values()}),
                   open(fd / 'fetch_manifest.json', 'w', encoding='utf-8'))
     return base

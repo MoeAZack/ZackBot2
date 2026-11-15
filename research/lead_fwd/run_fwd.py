@@ -19,6 +19,7 @@ X31 = os.path.join(ROOT, 'research', 'extra31_screen')
 sys.path.insert(0, X31)
 FREEZE = os.path.join(HERE, 'freeze.json')
 FREEZE_SHA_FILE = os.path.join(HERE, 'freeze.sha256')
+INTEGRITY_AMENDMENTS = ['freeze_amendment_a2.json']   # applied in order; each pins the runner code that replaces the previous pins
 H = 3600000
 COLS = ['o', 'h', 'l', 'c', 'v', 'qv']
 
@@ -42,6 +43,18 @@ def load_freeze(check=True):
         for k, L in A['leads'].items():
             if k in fz['leads']: raise SystemExit(f'{ad["file"]} would change the existing book {k}')
             fz['leads'][k] = dict(L, t_fwd_utc=A['t_fwd_utc'], t_fwd_ms=A['t_fwd_ms'], addendum=A['id'])
+    for name in INTEGRITY_AMENDMENTS:                   # A2+: replace only the runner code pins; never a book, date, coin or cost
+        p = os.path.join(HERE, name)
+        if check:
+            want = open(p.replace('.json', '.sha256'), encoding='utf-8').read().split()[0]
+            if sha(p) != want: raise SystemExit(f'{name} differs from its committed sha256')
+        A = json.load(open(p, encoding='utf-8'))
+        if check and A['parent_freeze_sha256'] != sha(FREEZE): raise SystemExit(f'{name}: parent freeze sha differs')
+        if check:
+            for ad in fz.get('addenda', []):
+                if A['parent_addenda_sha256'].get(ad['file']) != ad['sha256']: raise SystemExit(f'{name}: parent addendum sha differs')
+        fz['code_sha256'] = A['code_sha256']
+        fz.setdefault('integrity_amendments', []).append(A['id'])
     if check:
         for k, L in fz['leads'].items():
             if sha(os.path.join(ROOT, L['cases_file'])) != L['cases_sha256']: raise SystemExit(f'{k}: cases file differs from the freeze')
@@ -83,9 +96,12 @@ def read_1h(path):
     return out
 
 
-def merge_coin(base, fwd, B):
-    """base, fwd: frames from read_1h. Returns (merged frame, info). info['status']:
-    OK       forward data reaches B-1h with no missing hour after the base;
+def merge_coin(base, fwd, B, fetch_start):
+    """base, fwd: frames from read_1h; fetch_start: the forward fetch's first hour (ms). Returns (merged frame, info). info['status']:
+    OK       every base bar from fetch_start to the base's last bar is also in the forward data and identical (A2: at least one
+             such bar), and forward data reaches B-1h with no missing hour after the base;
+    OVERLAP_MISSING  an expected overlap bar is absent from the forward data, or no overlap is expected at all (treated as missing
+             prices: merged = base only, never an invented price);
     CUT      a missing hour (or an early end) after the base: merged is cut at the last bar before it;
     MISMATCH an overlapping bar differs (merged None);
     NO_FWD   no forward rows at all (merged = base, which ends long before B-1h: treated as CUT at the base end)."""
@@ -98,6 +114,14 @@ def merge_coin(base, fwd, B):
     fwd = fwd[fwd.t < B]
     ov = base.merge(fwd, on='t', suffixes=('_b', '_f'))
     info['overlap_bars'] = int(len(ov))
+    exp = base.t[base.t >= fetch_start].values
+    info['overlap_expected'] = int(len(exp))
+    if not len(exp) or not np.isin(exp, fwd.t.values).all():
+        miss = exp[~np.isin(exp, fwd.t.values)] if len(exp) else exp
+        info.update(status='OVERLAP_MISSING', cut_after_ms=info['base_last_ms'], n_missing=int(len(miss)),
+                    first_missing_ms=int(miss[0]) if len(miss) else None,
+                    reason='no base bar at or after the fetch start' if not len(exp) else 'expected overlap bar absent from the forward data')
+        return base.copy(), info
     for c in COLS:
         a, b = ov[c + '_b'].values, ov[c + '_f'].values
         both_nan = np.isnan(a) & np.isnan(b)
@@ -153,12 +177,12 @@ def verify_base(fz, fresh_dir, extra_dir, coins):
     return paths
 
 
-def verify_fetch(fz, fdir, B, coins):
+def verify_fetch(fz, fdir, B, coins, test=False):
     mp = os.path.join(fdir, 'fetch_manifest.json')
     m = json.load(open(mp, encoding='utf-8'))
     if m['boundary_ms'] != B: raise SystemExit('fetch manifest boundary differs')
     if m['freeze_sha256'] != sha(FREEZE): raise SystemExit('forward data was fetched under a different freeze file')
-    if m['start_ms'] != fz['forward_fetch']['start_ms']: raise SystemExit('fetch start differs from the freeze')
+    if m['start_ms'] != fz['forward_fetch']['start_ms'] and not test: raise SystemExit('fetch start differs from the freeze')
     paths = {}
     for s in coins:
         v = m['symbols'].get(s)
@@ -166,17 +190,17 @@ def verify_fetch(fz, fdir, B, coins):
         if v is None: paths[s] = None; continue
         if sha(p) != v['sha256']: raise SystemExit(f'{s}: forward csv sha differs from the fetch manifest')
         paths[s] = p
-    return sha(mp), paths
+    return sha(mp), paths, m['start_ms']
 
 
-def build_data(base_paths, fwd_paths, B, work):
+def build_data(base_paths, fwd_paths, B, work, fetch_start):
     """Merge every coin into work/<SYM>_1h.csv. Returns (coverage dict, problems list). BTC must be OK."""
     os.makedirs(work, exist_ok=True)
     cov, problems = {}, []
     for s in sorted(base_paths):
         base = read_1h(base_paths[s])
         fwd = read_1h(fwd_paths[s]) if fwd_paths.get(s) else None
-        m, info = merge_coin(base, fwd, B)
+        m, info = merge_coin(base, fwd, B, fetch_start)
         cov[s] = info
         if info['status'] == 'MISMATCH': problems.append(f'{s}: overlap mismatch {info}'); continue
         if s == 'BTCUSDT' and info['status'] != 'OK': problems.append(f'BTCUSDT incomplete: {info}')
@@ -186,6 +210,18 @@ def build_data(base_paths, fwd_paths, B, work):
 
 
 # ------------------------------------------------------------------ worker (one lead, inside its exported source)
+IMMUTABLE_ENTRY = ('side', 'entry_ref', 'entry_fill', 'qty', 'risk_usd', 'stop_dist', 'initial_stop', 'target')
+
+
+def entry_facts(f, management, slip):
+    """The facts fixed when a position opens (A2): side, reference and fill price, quantity, risk, stop distance, initial
+    stop and target. They never change while the position lives; marks, age and exits do."""
+    side, ref, R = f['side'], f['ref'], f['stop_dist']
+    px = ref if f.get('liq') == 'maker' else ref * (1 + side * slip)
+    return dict(side=side, entry_ref=ref, entry_fill=px, qty=f['qty'], risk_usd=f['risk'], stop_dist=R,
+                initial_stop=px - side * R, target=px + side * R * management['tp_r'])
+
+
 def open_positions(tr, log, book, T, management, slip):
     """Entries in the fill log without a closed trade = positions still open at the last closed bar. The log holds the
     reference price before slippage; the backtest sets stop and target from the fill = ref * (1 + side * SLIP)."""
@@ -194,14 +230,14 @@ def open_positions(tr, log, book, T, management, slip):
     out = []
     for f in log:
         if f['kind'] != 'entry' or (f['sym'], f['pos_i']) in closed: continue
-        s, side, ref, qty, R = f['sym'], f['side'], f['ref'], f['qty'], f['stop_dist']
+        s, side = f['sym'], f['side']
         c = book.arr[s]['c']
         ok = np.flatnonzero(~np.isnan(c))
         li = int(ok[-1]) if len(ok) else -1
         mark = float(c[li])
-        px = ref if f.get('liq') == 'maker' else ref * (1 + side * slip)
-        out.append(dict(sym=s, side=side, t_in=str(T[f['i']]), entry_ref=ref, entry_fill=px, qty=qty, risk_usd=f['risk'], stop_dist=R,
-                        initial_stop=px - side * R, target=px + side * R * management['tp_r'], bars_held=len(T) - 1 - int(f['i']),
+        e = entry_facts(f, management, slip)
+        px, qty = e['entry_fill'], e['qty']
+        out.append(dict(sym=s, t_in=str(T[f['i']]), **e, bars_held=len(T) - 1 - int(f['i']),
                         max_bars=management['max_bars'], mark_t=str(T[li]), mark=mark,
                         unrealized_R_before_costs=round(side * (mark - px) * qty / 8.0, 4),
                         stale=bool(li < len(T) - 1)))
@@ -244,10 +280,20 @@ def worker(a):
     sig = pd.read_csv(os.path.join(a.out, f'{a.case}_signals.csv'))
     sig = sig[pd.to_datetime(sig.decision_bar_open_utc) >= pd.Timestamp(t_fwd)].sort_values(['decision_bar_open_utc', 'sym'])
 
+    ent = {}                                          # (order, scen, sym, t_in) -> entry facts from that run's fill log
+    for i, c in enumerate(CAP):
+        for f in c['log']:
+            if f['kind'] == 'entry': ent[(i // 2, c['scen'], f['sym'], str(T[f['i']]))] = entry_facts(f, mg, BT.SLIP)
+
     def closed(order, scen):
         x = allt[(allt.order == order) & (allt.scen == scen)].sort_values(['t_out', 'sym'])
-        return [dict(sym=r.sym, side=int(r.side), t_in=str(r.t_in), t_out=str(r.t_out), why=r.why, R15=round(r.pnl15 / 8.0, 6),
-                     R7=round(r.pnl7 / 8.0, 6), R23=round(r.pnl23 / 8.0, 6)) for r in x.itertuples()]
+        out = []
+        for r in x.itertuples():
+            e = ent.get((order, scen, r.sym, str(r.t_in)))
+            if e is None or e['side'] != int(r.side): raise RuntimeError(f'closed trade {r.sym} {r.t_in} has no matching entry fill')
+            out.append(dict(sym=r.sym, t_in=str(r.t_in), t_out=str(r.t_out), why=r.why, R15=round(r.pnl15 / 8.0, 6),
+                            R7=round(r.pnl7 / 8.0, 6), R23=round(r.pnl23 / 8.0, 6), **e))
+        return out
 
     def stats(rows):
         n = len(rows)
@@ -294,9 +340,11 @@ def parity(prev, cur):
         cs = {skey(r): r for r in c['signals']['rows'] if r['decision_bar_open_utc'] < pb}
         for kk in sorted(set(ps) | set(cs)):
             if ps.get(kk) != cs.get(kk): probs.append(f'{k}: signal {kk} before the earlier boundary is missing or differs')
-        now = {key(r) for r in c['primary']['closed']} | {key(r) for r in c['primary']['open']}
-        for r in p['primary']['open']:
-            if key(r) not in now: probs.append(f'{k}: earlier open position {key(r)} is missing or differs')
+        now = {key(r): r for r in c['primary']['closed'] + c['primary']['open']}
+        for r in p['primary']['open']:                  # still open or closed since; the entry facts must be identical (A2)
+            n = now.get(key(r))
+            if n is None or any(n.get(f) != r.get(f) for f in IMMUTABLE_ENTRY):
+                probs.append(f'{k}: earlier open position {key(r)} is missing or differs in its entry facts')
     return probs
 
 
@@ -373,10 +421,10 @@ def main():
     else:
         base_paths = verify_base(fz, a.fresh or fz['base_history']['fresh_dir'], a.extra or fz['base_history']['extra_dir'], coins)
     fdir = os.path.join(a.fwd, str(B))
-    fetch_sha, fwd_paths = verify_fetch(fz, fdir, B, sorted(base_paths))
+    fetch_sha, fwd_paths, fetch_start = verify_fetch(fz, fdir, B, sorted(base_paths), test=test)
     work = os.path.join(a.rows, '_work', str(B))
     if os.path.exists(work): shutil.rmtree(work)
-    cov, problems = build_data(base_paths, fwd_paths, B, os.path.join(work, 'data'))
+    cov, problems = build_data(base_paths, fwd_paths, B, os.path.join(work, 'data'), fetch_start)
     universe = [s for s in sorted(base_paths) if s != 'BTCUSDT' and cov.get(s, {}).get('status') == 'OK']
     dropped = sorted(s for s in base_paths if s != 'BTCUSDT' and s not in universe)
     leads = {}

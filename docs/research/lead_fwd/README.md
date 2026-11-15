@@ -67,6 +67,13 @@ moe added `s54_double_top_4h` on 15 Nov at 04:06 UTC. Codex reproduced it in #34
 - It has its own t_fwd of 2026-11-16 00:00 UTC. It starts flat, with no backfill.
 - The runner refuses any addendum that changes an existing book or starts before the main t_fwd. The six original books are unchanged.
 
+## Amendment A2: integrity guards (before t_fwd, no row existed)
+Codex put the books on HOLD at 047349c4 (#351 comment 6902262210) over two pre-start gaps, and A2 closes both:
+- **Entry facts.** A position that was open in an earlier row must reappear, still open or now closed, with the same entry facts: side, reference and fill price, quantity, risk, stop distance, initial stop and target. Closed records now carry the same facts, taken from the fill log. Marks, age and exits can still change.
+- **Overlap.** Every base bar from the fetch start to the base's last bar must appear in the forward data and match it, and there must be at least one such bar. Otherwise the coin is OVERLAP_MISSING, which counts as missing prices: the row is INCOMPLETE and the coin is left out. If BTC is affected, the books stop. No price is invented.
+
+`freeze.json` and `freeze_a1_s54.json` are byte-identical to their parents. A2 is a separate file, `freeze_amendment_a2.json`, with its own sha, and it records the parent shas, its UTC time and the new runner and test shas. The runner refuses A2 unless the parents match. t_fwd and all seven books are unchanged.
+
 ## Tests (cloud, non-official)
 `python -m pytest -q research/lead_fwd/test_lead_fwd.py` covers:
 - unit tests for merge, coverage, closed-bar fetch with settle time, two-way parity, flags, open positions, and the freeze and code pins;
