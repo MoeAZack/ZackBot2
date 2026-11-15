@@ -4398,3 +4398,128 @@ def test_v76_regime_gate_and_hour_zero_with_gaps():
             fired += 1
             assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), key
     assert fired and all(all(x) for x in seen.values()), seen
+
+
+import longscout_v77 as L77
+L77.register()
+
+_V77_COIN = {'s77_bear_flag_4h': lambda: _ms(_mk(2600, '4h', 41)),
+             's77_failed_bull_flag_4h': lambda: _ms(_mk(2600, '4h', 44))}
+_V77_FN = {'s77_bear_flag_4h': (L77._bear_v, L77._bear, dict(pole=0.20, flag=0.12), (-1,)),
+           's77_failed_bull_flag_4h': (L77._fail_v, L77._fail, dict(pole=0.20), (0, -1))}
+
+
+@pytest.mark.parametrize('key', sorted(L77.CANDIDATES))
+def test_v77_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V77_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert se.sum() and not le.any()
+    ent = np.flatnonzero(se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v77_bear_ref(D, pole=0.20, flag=0.12):
+    days = list(D.index); H, Lo, C = list(D.h), list(D.l), list(D.c); m = len(C)
+    res = np.zeros(m, bool)
+    for j in range(20, m):
+        if days[j] - days[j - 20] != pd.Timedelta(days=20):
+            continue
+        cand = list(range(j - 10, j - 3)); q = min(cand, key=lambda i: (C[i], i))
+        ok = C[q] <= (1 - pole) * max(H[q - 5:q + 1])
+        ok = ok and all(Lo[i] >= Lo[q] and H[i] <= (1 + flag) * C[q] for i in range(q + 1, j))
+        res[j] = ok and C[j] < Lo[q] and C[j - 1] >= Lo[q]
+    return res
+
+
+def _v77_fail_ref(D, pole=0.20):
+    days = list(D.index); H, Lo, C = list(D.h), list(D.l), list(D.c); m = len(C)
+    res = np.zeros(m, bool)
+    for j in range(20, m):
+        if days[j] - days[j - 20] != pd.Timedelta(days=20):
+            continue
+        cand = list(range(j - 10, j - 3)); q = min(cand, key=lambda i: (-C[i], i))
+        if not (C[q] >= (1 + pole) * min(Lo[q - 5:q + 1]) and all(H[i] <= H[q] for i in range(q + 1, j)) and j - 1 > q + 1):
+            continue
+        res[j] = C[j] < min(Lo[q + 1:j]) and not C[j - 1] < min(Lo[q + 1:j - 1])
+    return res
+
+
+def test_v77_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (40, 41, 44, 49, 51):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for key, ref in (('s77_bear_flag_4h', _v77_bear_ref), ('s77_failed_bull_flag_4h', _v77_fail_ref)):
+            fv, _, p, _ = _V77_FN[key]
+            v = fv(D, p).values
+            np.testing.assert_array_equal(v, ref(D), err_msg=str((seed, key)))
+            hits[key] = hits.get(key, 0) + int(v.sum())
+            if seed == 44:
+                for cut in range(25, len(D), 37):
+                    np.testing.assert_array_equal(fv(D.iloc[:cut], p).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(fv(gap, p).values, ref(gap), err_msg=str(('gap', key)))
+    assert all(hits.values()), hits
+
+
+def test_v77_synthetic_flag_edges():
+    def mk(rows):
+        h, l, c = (list(x) for x in zip(*rows))
+        return pd.DataFrame(dict(h=h, l=l, c=c, v=1.0), index=pd.date_range('2022-01-01', periods=len(rows), freq='D'))
+    pb = dict(pole=0.20, flag=0.12)
+    # bear: high 100 on day 9, pole bottom day 12 close 80 (low 79), flag days 13..18 in [79, 89.6], break on day 19 (j = 19 + 1 pad)
+    pre = [(100.0, 95.0, 97.0)] * 10 + [(98.0, 88.0, 90.0), (90.0, 82.0, 85.0), (85.0, 79.0, 80.0)]
+    flag = [(84.0, 80.0, 82.0)] * 6
+    rows = [(100.0, 95.0, 97.0)] * 1 + pre + flag
+    assert len(rows) == 20
+    b = lambda r: L77._bear_v(mk(r), pb).values[-1]
+    assert b(rows + [(82.0, 77.0, 78.9)])
+    assert not b(rows + [(82.0, 77.0, 79.0)])                                 # close equal to the pole day's low
+    assert not b(rows[:-1] + [(89.61, 80.0, 82.0)] + [(82.0, 77.0, 78.9)])     # flag above 112% of the pole close
+    assert b(rows[:-1] + [(89.6, 80.0, 82.0)] + [(82.0, 77.0, 78.9)])
+    assert not b(rows[:-1] + [(84.0, 78.99, 82.0)] + [(82.0, 77.0, 78.9)])     # flag undercut the pole low
+    assert b(rows[:-1] + [((1 + 0.12) * 80.0, 80.0, 82.0)] + [(82.0, 77.0, 78.9)])   # flag high exactly 112% counts
+    assert b(rows[:-1] + [(84.0, 79.0, 82.0)] + [(82.0, 77.0, 78.9)])         # flag low equal to the pole low counts
+    late = rows[:17] + [(84.0, 80.0, 79.5)] + rows[18:]
+    assert b(late + [(82.0, 77.0, 78.9)])                                     # a lower close at j-3 is not the pole bottom
+    shallow = [(r[0], r[1], 80.01) if i == 13 else r for i, r in enumerate(rows)]
+    assert not b(shallow + [(82.0, 77.0, 78.9)])                              # pole fell less than 20%
+    # failed bull flag: pole day 12 close 120 from low 100; flag lows 110..; breakdown below 110
+    pf = dict(pole=0.20)
+    pre = [(101.0, 100.0, 100.5)] * 11 + [(112.0, 104.0, 110.0), (121.0, 109.0, 120.0)]
+    rows = [(101.0, 100.0, 100.5)] + pre + [(118.0, 111.0, 115.0), (117.0, 110.0, 114.0)] + [(116.0, 112.0, 113.0)] * 4
+    fb = lambda r: L77._fail_v(mk(r), pf).values[-1]
+    assert fb(rows + [(114.0, 108.0, 109.9)])
+    assert not fb(rows + [(114.0, 108.0, 110.0)])                             # close equal to the flag low
+    assert not fb(rows[:-1] + [(121.01, 112.0, 113.0)] + [(114.0, 108.0, 109.9)])   # flag above the pole high
+    assert not fb(rows[:-1] + [(116.0, 109.0, 109.5)] + [(114.0, 108.0, 107.0)])    # day j-1 already broke down
+    assert fb(rows[:-1] + [(121.0, 112.0, 113.0)] + [(114.0, 108.0, 109.9)])   # flag high equal to the pole high counts
+    weak = [(r[0], r[1], 119.99) if i == 13 else r for i, r in enumerate(rows)]
+    assert not fb(weak + [(114.0, 108.0, 109.9)])                             # pole close below 1.20 x 100
+
+
+def test_v77_regime_gate_and_hour_zero_with_gaps():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0; seen = {}
+    for key, seeds in (('s77_bear_flag_4h', (41, 40)), ('s77_failed_bull_flag_4h', (40, 44))):
+        _, fn, p, ok = _V77_FN[key]
+        for seed in seeds:
+            coin = _ms(_mk(2600, '4h', seed)); d = S.indicators(coin); cr = L.coin_regime(d)
+            f = np.asarray(fn(d, p))
+            full = _sig(key, coin, btc); got = np.asarray(full['se'])
+            np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+            for r in (0, 1, -1):
+                seen[(key, r)] = seen.get((key, r), 0) + int((f & (cr == r)).sum())
+            t = pd.to_datetime(coin.t).dt.normalize()
+            for i in np.flatnonzero(got)[:20]:
+                assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=18)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not np.asarray(part['se'])[k0], key
+    assert fired and seen[('s77_bear_flag_4h', 0)] and seen[('s77_bear_flag_4h', -1)], seen
+    assert seen[('s77_failed_bull_flag_4h', 1)] and seen[('s77_failed_bull_flag_4h', 0)], seen
