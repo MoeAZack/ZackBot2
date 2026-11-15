@@ -3970,3 +3970,96 @@ def test_v72_tied_low_uses_latest_and_equal_volume_is_not_distribution():
     assert L72._dist_v(_v72_days(c, v), q).values[-2]
     v[-2] = v[-3]                                                                     # sixth day on equal volume
     assert not L72._dist_v(_v72_days(c, v), q).values[-2]
+
+
+import longscout_v73 as L73
+L73.register()
+
+_V73_COIN = {'l73_obv_bull_div_4h': lambda: _ms(_mk(2600, '4h', 43)),
+             's73_obv_bear_div_4h': lambda: _ms(_mk(2600, '4h', 43))}
+
+
+@pytest.mark.parametrize('key', sorted(L73.CANDIDATES))
+def test_v73_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V73_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l73': le.sum() and not se.any(), 's73': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v73_ref(D, bull, n=20):
+    days = list(D.index); C, V = list(D.c), list(D.v); m = len(C)
+    obv = [0.0]
+    for i in range(1, m):
+        obv.append(obv[-1] + (V[i] if C[i] > C[i - 1] else -V[i] if C[i] < C[i - 1] else 0.0))
+    res = np.zeros(m, bool)
+    for j in range(n, m):
+        if days[j] - days[j - n] != pd.Timedelta(days=n):
+            continue
+        ext = min(C[j - n:j]) if bull else max(C[j - n:j])
+        if not (C[j] < ext if bull else C[j] > ext):
+            continue
+        a = max(i for i in range(j - n, j) if C[i] == ext)
+        res[j] = obv[j] > obv[a] if bull else obv[j] < obv[a]
+    return res
+
+
+def test_v73_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (41, 43, 46, 47, 49):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for bull in (True, False):
+            v = L73._div_v(D, dict(n=20), bull).values
+            np.testing.assert_array_equal(v, _v73_ref(D, bull), err_msg=str((seed, bull)))
+            hits[bull] = hits.get(bull, 0) + int(v.sum())
+            if seed == 43:
+                for cut in range(25, len(D), 37):
+                    np.testing.assert_array_equal(L73._div_v(D.iloc[:cut], dict(n=20), bull).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(L73._div_v(gap, dict(n=20), bull).values, _v73_ref(gap, bull))
+    assert all(hits.values()), hits
+
+
+def test_v73_synthetic_divergence_edges():
+    def run(c, v, bull=True):
+        D = pd.DataFrame(dict(h=c, l=c, c=c, v=v), index=pd.date_range('2022-01-01', periods=len(c), freq='D'))
+        return L73._div_v(D, dict(n=20), bull).values[-1]
+    base = [100.0] * 15
+    # lower low on day 24 after a low on day 18; OBV between: day 18 -10, day 19..23 up +5 each, day 24 down -v24
+    c = base + [100.0, 100.0, 100.0, 90.0, 91.0, 92.0, 93.0, 94.0, 95.0, 89.0]
+    v = [1.0] * 18 + [10.0, 5.0, 5.0, 5.0, 5.0, 5.0]
+    assert run(c, v + [24.0])                                             # OBV_j = OBV_a + 25 - 24 > OBV_a
+    assert not run(c, v + [25.0])                                         # equal OBV is no divergence
+    assert not run(c[:-1] + [90.0], v + [1.0])                            # equal close is no lower low
+    c2 = base + [100.0, 100.0, 100.0, 90.0, 95.0, 95.0, 90.0, 95.0, 95.0, 89.0]   # tied lows on days 18 and 21
+    v2 = [1.0] * 18 + [10.0, 5.0, 5.0, 20.0, 5.0, 5.0]
+    assert run(c2, v2 + [4.0]) and not run(c2, v2 + [5.0])               # OBV compared with the latest low (day 21)
+    cs = [200.0 - x for x in c]                                           # bearish mirror
+    assert run(cs, v + [24.0], False) and not run(cs, v + [25.0], False)
+    assert not run(cs[:-1] + [110.0], v + [1.0], False)                   # equal close is no higher high
+
+
+def test_v73_regime_gate_and_hour_zero_with_gaps():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0; seen = {}
+    for key in sorted(L73.CANDIDATES):
+        bull = key.startswith('l73'); ok = (0, 1) if bull else (0, -1)
+        coin = _V73_COIN[key](); d = S.indicators(coin); cr = L.coin_regime(d)
+        f = np.asarray(L73._div(d, dict(n=20), bull))
+        full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+        np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+        seen[key] = (int((f & (cr == 0)).sum()), int((f & (cr == ok[1])).sum()), int((f & (cr == -ok[1])).sum()))
+        t = pd.to_datetime(coin.t).dt.normalize()
+        for i in np.flatnonzero(got)[:20]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=12)].reset_index(drop=True)
+            part = _sig(key, cut, btc)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            fired += 1
+            assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), key
+    assert fired and all(all(x) for x in seen.values()), seen
