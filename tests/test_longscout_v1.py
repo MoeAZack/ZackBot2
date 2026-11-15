@@ -4289,3 +4289,112 @@ def test_v75_regime_gate_and_hour_zero_with_gaps():
                 fired += 1
                 assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), key
     assert fired and all(seen.values()), seen
+
+
+import longscout_v76 as L76
+L76.register()
+
+_V76_COIN = {'l76_downtrend_line_break_4h': lambda: _ms(_mk(2600, '4h', 43)),
+             's76_uptrend_line_break_4h': lambda: _ms(_mk(2600, '4h', 43))}
+
+
+@pytest.mark.parametrize('key', sorted(L76.CANDIDATES))
+def test_v76_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V76_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l76': le.sum() and not se.any(), 's76': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v76_ref(D, down, n=60, mid=20, last=3):
+    days = list(D.index); X = list(D.h if down else D.l); C = list(D.c); m = len(C)
+    res = np.zeros(m, bool)
+    pick = max if down else min
+    for j in range(n, m):
+        if days[j] - days[j - n] != pd.Timedelta(days=n):
+            continue
+        a = list(range(j - n, j - mid)); b = list(range(j - mid, j - last + 1))
+        p1 = next(i for i in a if X[i] == pick(X[i] for i in a)); p2 = next(i for i in b if X[i] == pick(X[i] for i in b))
+        if not ((X[p2] < X[p1]) if down else (X[p2] > X[p1])):
+            continue
+        line = lambda t: X[p1] + (X[p2] - X[p1]) * (t - p1) / (p2 - p1)
+        res[j] = (C[j] > line(j) and C[j - 1] <= line(j - 1)) if down else (C[j] < line(j) and C[j - 1] >= line(j - 1))
+    return res
+
+
+def test_v76_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (41, 43, 46, 48, 49):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for down in (True, False):
+            v = L76._line_v(D, L76.LP, down).values
+            r = _v76_ref(D, down)
+            np.testing.assert_array_equal(v, r, err_msg=str((seed, down)))
+            hits[down] = hits.get(down, 0) + int(v.sum())
+            if seed == 43:
+                for cut in range(65, len(D), 37):
+                    np.testing.assert_array_equal(L76._line_v(D.iloc[:cut], L76.LP, down).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(L76._line_v(gap, L76.LP, down).values, _v76_ref(gap, down))
+    assert all(hits.values()), hits
+
+
+def test_v76_synthetic_trendline_edges():
+    def run(x, cj, cprev=None, down=True):
+        x = list(x); c = [v - 10 for v in x] if down else [v + 10 for v in x]
+        if cprev is not None:
+            c[-1] = cprev
+        c = c + [cj]
+        if down:
+            h = x + [max(cj, x[-1])]; lo = [v - 30 for v in h]
+        else:
+            lo = x + [min(cj, x[-1])]; h = [v + 30 for v in lo]
+        D = pd.DataFrame(dict(h=h, l=lo, c=c, v=1.0), index=pd.date_range('2022-01-01', periods=len(c), freq='D'))
+        return L76._line_v(D, L76.LP, down).values[-1]
+    h = [100.0] * 60; h[10] = 150.0; h[50] = 130.0                            # p1 = 10, p2 = 50 (j = 60): slope -0.5
+    assert run(h, 125.01)                                                     # line(60) = 125, line(59) = 125.5
+    assert not run(h, 125.0)                                                  # close equal to the line
+    assert not run(h, 126.0, cprev=125.6)                                     # day j-1 already above its line value
+    assert run(h, 126.0, cprev=125.5)                                         # day j-1 exactly on the line counts as below
+    h2 = list(h); h2[50] = 150.0
+    assert not run(h2, 160.0)                                                 # p2 not lower than p1: no downtrend line
+    h3 = list(h); h3[58] = 140.0
+    assert run(h3, 125.01)                                                    # a high at j-2 is outside the p2 window
+    h4 = list(h); h4[57] = 140.0; h4[50] = 100.0                              # p2 = 57 = j-3: slope -10/47
+    assert run(h4, 140.0 - 10.0 * 3 / 47 + 0.01, cprev=120.0)
+    h5 = list(h); h5[40] = 150.0                                              # p1 window ends at j-21 = 39: day 40 is p2's
+    assert not run(h5, 125.01)
+    h6 = list(h); h6[40] = 160.0
+    assert not run(h6, 125.01)                                                # day j-20 belongs to the p2 window only
+    h7 = list(h); h7[20] = 150.0
+    assert not run(h7, 124.0) and run(h7, 125.01)                             # tied p1 highs: the earliest day anchors
+    lo2 = [200.0 - v for v in h2]
+    assert not run(lo2, 40.0, down=False)                                     # mirror: p2 not higher than p1
+    lo = [200.0 - v for v in h]                                               # mirror: line(60) = 75
+    assert run(lo, 74.99, down=False) and not run(lo, 75.0, down=False)
+
+
+def test_v76_regime_gate_and_hour_zero_with_gaps():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0; seen = {}
+    for key in sorted(L76.CANDIDATES):
+        down = key.startswith('l76'); ok = (0, 1) if down else (0, -1)
+        coin = _V76_COIN[key](); d = S.indicators(coin); cr = L.coin_regime(d)
+        f = np.asarray(L76._line(d, L76.LP, down))
+        full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+        np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+        seen[key] = tuple(int((f & (cr == r)).sum()) for r in (0, 1, -1))
+        t = pd.to_datetime(coin.t).dt.normalize()
+        for i in np.flatnonzero(got)[:20]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=45)].reset_index(drop=True)
+            part = _sig(key, cut, btc)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            fired += 1
+            assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), key
+    assert fired and all(all(x) for x in seen.values()), seen
