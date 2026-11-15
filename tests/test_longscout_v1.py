@@ -4189,3 +4189,103 @@ def test_v74_fractal_window_needs_days_back_to_k_minus_two():
     D = pd.DataFrame(dict(h=h, l=[95.0] * 24, c=c, v=1.0), index=pd.date_range('2022-01-01', periods=24, freq='D'))
     assert L74._frac_v(D, dict(n=20)).values[-1]
     assert not L74._frac_v(D.drop(D.index[1]), dict(n=20)).values[-1]       # day j-22 (k-2) missing blocks
+
+
+import longscout_v75 as L75
+L75.register()
+
+_V75_COIN = {'l75_ascending_triangle_4h': lambda: _ms(_mk(2600, '4h', 46)),
+             's75_descending_triangle_4h': lambda: _ms(_mk(2600, '4h', 44))}
+
+
+@pytest.mark.parametrize('key', sorted(L75.CANDIDATES))
+def test_v75_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V75_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l75': le.sum() and not se.any(), 's75': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v75_ref(D, asc, n=30, tol=0.02, gap=5, rec=10, slope=0.05):
+    days = list(D.index); H, Lo, C = list(D.h), list(D.l), list(D.c); m = len(C)
+    res = np.zeros(m, bool)
+    for j in range(n, m):
+        if days[j] - days[j - n] != pd.Timedelta(days=n):
+            continue
+        if asc:
+            T = max(H[j - n:j]); t = [i for i in range(j - n, j) if H[i] >= (1 - tol) * T]
+            ok = min(Lo[j - rec:j]) >= (1 + slope) * min(Lo[j - n:j - n + rec]) and C[j] > T
+        else:
+            T = min(Lo[j - n:j]); t = [i for i in range(j - n, j) if Lo[i] <= (1 + tol) * T]
+            ok = max(H[j - rec:j]) <= (1 - slope) * max(H[j - n:j - n + rec]) and C[j] < T
+        res[j] = ok and t[-1] - t[0] >= gap
+    return res
+
+
+def test_v75_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (40, 42, 44, 46, 48):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for asc in (True, False):
+            v = L75._tri_v(D, L75.TP, asc).values
+            np.testing.assert_array_equal(v, _v75_ref(D, asc), err_msg=str((seed, asc)))
+            hits[asc] = hits.get(asc, 0) + int(v.sum())
+            if seed == 46:
+                for cut in range(35, len(D), 37):
+                    np.testing.assert_array_equal(L75._tri_v(D.iloc[:cut], L75.TP, asc).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(L75._tri_v(gap, L75.TP, asc).values, _v75_ref(gap, asc))
+    assert all(hits.values()), hits
+
+
+def test_v75_synthetic_triangle_edges():
+    def run(h, l, cj, asc=True):
+        c = [(a + b) / 2 for a, b in zip(h, l)] + [cj]
+        hh, ll = h + [max(cj, h[-1])], l + [min(cj, l[-1])]
+        D = pd.DataFrame(dict(h=hh, l=ll, c=c, v=1.0), index=pd.date_range('2022-01-01', periods=len(c), freq='D'))
+        return L75._tri_v(D, L75.TP, asc).values[-1]
+    h = [95.0] * 30; h[2] = 100.0; h[7] = 98.0                                # touches 5 days apart (98 = 0.98 T)
+    l = [80.0] * 10 + [82.0] * 10 + [84.0] * 10                               # recent lows 84 = 1.05 x 80
+    assert run(h, l, 100.5)
+    assert not run(h, l, 100.0)                                               # close equal to T
+    h2 = list(h); h2[7] = 97.99
+    assert not run(h2, l, 100.5)                                              # second touch below 0.98 T
+    h3 = list(h); h3[7] = 95.0; h3[6] = 98.0
+    assert not run(h3, l, 100.5)                                              # touches only 4 days apart
+    l2 = list(l); l2[25] = 83.99
+    assert not run(h, l2, 100.5)                                              # lows rose less than 5%
+    hd = [120.0] * 10 + [116.0] * 10 + [114.0] * 10                           # 114 = 0.95 x 120
+    ld = [105.0] * 30; ld[2] = 100.0; ld[7] = 102.0                           # 102 = 1.02 B
+    assert run(hd, ld, 99.5, False) and not run(hd, ld, 100.0, False)
+    hd2 = list(hd); hd2[25] = 114.01
+    assert not run(hd2, ld, 99.5, False)
+    hd3 = [120.0] + [115.0] * 9 + hd[10:]                                       # the early high sits on day j-30
+    assert run(hd3, ld, 99.5, False)
+
+
+def test_v75_regime_gate_and_hour_zero_with_gaps():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0; seen = {}
+    for key, seeds in (('l75_ascending_triangle_4h', (46, 42)), ('s75_descending_triangle_4h', (44,))):
+        asc = key.startswith('l75'); ok = (0, 1) if asc else (0, -1)
+        for seed in seeds:
+            coin = _ms(_mk(2600, '4h', seed)); d = S.indicators(coin); cr = L.coin_regime(d)
+            f = np.asarray(L75._tri(d, L75.TP, asc))
+            full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+            np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+            for r in (0, 1, -1):
+                seen[(key, r)] = seen.get((key, r), 0) + int((f & (cr == r)).sum())
+            t = pd.to_datetime(coin.t).dt.normalize()
+            for i in np.flatnonzero(got)[:20]:
+                assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=25)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), key
+    assert fired and all(seen.values()), seen
