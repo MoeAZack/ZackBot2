@@ -1105,3 +1105,58 @@ def test_v34_swing_mid_needs_the_extreme_order():
     assert mid.iloc[-1] == 8 and abs(size.iloc[-1] - 0.4) < 1e-12
     mid2, _ = L34._swing_mid(pd.Series([6, 7, 8, 9, 10], dtype=float), 5, True)   # no decline: high is last
     assert np.isnan(mid2.iloc[-1])
+
+
+import longscout_v35 as L35
+L35.register()
+
+
+@pytest.mark.parametrize('key', sorted(L35.CANDIDATES))
+def test_v35_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    a = 55 if key.startswith('s35') else 56
+    coin, btc = _ms(_mk(2600, '4h', a)), _ms(_mk(2600, '4h', 55 if a != 55 else 56))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v35_week_high_matches_independent_resample():
+    c = S.indicators(_ms(_mk(2600, '4h', 56))); t = pd.to_datetime(c.t)
+    H, _ = L35._week_high(c)
+    s = pd.Series(c.h.values, index=t); cnt = s.resample('W-SUN').count(); W = s.resample('W-SUN').max()[cnt == 42]
+    prev_sun = (t - pd.to_timedelta(t.dt.weekday, unit='D')).dt.normalize() - pd.Timedelta(days=1)
+    exp = prev_sun.map(lambda x: W.get(x, np.nan)).values
+    sun20 = ((t.dt.weekday == 6) & (t.dt.hour == 20)).values      # by design: NaN on the last bar of a week
+    assert np.isnan(H.values[sun20]).all()
+    np.testing.assert_allclose(H.values[~sun20], exp[~sun20])
+
+
+def test_v35_orb_matches_independent_loop():
+    c = S.indicators(_ms(_mk(2600, '4h', 56))); t = pd.to_datetime(c.t)
+    got = L35._orb(c, True)
+    exp = np.zeros(len(c), bool); day = t.dt.normalize().values; h, cl = c.h.values, c.c.values
+    for i in range(1, len(c)):
+        j = np.flatnonzero((day == day[i]) & (t.dt.hour.values == 0))
+        if not len(j) or j[0] >= i or (t.dt.hour.values[i] == 0): continue
+        lvl = h[j[0]]
+        if cl[i] > lvl and cl[i - 1] <= lvl and not exp[j[0]:i].any() and day[i - 1] == day[i]:
+            exp[i] = True
+    assert got.sum() > 20 and (got == exp).all()
+
+
+def test_v35_week_break_entries_match_independent_loop():
+    coin, btc = _ms(_mk(2600, '4h', 56)), _ms(_mk(2600, '4h', 55))
+    c = S.indicators(coin); t = pd.to_datetime(c.t)
+    H, mon = L35._week_high(c)
+    exp = np.zeros(len(c), bool); cl = c.c.values; hv = H.values; mv = mon.values
+    for i in range(1, len(c)):
+        if np.isnan(hv[i]) or not (cl[i] > hv[i] and cl[i - 1] <= hv[i]): continue
+        if not exp[(mv == mv[i]) & (np.arange(len(c)) < i)].any(): exp[i] = True
+    cr = L.coin_regime(c)
+    le = np.asarray(_sig('l35_prior_week_high_break_4h', coin, btc)['le'])
+    assert le.sum() > 5 and (le == (exp & (cr == 1))).all()
