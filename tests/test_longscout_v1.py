@@ -1367,3 +1367,35 @@ def test_v40_helper_values_match_on_every_prefix():
         L.set_btc(btc.iloc[:cut].reset_index(drop=True))
         for f, x in zip(fns, full):
             np.testing.assert_array_equal(f(c.iloc[:cut].reset_index(drop=True)), x[:cut])
+
+
+import longscout_v41 as L41
+L41.register()
+
+
+@pytest.mark.parametrize('key', sorted(L41.CANDIDATES))
+def test_v41_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _ms(_mk(2600, '4h', 56)), _ms(_mk(2600, '4h', 55))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v41_setup9_reference_and_helper_prefixes():
+    c = S.indicators(_ms(_mk(2600, '4h', 56)))
+    D = L27._days_v(c); dc = D.c.values
+    got = L41._setup9(c, dict(lag=4, count=9), True)
+    t = pd.to_datetime(c.t).dt.normalize().values
+    for i in np.flatnonzero(got):
+        k = int(np.flatnonzero(D.index.values == t[i] - np.timedelta64(1, 'D'))[0])
+        assert all(dc[k - j] < dc[k - j - 4] for j in range(9)) and not all(dc[k - 1 - j] < dc[k - 5 - j] for j in range(9))
+    for fn in (lambda x: L41._setup9(x, dict(lag=4, count=9), True), lambda x: L41._setup9(x, dict(lag=4, count=9), False),
+               lambda x: L41._shock(x, L41.SH)):
+        full = fn(c); assert full.sum() > 0
+        for cut in range(700, 2600, 23):
+            np.testing.assert_array_equal(fn(c.iloc[:cut].reset_index(drop=True)), full[:cut])
