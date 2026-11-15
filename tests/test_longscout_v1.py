@@ -3276,3 +3276,87 @@ def test_v66_entries_are_hour_zero_and_gaps_block():
                 fired += 1
                 assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
     assert fired
+
+
+import longscout_v67 as L67
+L67.register()
+
+_V67_COIN = {'r67_regression_channel_break_4h': lambda: _ms(_mk(2600, '4h', 57)),
+             'l67_52w_high_4h': lambda: _ms(_mk(2600, '4h', 56)),
+             's67_52w_low_4h': lambda: _ms(_mk(2600, '4h', 54))}
+
+
+@pytest.mark.parametrize('key', sorted(L67.CANDIDATES))
+def test_v67_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V67_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'r67': le.sum() and se.sum(), 'l67': le.sum(), 's67': se.sum()}[key[:3]]
+    cr = L.coin_regime(S.indicators(coin))
+    assert (cr[le] == 1).all() and (cr[se] == -1).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v67_chan_ref(D, up, n=50, k=2.0):
+    days = list(D.index); C = np.asarray(D.c); m = len(C)
+    P, Sd = np.full(m, np.nan), np.full(m, np.nan)
+    for j in range(n, m):
+        y = C[j - n:j]; b, a = np.polyfit(np.arange(n), y, 1)
+        r = y - (a + b * np.arange(n)); P[j] = a + b * n; Sd[j] = np.sqrt((r ** 2).sum() / (n - 2))
+    res = np.zeros(m, bool)
+    for j in range(n + 1, m):
+        if days[j] - days[j - n - 1] != pd.Timedelta(days=n + 1):
+            continue
+        if up:
+            res[j] = C[j] > P[j] + k * Sd[j] and C[j - 1] <= P[j - 1] + k * Sd[j - 1]
+        else:
+            res[j] = C[j] < P[j] - k * Sd[j] and C[j - 1] >= P[j - 1] - k * Sd[j - 1]
+    return res
+
+
+def _v67_year_ref(D, up, n=365, quiet=90):
+    days = list(D.index); C = list(D.c); m = len(C)
+    new = [j >= n and (C[j] > max(C[j - n:j]) if up else C[j] < min(C[j - n:j])) for j in range(m)]
+    res = np.zeros(m, bool)
+    for j in range(n, m):
+        if days[j] - days[j - n] != pd.Timedelta(days=n):
+            continue
+        res[j] = new[j] and j - quiet >= 0 and not any(new[j - quiet:j])
+    return res
+
+
+def test_v67_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (53, 54, 56, 57, 58):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for kind, fn, p, ref in (('ch', L67._chan_v, dict(n=50, k=2.0), _v67_chan_ref),
+                                 ('yr', L67._year_v, L67.YP, _v67_year_ref)):
+            for up in (True, False):
+                v = fn(D, p, up).values
+                np.testing.assert_array_equal(v, ref(D, up), err_msg=str((seed, kind, up)))
+                hits[(kind, up)] = hits.get((kind, up), 0) + int(v.sum())
+                if seed == 57:
+                    for cut in range(60, len(D), 37):
+                        np.testing.assert_array_equal(fn(D.iloc[:cut], p, up).values, v[:cut])
+    assert all(hits.values()), hits
+
+
+def test_v67_entries_are_hour_zero_and_gaps_block():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for key in sorted(L67.CANDIDATES):
+        coin = _V67_COIN[key](); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig(key, coin, btc)
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))[:20]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            for back in (2, 40):
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
+    assert fired
