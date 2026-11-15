@@ -4742,3 +4742,108 @@ def test_v79_regime_gate_and_hour_zero(monkeypatch):
             g = _sig(key, coin, btc)
             assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
             monkeypatch.undo()
+
+
+import longscout_v80 as L80
+L80.register()
+
+_V80_COIN = {'s80_triple_top_4h': lambda: _ms(_mk(2600, '4h', 83)),
+             'l80_triple_bottom_4h': lambda: _ms(_mk(2600, '4h', 131))}
+
+
+@pytest.mark.parametrize('key', sorted(L80.CANDIDATES))
+def test_v80_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V80_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l80': le.sum() and not se.any(), 's80': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent - 1) | set(ent) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v80_ref(D, top, tol=0.03, depth=0.05):
+    days = list(D.index); H, Lo, C = list(D.h), list(D.l), list(D.c); m = len(C)
+    res = np.zeros(m, bool)
+    for j in range(60, m):
+        if days[j] - days[j - 60] != pd.Timedelta(days=60):
+            continue
+        X = H if top else Lo
+        key = (lambda i: (-X[i], i)) if top else (lambda i: (X[i], i))
+        ix = [min(range(j - a, j - b + 1), key=key) for a, b in ((60, 41), (40, 21), (20, 3))]
+        v = [X[i] for i in ix]
+        if max(v) > (1 + tol) * min(v):
+            continue
+        if top:
+            neck = min(Lo[ix[0]:ix[2] + 1]); res[j] = neck <= (1 - depth) * min(v) and C[j] < neck and C[j - 1] >= neck
+        else:
+            neck = max(H[ix[0]:ix[2] + 1]); res[j] = neck >= (1 + depth) * max(v) and C[j] > neck and C[j - 1] <= neck
+    return res
+
+
+def test_v80_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (55, 83, 101, 131):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for top in (True, False):
+            v = L80._triple_v(D, L80.TP, top).values
+            np.testing.assert_array_equal(v, _v80_ref(D, top), err_msg=str((seed, top)))
+            hits[top] = hits.get(top, 0) + int(v.sum())
+            if seed == 83:
+                for cut in range(65, len(D), 37):
+                    np.testing.assert_array_equal(L80._triple_v(D.iloc[:cut], L80.TP, top).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(L80._triple_v(gap, L80.TP, top).values, _v80_ref(gap, top))
+    assert all(hits.values()), hits
+
+
+def test_v80_synthetic_triple_edges():
+    def run(peaks=(103.0, 100.0, 101.0), at=(5, 30, 50), neck=95.0, cj=94.9, prev=None, top=True, extra=None):
+        h = [97.0] * 60; l = [96.0] * 60; c = [96.5] * 60
+        for i, pk in zip(at, peaks):
+            h[i] = pk
+        l[40] = neck
+        if prev is not None:
+            c[59] = prev
+        if extra is not None:
+            h[extra[0]] = extra[1]
+        h, l, c = h + [97.0], l + [min(cj, 96.0)], c + [cj]
+        D = pd.DataFrame(dict(h=h, l=l, c=c, v=1.0), index=pd.date_range('2022-01-01', periods=61, freq='D'))
+        if not top:
+            D = D.assign(h=200 - D.l, l=200 - D.h, c=200 - D.c)
+        return L80._triple_v(D, L80.TP, top).values[-1]
+    assert run()                                                              # peaks 103/100/101, neck 95 = 0.95 x 100
+    assert not run(cj=95.0)                                                   # close equal to the neckline
+    assert not run(peaks=(103.01, 100.0, 101.0))                              # spread above 3%
+    assert not run(neck=95.01)                                                # neckline less than 5% below the lowest peak
+    assert not run(prev=94.99)                                                # day j-1 already below
+    assert run(at=(0, 20, 57))                                                # window starts j-60, j-40; peak 3 may sit at j-3
+    assert not run(at=(0, 20, 58), extra=(57, 97.5))                          # j-2 is outside the third window
+    assert not run(extra=(19, 104.1)) and not run(extra=(20, 104.1))          # j-41 and j-40 are inside the peak windows
+    assert not run(extra=(57, 104.1)) and run(extra=(58, 104.1))              # j-3 is inside; j-2 is not
+    mp = (102.0, 100.0, 101.0)                                                # mirror troughs 98/100/99
+    assert run(mp, top=False) and not run(mp, top=False, cj=95.0)             # mirror: neckline 105, close 105.1 vs 105
+
+
+def test_v80_regime_gate_and_hour_zero(monkeypatch):
+    btc = _ms(_mk(2600, '4h', 52))
+    for key, top, ok in (('s80_triple_top_4h', True, (0, -1)), ('l80_triple_bottom_4h', False, (0, 1))):
+        coin = _V80_COIN[key](); d = S.indicators(coin); cr = L.coin_regime(d)
+        f = np.asarray(L80._triple(d, L80.TP, top))
+        full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+        np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+        t = pd.to_datetime(coin.t).dt.normalize()
+        for i in np.flatnonzero(got):
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=50)].reset_index(drop=True)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            g = _sig(key, cut, btc)
+            assert not (np.asarray(g['le'])[k0] or np.asarray(g['se'])[k0]), key
+        for forced in (1.0, 0.0, -1.0):
+            monkeypatch.setattr(L80.L1, 'coin_regime', lambda d, v=forced: np.full(len(d), v))
+            g = _sig(key, coin, btc)
+            assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
+            monkeypatch.undo()
