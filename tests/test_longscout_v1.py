@@ -2811,3 +2811,98 @@ def test_v60_outer_week_must_be_the_week_right_before():
     c = np.r_[np.full(14, 100.0), [100, 112, 100, 100, 100, 100, 100]]
     D = pd.DataFrame({'o': c, 'h': np.maximum(h, c + 1), 'l': l, 'c': c}, index=idx)
     assert not L60._inside_v(D, True).any()                               # week of 8 Jan is missing entirely
+
+
+import longscout_v61 as L61
+L61.register()
+
+_V61_COIN = {'s61_bear_engulf_high_4h': lambda: _ms(_mk(2600, '4h', 55)),
+             'l61_bull_engulf_low_4h': lambda: _ms(_mk(2600, '4h', 58)),
+             's61_evening_star_4h': lambda: _ms(_mk(2600, '4h', 54))}
+
+
+@pytest.mark.parametrize('key', sorted(L61.CANDIDATES))
+def test_v61_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V61_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert (le if key.startswith('l61') else se).sum()
+    cr = L.coin_regime(S.indicators(coin))
+    assert np.isin(cr[le], (0, 1)).all() and np.isin(cr[se], (0, -1)).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v61_ref(D, kind, n=20):
+    days = list(D.index); O, H, Lo, C = list(D.o), list(D.h), list(D.l), list(D.c); m = len(days)
+    res = np.zeros(m, bool)
+    for j in range(n, m):
+        if days[j] - days[j - n] != pd.Timedelta(days=n):
+            continue
+        hi20, lo20 = max(H[j - n + 1:j + 1]), min(Lo[j - n + 1:j + 1])
+        if kind == 'bear':
+            res[j] = C[j - 1] > O[j - 1] and C[j] < O[j] and O[j] >= C[j - 1] and C[j] < O[j - 1] and max(H[j - 1], H[j]) >= hi20
+        elif kind == 'bull':
+            res[j] = C[j - 1] < O[j - 1] and C[j] > O[j] and O[j] <= C[j - 1] and C[j] > O[j - 1] and min(Lo[j - 1], Lo[j]) <= lo20
+        else:
+            b2, r2, b1 = C[j - 2] - O[j - 2], H[j - 2] - Lo[j - 2], abs(C[j - 1] - O[j - 1])
+            res[j] = (b2 > 0 and b2 >= 0.6 * r2 and b1 <= 0.3 * b2 and C[j] < O[j] and C[j] < (O[j - 2] + C[j - 2]) / 2
+                      and max(H[j - 2:j + 1]) >= hi20)
+    return res
+
+
+def test_v61_flags_match_an_independent_loop_and_prefixes():
+    hits = dict(bear=0, bull=0, star=0)
+    for seed in range(50, 70):
+        D = L17._days(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for kind, v in (('bear', L61._engulf_v(D, dict(n=20), True)), ('bull', L61._engulf_v(D, dict(n=20), False)),
+                        ('star', L61._star_v(D, dict(n=20)))):
+            np.testing.assert_array_equal(v.values, _v61_ref(D, kind), err_msg=str((seed, kind)))
+            hits[kind] += int(v.sum())
+            if seed in (54, 55):
+                for cut in range(40, len(D), 31):
+                    f = (lambda x: L61._star_v(x, dict(n=20))) if kind == 'star' else \
+                        (lambda x: L61._engulf_v(x, dict(n=20), kind == 'bear'))
+                    np.testing.assert_array_equal(f(D.iloc[:cut]).values, v.values[:cut])
+    assert all(hits.values()), hits
+
+
+def test_v61_synthetic_open_and_star_thresholds():
+    idx = pd.date_range('2024-01-01', periods=25, freq='D')
+    def frame(rows):
+        base = [(100, 101, 99, 100)] * (25 - len(rows)) + rows
+        return pd.DataFrame(base, columns=['o', 'h', 'l', 'c'], index=idx)
+    D = frame([(100, 111, 99, 110), (110, 112, 97, 98)])                 # green then engulfing red at the high
+    assert L61._engulf_v(D, dict(n=20), True).iloc[-1]
+    D = frame([(100, 111, 99, 110), (108, 112, 97, 98)])                 # opened below the prior close
+    assert not L61._engulf_v(D, dict(n=20), True).iloc[-1]
+    D = frame([(110, 111, 99, 100), (102, 113, 99, 112)])                # bullish engulfing but opened above prior close
+    assert not L61._engulf_v(D.assign(l=D.l - 5), dict(n=20), False).iloc[-1]
+    D = frame([(100, 111, 99, 110), (110, 112, 109, 111), (111, 111.5, 103, 104)])
+    assert L61._star_v(D, dict(n=20)).iloc[-1]
+    D = frame([(100, 111, 99, 110), (110, 114, 109, 113.5), (111, 111.5, 103, 104)])   # middle body too big
+    assert not L61._star_v(D, dict(n=20)).iloc[-1]
+    D = frame([(100, 120, 90, 110), (110, 112, 109, 111), (111, 111.5, 103, 104)])     # first body < 60% of range
+    assert not L61._star_v(D, dict(n=20)).iloc[-1]
+    D = frame([(100, 111, 99, 110), (110, 112, 109, 111), (111, 111.5, 105, 106)])     # closes above the midpoint
+    assert not L61._star_v(D, dict(n=20)).iloc[-1]
+
+
+def test_v61_entries_are_hour_zero_and_gaps_block():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for key in sorted(L61.CANDIDATES):
+        coin = _V61_COIN[key](); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig(key, coin, btc)
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se'])):
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            for back in (2, 15):
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
+    assert fired
