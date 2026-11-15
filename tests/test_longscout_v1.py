@@ -1297,3 +1297,35 @@ def test_v38_psar_reference_and_helper_prefixes():
         part = c.iloc[:cut].reset_index(drop=True)
         for f, x in zip(fns, full):
             np.testing.assert_array_equal(f(part), x[:cut])
+
+
+import longscout_v39 as L39
+L39.register()
+
+
+@pytest.mark.parametrize('key', sorted(L39.CANDIDATES))
+def test_v39_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin = _v36_coin(1) if 'mass' in key else _ms(_mk(2600, '4h', 52))
+    btc = _ms(_mk(2600, '4h', 55))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v39_helper_values_match_on_every_prefix():
+    P = {k: v['params'] for k, v in L39.CANDIDATES.items()}
+    c = S.indicators(_v36_coin(1))
+    fns = [lambda x, u=u: L39._vortex(x, P['r39_daily_vortex_4h'], u) for u in (True, False)] + \
+          [lambda x, u=u: L39._force(x, P['r39_daily_force_index_4h'], u) for u in (True, False)] + \
+          [lambda x: L39._mass(x, P['l39_mass_index_bulge_4h'])]
+    full = [f(c) for f in fns]
+    assert all(x.sum() > 0 for x in full)
+    for cut in range(700, 2600, 23):
+        part = c.iloc[:cut].reset_index(drop=True)
+        for f, x in zip(fns, full):
+            np.testing.assert_array_equal(f(part), x[:cut])
