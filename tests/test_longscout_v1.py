@@ -4643,3 +4643,102 @@ def test_v78_regime_gate_including_excluded_side(monkeypatch):
         cut = coin[t != t.iloc[i] - pd.Timedelta(days=50)].reset_index(drop=True)
         k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
         assert not np.asarray(_sig('l78_cup_handle_4h', cut, btc)['le'])[k0]
+
+
+import longscout_v79 as L79
+L79.register()
+
+_V79_COIN = {'l79_weekly_turn_up_4h': lambda: _ms(_mk(2600, '4h', 51)),
+             's79_weekly_turn_down_4h': lambda: _ms(_mk(2600, '4h', 51))}
+
+
+@pytest.mark.parametrize('key', sorted(L79.CANDIDATES))
+def test_v79_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V79_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l79': le.sum() and not se.any(), 's79': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent - 1) | set(ent) | set(ent + 6) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v79_ref(D, up, k=4):
+    days = list(D.index); have = set(days); H, Lo, C = list(D.h), list(D.l), list(D.c)
+    res = np.zeros(len(C), bool); fired = set()
+    for j, t in enumerate(days):
+        w = t - pd.Timedelta(days=t.dayofweek)
+        if w in fired:
+            continue
+        weeks = [w - pd.Timedelta(days=7 * i) for i in range(k + 1, 0, -1)]   # w-5 .. w-1
+        if not all(all(x + pd.Timedelta(days=dd) in have for dd in range(7)) for x in weeks):
+            continue
+        hi = [max(H[days.index(x + pd.Timedelta(days=dd))] for dd in range(7)) for x in weeks]
+        lo = [min(Lo[days.index(x + pd.Timedelta(days=dd))] for dd in range(7)) for x in weeks]
+        if up and all(hi[i] < hi[i - 1] for i in range(1, k + 1)) and C[j] > hi[-1]:
+            res[j] = True; fired.add(w)
+        if not up and all(lo[i] > lo[i - 1] for i in range(1, k + 1)) and C[j] < lo[-1]:
+            res[j] = True; fired.add(w)
+    return res
+
+
+def test_v79_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (43, 44, 46, 51):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for up in (True, False):
+            v = L79._turn_v(D, dict(k=4), up).values
+            np.testing.assert_array_equal(v, _v79_ref(D, up), err_msg=str((seed, up)))
+            hits[up] = hits.get(up, 0) + int(v.sum())
+            if seed == 51:
+                for cut in range(40, len(D), 23):
+                    np.testing.assert_array_equal(L79._turn_v(D.iloc[:cut], dict(k=4), up).values, v[:cut])
+                for drop in (len(D) // 2, len(D) // 3):
+                    gap = D.drop(D.index[drop])
+                    np.testing.assert_array_equal(L79._turn_v(gap, dict(k=4), up).values, _v79_ref(gap, up))
+    assert all(hits.values()), hits
+
+
+def test_v79_synthetic_weekly_turn_edges():
+    start = pd.Timestamp('2022-01-03')                                        # a Monday
+    def run(week_highs, week_c, up=True, drop=None):
+        h, l, c = [], [], []
+        for wh in week_highs:
+            h += [wh] * 7; l += [wh - 10] * 7; c += [wh - 5] * 7
+        h += [x + 1 for x in week_c]; l += [x - 1 for x in week_c]; c += list(week_c)
+        D = pd.DataFrame(dict(h=h, l=l, c=c, v=1.0), index=pd.date_range(start, periods=len(c), freq='D'))
+        if drop is not None:
+            D = D.drop(D.index[drop])
+        if not up:
+            D = D.assign(h=200 - D.l, l=200 - D.h, c=200 - D.c)
+        return L79._turn_v(D, dict(k=4), up).values[-len(week_c):].tolist()
+    hs = [110.0, 108.0, 106.0, 104.0, 102.0]                                  # five complete weeks, four lower highs
+    assert run(hs, [101.0, 103.0, 104.0]) == [0, 1, 0]                        # first close above 102 only
+    assert run(hs, [101.0, 102.0]) == [0, 0]                                  # equal close is not above
+    assert run([110.0, 108.0, 108.0, 104.0, 102.0], [103.0]) == [0]           # an equal weekly high breaks the run
+    assert run([100.0] + hs[1:], [103.0]) == [0]                              # week w-5 lower than w-4: only three
+    assert run(hs, [103.0], drop=10) == [0]                                   # incomplete week w-4
+    assert run(hs, [103.0], up=False) == [1]                                  # mirror (lows rise, close below)
+    assert run(hs, [102.0], up=False) == [0]                                  # mirror: equal close is not below
+    assert run([110.0, 108.0, 108.0, 104.0, 102.0], [103.0], up=False) == [0]   # mirror: equal weekly low breaks the run
+    assert run([112.0, 110.0, 108.0, 106.0, 104.0, 102.0], [103.0], drop=17) == [0]   # a missing week inside the run
+    assert run([112.0, 110.0, 108.0, 106.0, 104.0, 102.0], [103.0]) == [1]
+
+
+def test_v79_regime_gate_and_hour_zero(monkeypatch):
+    btc = _ms(_mk(2600, '4h', 52))
+    for key, up, ok in (('l79_weekly_turn_up_4h', True, (0, 1)), ('s79_weekly_turn_down_4h', False, (0, -1))):
+        coin = _V79_COIN[key](); d = S.indicators(coin); cr = L.coin_regime(d)
+        f = np.asarray(L79._turn(d, dict(k=4), up))
+        full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+        np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+        for i in np.flatnonzero(got):
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+        for forced in (1.0, 0.0, -1.0):
+            monkeypatch.setattr(L79.L1, 'coin_regime', lambda d, v=forced: np.full(len(d), v))
+            g = _sig(key, coin, btc)
+            assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
+            monkeypatch.undo()
