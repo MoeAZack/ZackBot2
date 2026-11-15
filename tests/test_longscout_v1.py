@@ -3611,3 +3611,130 @@ def test_v69_morning_star_synthetic_body_rules():
     assert not run([red, (89.0, 89.5, 88.0, 89.5), (90.0, 96.0, 89.5, 95.0)])   # close at the midpoint does not count
     assert not run([red, (89.0, 89.5, 88.0, 92.5), (90.0, 96.0, 89.5, 95.5)])   # middle body 3.5 > 30% of 10
     assert not run([(100.0, 108.0, 89.5, 90.0), (89.0, 89.5, 88.0, 89.5), (90.0, 96.0, 89.5, 95.5)])  # body < 60% of range
+
+
+import longscout_v70 as L70
+L70.register()
+
+
+def _v70_dry_coin(seed):
+    d = _mk(2600, '4h', seed); day = np.arange(len(d)) // 6
+    d['v'] = d.v * np.where(day % 15 >= 11, 0.2, 1.0)                    # quiet 4-day blocks every 15 days
+    return _ms(d)
+
+
+_V70_COIN = {'r70_month_open_cross_4h': lambda: _ms(_mk(2600, '4h', 44)),
+             's70_volume_dryup_near_low_4h': lambda: _v70_dry_coin(64)}
+
+
+@pytest.mark.parametrize('key', sorted(L70.CANDIDATES))
+def test_v70_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V70_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'r70': le.sum() and se.sum(), 's70': se.sum() and not le.any()}[key[:3]]
+    cr = L.coin_regime(S.indicators(coin))
+    assert (cr[le] == 1).all() and (cr[se] == -1).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v70_mopen_ref(D, up):
+    days = list(D.index); O, C = list(D.o), list(D.c); pos = {t: i for i, t in enumerate(days)}
+    res = np.zeros(len(C), bool)
+    for j, t in enumerate(days):
+        first = t.replace(day=1)
+        if t == first or first not in pos or pos[first] != j - (t - first).days:
+            continue
+        mo = O[pos[first]]
+        res[j] = (C[j] > mo and C[j - 1] <= mo) if up else (C[j] < mo and C[j - 1] >= mo)
+    return res
+
+
+def _v70_dry_ref(D, base=30, days_=3, q=0.5, near=0.05, n=20):
+    days = list(D.index); V, C = list(D.v), list(D.c); m = len(C)
+    quiet = [t >= base and V[t] < q * float(np.median(V[t - base:t])) for t in range(m)]
+    res = np.zeros(m, bool)
+    for j in range(base + days_ - 1, m):
+        if days[j] - days[j - base - days_ + 1] != pd.Timedelta(days=base + days_ - 1):
+            continue
+        res[j] = all(quiet[j - days_ + 1:j + 1]) and C[j] <= (1 + near) * min(C[j - n + 1:j + 1])
+    return res
+
+
+def test_v70_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (42, 44, 51, 63, 67):
+        dm, dd = S.indicators(_ms(_mk(2600, '4h', seed))), S.indicators(_v70_dry_coin(seed))
+        cases = [('mu', L17._days(dm), lambda X: L70._mopen_v(X, True), lambda X: _v70_mopen_ref(X, True)),
+                 ('md', L17._days(dm), lambda X: L70._mopen_v(X, False), lambda X: _v70_mopen_ref(X, False)),
+                 ('dry', L27._days_v(dd), lambda X: L70._dry_v(X, L70.CANDIDATES['s70_volume_dryup_near_low_4h']['params']),
+                  _v70_dry_ref)]
+        for kind, D, call, ref in cases:
+            v = call(D).values
+            np.testing.assert_array_equal(v, ref(D), err_msg=str((seed, kind)))
+            hits[kind] = hits.get(kind, 0) + int(v.sum())
+            if seed == 63:
+                for cut in range(35, len(D), 37):
+                    np.testing.assert_array_equal(call(D.iloc[:cut]).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(call(gap).values, ref(gap), err_msg=str(('gap', kind)))
+    assert all(hits.values()), hits
+
+
+def test_v70_month_open_synthetic_boundaries():
+    idx = pd.date_range('2022-01-29', '2022-02-06', freq='D')              # Jan 29..31, Feb 1..6
+    o = [50.0, 50.0, 50.0, 100.0, 99.0, 99.0, 99.0, 101.0, 101.0]
+    c = [50.0, 50.0, 101.0, 99.0, 99.0, 100.0, 101.0, 101.0, 99.5]
+    D = pd.DataFrame(dict(o=o, h=c, l=c, c=c, v=1.0), index=idx)
+    up, dn = L70._mopen_v(D, True).values, L70._mopen_v(D, False).values
+    assert up.tolist() == [0, 0, 0, 0, 0, 0, 1, 0, 0]                       # Feb 1 itself never fires; 100 == MO is not above
+    assert dn.tolist() == [0, 0, 0, 0, 0, 0, 0, 0, 1]
+    assert not L70._mopen_v(D.drop(pd.Timestamp('2022-02-02')), True).any()   # a missing day since the 1st blocks
+    assert not L70._mopen_v(D.drop(pd.Timestamp('2022-02-01')), True).any()   # no first-of-month row: no anchor
+
+
+def test_v70_regime_gate_and_hour_zero_with_gaps():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0; seen = {}
+    for key in sorted(L70.CANDIDATES):
+        coin = _V70_COIN[key](); d = S.indicators(coin); cr = L.coin_regime(d)
+        if key.startswith('r70'):
+            D = L17._days(d); fu = np.asarray(L27._next_day(L70._mopen_v(D, True), D, d))
+            fd = np.asarray(L27._next_day(L70._mopen_v(D, False), D, d))
+        else:
+            D = L27._days_v(d); fu = np.zeros(len(d), bool)
+            fd = np.asarray(L27._next_day(L70._dry_v(D, L70.CANDIDATES[key]['params']), D, d))
+        full = _sig(key, coin, btc)
+        np.testing.assert_array_equal(np.asarray(full['le']), fu & (cr == 1))
+        np.testing.assert_array_equal(np.asarray(full['se']), fd & (cr == -1))
+        seen[key] = int(((fu | fd) & (cr == 0)).sum())
+        t = pd.to_datetime(coin.t).dt.normalize()
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))[:20]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            back = 1 if key.startswith('r70') else 15
+            if key.startswith('r70') and pd.Timestamp(coin.t.iloc[i]).day <= 2:
+                continue
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+            part = _sig(key, cut, btc)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            fired += 1
+            assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
+    assert fired and all(seen.values()), seen
+
+
+def test_v70_dryup_synthetic_volume_and_near_low_edges():
+    p = L70.CANDIDATES['s70_volume_dryup_near_low_4h']['params']
+    def run(vtail=(49.0, 49.0, 49.0), cj=None, c20=100.0):
+        c = [110.0] * 15 + [c20] + [100.0] * 19 + [(1 + 0.05) * 100.0 if cj is None else cj]
+        v = [100.0] * 33 + list(vtail)
+        D = pd.DataFrame(dict(h=c, l=c, c=c, v=v), index=pd.date_range('2022-01-01', periods=len(c), freq='D'))
+        return L70._dry_v(D, p).values[-1]
+    assert run()                                                           # close exactly 5% above the 20-day low counts
+    assert not run(cj=105.01)
+    assert not run(vtail=(49.0, 50.0, 49.0))                               # exactly half the median is not quiet
+    assert not run(vtail=(49.0, 49.0, 50.0))
+    assert run(c20=90.0)                                                   # a lower close 20 days back is outside j-19..j
