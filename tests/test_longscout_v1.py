@@ -2720,3 +2720,94 @@ def test_v59_weekly_engulfing_synthetic_open_and_week_gap_rules():
     assert not L59._weekly_v(D, False).loc[sun]
     D = weeks([('2023-12-25', 110, 100), ('2024-01-08', 100, 115)])       # a missing week between them
     assert not L59._weekly_v(D, True).any()
+
+
+import longscout_v60 as L60
+L60.register()
+
+_V60_COIN = {'l60_inside_week_break_4h': lambda: _v36_coin(1),
+             's60_inside_week_break_4h': lambda: _v36_coin(2, drift=-0.001)}
+
+
+@pytest.mark.parametrize('key', sorted(L60.CANDIDATES))
+def test_v60_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V60_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert (le if key.startswith('l60') else se).sum()
+    cr = L.coin_regime(S.indicators(coin))
+    assert (cr[le] == 1).all() and (cr[se] == -1).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v60_ref(D, up):
+    days = list(D.index); pos = {dd: i for i, dd in enumerate(days)}
+    H, Lo, C = list(D.h), list(D.l), list(D.c)
+    res = np.zeros(len(days), bool)
+    def wk(mon):
+        ds = [mon + pd.Timedelta(days=k) for k in range(7)]
+        if not all(x in pos for x in ds):
+            return None
+        return max(H[pos[x]] for x in ds), min(Lo[pos[x]] for x in ds)
+    done = set()
+    for i, dd in enumerate(days):
+        mon = dd - pd.Timedelta(days=dd.dayofweek)
+        w, p = wk(mon - pd.Timedelta(days=7)), wk(mon - pd.Timedelta(days=14))
+        if w is None or p is None or not (w[0] < p[0] and w[1] > p[1]) or mon in done:
+            continue
+        if (C[i] > w[0]) if up else (C[i] < w[1]):
+            res[i] = True; done.add(mon)
+    return res
+
+
+def test_v60_flags_match_an_independent_loop_and_prefixes():
+    hits = {True: 0, False: 0}
+    for seed in list(range(50, 66)) + ['v1', 'v2']:
+        coin = _v36_coin(1) if seed == 'v1' else _v36_coin(2, drift=-0.001) if seed == 'v2' else _ms(_mk(2600, '4h', seed))
+        D = L17._days(S.indicators(coin))
+        for up in (True, False):
+            v = L60._inside_v(D, up).values
+            np.testing.assert_array_equal(v, _v60_ref(D, up), err_msg=str((seed, up)))
+            hits[up] += int(v.sum())
+            if seed in ('v1', 'v2'):
+                for cut in range(30, len(D), 23):
+                    np.testing.assert_array_equal(L60._inside_v(D.iloc[:cut], up).values, v[:cut])
+    assert all(hits.values()), hits
+
+
+def test_v60_only_the_first_close_beyond_the_level_fires_and_gaps_block():
+    idx = pd.date_range('2024-01-01', periods=21, freq='D')               # Mon 1 Jan .. Sun 21 Jan
+    h = np.r_[np.full(7, 120.0), np.full(7, 110.0), np.full(7, 100.0)]
+    l = np.r_[np.full(7, 80.0), np.full(7, 90.0), np.full(7, 95.0)]
+    c = np.r_[np.full(14, 100.0), [100, 112, 113, 105, 114, 100, 100]]
+    D = pd.DataFrame({'o': c, 'h': np.maximum(h, c + 1), 'l': l, 'c': c}, index=idx)
+    f = L60._inside_v(D, True)
+    assert list(f[f].index) == [idx[15]]                                  # Tue of week 3, not Wed or Fri
+    assert not L60._inside_v(D.drop(idx[3]), True).any()                  # an incomplete outer week voids the pattern
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for key in sorted(L60.CANDIDATES):
+        coin = _V60_COIN[key](); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig(key, coin, btc)
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se'])):
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            mon = t.iloc[i] - pd.Timedelta(days=1); mon = mon - pd.Timedelta(days=mon.dayofweek)
+            cut = coin[t != mon - pd.Timedelta(days=4)].reset_index(drop=True)   # break the inside week
+            part = _sig(key, cut, btc)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            fired += 1
+            assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), key
+    assert fired
+
+
+def test_v60_outer_week_must_be_the_week_right_before():
+    idx = pd.date_range('2024-01-01', periods=7, freq='D').append(pd.date_range('2024-01-15', periods=14, freq='D'))
+    h = np.r_[np.full(7, 120.0), np.full(7, 110.0), np.full(7, 100.0)]
+    l = np.r_[np.full(7, 80.0), np.full(7, 90.0), np.full(7, 95.0)]
+    c = np.r_[np.full(14, 100.0), [100, 112, 100, 100, 100, 100, 100]]
+    D = pd.DataFrame({'o': c, 'h': np.maximum(h, c + 1), 'l': l, 'c': c}, index=idx)
+    assert not L60._inside_v(D, True).any()                               # week of 8 Jan is missing entirely
