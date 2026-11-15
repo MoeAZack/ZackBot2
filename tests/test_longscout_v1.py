@@ -3189,3 +3189,90 @@ def test_v65_young_anchor_is_refused_and_gaps_block():
                 fired += 1
                 assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
     assert fired
+
+
+import longscout_v66 as L66
+L66.register()
+
+_V66_COIN = {'r66_ma_compression_break_4h': lambda: _ms(_mk(2600, '4h', 59)),
+             'l66_pocket_pivot_4h': lambda: _ms(_mk(2600, '4h', 58)),
+             's66_pocket_pivot_short_4h': lambda: _ms(_mk(2600, '4h', 54))}
+
+
+@pytest.mark.parametrize('key', sorted(L66.CANDIDATES))
+def test_v66_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V66_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'r66': le.sum() and se.sum(), 'l66': le.sum(), 's66': se.sum()}[key[:3]]
+    cr = L.coin_regime(S.indicators(coin))
+    if key.startswith('r66'):
+        assert np.isin(cr[le], (0, 1)).all() and np.isin(cr[se], (0, -1)).all()
+    else:
+        assert (cr[le] == 1).all() and (cr[se] == -1).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v66_ref(D, kind, up):
+    days = list(D.index); C, V = list(D.c), list(D.v); m = len(C)
+    def ema(n):
+        out, a = [], 2 / (n + 1)
+        for x in C:
+            out.append(x if not out else a * x + (1 - a) * out[-1])
+        return out
+    e10, e20, e50, e100 = ema(10), ema(20), ema(50), ema(100)
+    res = np.zeros(m, bool)
+    for j in range(2, m):
+        if kind == 'comp':
+            if days[j] - days[j - 2] != pd.Timedelta(days=2):
+                continue
+            tri = lambda k: (e20[k], e50[k], e100[k])
+            mean = sum(tri(j - 1)) / 3
+            tight = max(tri(j - 1)) / mean - 1 <= 0.03 and 1 - min(tri(j - 1)) / mean <= 0.03
+            side = (lambda k: C[k] > max(tri(k))) if up else (lambda k: C[k] < min(tri(k)))
+            res[j] = tight and side(j) and not side(j - 1)
+        else:
+            if j < 11 or days[j] - days[j - 11] != pd.Timedelta(days=11):
+                continue
+            opp = [V[i] for i in range(j - 10, j) if (C[i] < C[i - 1] if up else C[i] > C[i - 1])]
+            vmax = max(opp) if opp else 0.0
+            dirn = C[j] > C[j - 1] if up else C[j] < C[j - 1]
+            res[j] = dirn and (C[j] > e10[j] if up else C[j] < e10[j]) and V[j] > vmax and vmax > 0
+    return res
+
+
+def test_v66_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in range(53, 62):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for kind, fn, p in (('comp', L66._comp_v, dict(band=0.03)), ('piv', L66._pivot_v, dict(n=10))):
+            for up in (True, False):
+                v = fn(D, p, up).values
+                np.testing.assert_array_equal(v, _v66_ref(D, kind, up), err_msg=str((seed, kind, up)))
+                hits[(kind, up)] = hits.get((kind, up), 0) + int(v.sum())
+                if seed == 58:
+                    for cut in range(30, len(D), 29):
+                        np.testing.assert_array_equal(fn(D.iloc[:cut], p, up).values, v[:cut])
+    assert all(hits.values()), hits
+
+
+def test_v66_entries_are_hour_zero_and_gaps_block():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for key in sorted(L66.CANDIDATES):
+        coin = _V66_COIN[key](); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig(key, coin, btc)
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))[:25]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            backs = (2,) if key.startswith('r66') else (2, 8)
+            for back in backs:
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
+    assert fired
