@@ -2531,3 +2531,75 @@ def test_v57_entries_are_next_day_hour_zero_and_gaps_block():
                 fired += 1
                 assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
     assert fired
+
+
+import longscout_v58 as L58
+L58.register()
+
+_V58_COIN = {'s58_rsi_bear_divergence_4h': lambda: _ms(_mk(2600, '4h', 56)),
+             'l58_rsi_bull_divergence_4h': lambda: _ms(_mk(2600, '4h', 54))}
+
+
+@pytest.mark.parametrize('key', sorted(L58.CANDIDATES))
+def test_v58_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V58_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert (se if key.startswith('s58') else le).sum() and not (le if key.startswith('s58') else se).sum()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v58_ref(D, bear, n=20, gap=5, pts=5.0):
+    days = list(D.index); C = list(D.c); R = list(S.rsi(D.c, 14)); m = len(C)
+    isext = lambda i: i >= n and (C[i] > max(C[i - n:i]) if bear else C[i] < min(C[i - n:i]))
+    res = []
+    for j in range(m):
+        if j < 2 * n or days[j] - days[j - 2 * n] != pd.Timedelta(days=2 * n) or not isext(j):
+            res.append(False); continue
+        w = list(range(j - n, j - gap + 1))
+        i = (max if bear else min)(w, key=lambda k: (C[k], -k) if bear else (C[k], k))
+        if not isext(i) or np.isnan(R[i]) or np.isnan(R[j]):
+            res.append(False); continue
+        res.append(R[j] <= R[i] - pts if bear else R[j] >= R[i] + pts)
+    return np.array(res, bool)
+
+
+def test_v58_divergence_matches_an_independent_loop_and_prefixes():
+    hits = {True: 0, False: 0}
+    for seed in range(50, 66):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for bear in (True, False):
+            v = L58._div_v(D, L58.DV, bear).values
+            np.testing.assert_array_equal(v, _v58_ref(D, bear), err_msg=str((seed, bear)))
+            hits[bear] += int(v.sum())
+            if seed in (54, 56):
+                for cut in range(60, len(D), 31):
+                    np.testing.assert_array_equal(L58._div_v(D.iloc[:cut], L58.DV, bear).values, v[:cut])
+    assert all(hits.values())
+
+
+def test_v58_rsi_gap_threshold_is_respected():
+    D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', 56))))
+    loose = L58._div_v(D, dict(L58.DV, pts=0.0), True); strict = L58._div_v(D, L58.DV, True)
+    assert (strict <= loose).all() and loose.sum() > strict.sum() > 0
+
+
+def test_v58_entries_are_next_day_hour_zero_and_gaps_block():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for key in sorted(L58.CANDIDATES):
+        coin = _V58_COIN[key](); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig(key, coin, btc)
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se'])):
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            for back in (2, 30):
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
+    assert fired
