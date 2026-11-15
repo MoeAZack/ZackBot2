@@ -978,3 +978,36 @@ def test_v31_weekend_entries_are_friday_20utc_only():
     le = np.asarray(_sig('l31_weekend_hold_4h', coin, btc)['le'])
     t = pd.to_datetime(coin.t)[le]
     assert le.sum() > 5 and (t.dt.weekday == 4).all() and (t.dt.hour == 20).all()
+
+
+import longscout_v32 as L32
+L32.register()
+
+
+@pytest.mark.parametrize('key', sorted(L32.CANDIDATES))
+def test_v32_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    a = 52 if 'efficiency' in key else 56
+    coin, btc = _ms(_mk(2600, '4h', a)), _ms(_mk(2600, '4h', 55))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    ex = np.flatnonzero(np.diff(np.asarray(full['lx']).astype(int)) | np.diff(np.asarray(full['sx']).astype(int))) + 1
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | set(ex[ex >= 300][:20]) | {1300, 2563, 2599}
+                  | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v32_helper_values_match_on_every_prefix():
+    P = {k: v['params'] for k, v in L32.CANDIDATES.items()}
+    c = S.indicators(_ms(_mk(2600, '4h', 52)))
+    fns = [lambda x, u=u: L32._er(x, P['r32_efficiency_ratio_4h'], u) for u in (True, False)] + \
+          [lambda x: L32._updown(x, P['l32_updown_volume_4h']), lambda x: L32._vwap(x, P['r32_vwap30_cross_4h']).values]
+    full = [f(c) for f in fns]
+    assert all(np.nansum(np.asarray(x, float)) > 0 for x in full)
+    for cut in range(700, 2600, 19):
+        part = c.iloc[:cut].reset_index(drop=True)
+        for f, x in zip(fns, full):
+            np.testing.assert_array_equal(f(part), x[:cut])
