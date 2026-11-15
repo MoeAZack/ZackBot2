@@ -4523,3 +4523,123 @@ def test_v77_regime_gate_and_hour_zero_with_gaps():
                 assert not np.asarray(part['se'])[k0], key
     assert fired and seen[('s77_bear_flag_4h', 0)] and seen[('s77_bear_flag_4h', -1)], seen
     assert seen[('s77_failed_bull_flag_4h', 1)] and seen[('s77_failed_bull_flag_4h', 0)], seen
+
+
+import longscout_v78 as L78
+L78.register()
+
+_V78_COIN = {'l78_cup_handle_4h': lambda: _ms(_mk(2600, '4h', 44)),
+             's78_inverted_cup_4h': lambda: _ms(_mk(2600, '4h', 41))}
+
+
+@pytest.mark.parametrize('key', sorted(L78.CANDIDATES))
+def test_v78_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V78_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l78': le.sum() and not se.any(), 's78': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent - 1) | set(ent) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v78_ref(D, up, n=60, ln=41, r0=15, r1=5, lip=0.05, depth=0.15, hd=0.12):
+    days = list(D.index); H, Lo, C = list(D.h), list(D.l), list(D.c); m = len(C)
+    res = np.zeros(m, bool)
+    for j in range(n, m):
+        if days[j] - days[j - n] != pd.Timedelta(days=n):
+            continue
+        X = H if up else Lo
+        best = (lambda idx: min(idx, key=lambda i: (-X[i], i))) if up else (lambda idx: min(idx, key=lambda i: (X[i], i)))
+        a = best(range(j - n, j - ln + 1)); r = best(range(j - r0, j - r1 + 1))
+        if up:
+            ok = (H[r] >= (1 - lip) * H[a] and min(Lo[a + 1:r]) <= (1 - depth) * H[a]
+                  and max(H[r + 1:j]) <= H[r] and min(Lo[r + 1:j]) >= (1 - hd) * H[r])
+            lv = max(H[a], H[r]); res[j] = ok and C[j] > lv and C[j - 1] <= lv
+        else:
+            ok = (Lo[r] <= (1 + lip) * Lo[a] and max(H[a + 1:r]) >= (1 + depth) * Lo[a]
+                  and min(Lo[r + 1:j]) >= Lo[r] and max(H[r + 1:j]) <= (1 + hd) * Lo[r])
+            lv = min(Lo[a], Lo[r]); res[j] = ok and C[j] < lv and C[j - 1] >= lv
+    return res
+
+
+def test_v78_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (41, 42, 44, 45, 118):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for up in (True, False):
+            v = L78._cup_v(D, L78.CP, up).values
+            np.testing.assert_array_equal(v, _v78_ref(D, up), err_msg=str((seed, up)))
+            hits[up] = hits.get(up, 0) + int(v.sum())
+            if seed == 44:
+                for cut in range(65, len(D), 37):
+                    np.testing.assert_array_equal(L78._cup_v(D.iloc[:cut], L78.CP, up).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(L78._cup_v(gap, L78.CP, up).values, _v78_ref(gap, up))
+    assert all(hits.values()), hits
+
+
+def _v78_days(h, l, c):
+    return pd.DataFrame(dict(h=h, l=l, c=c, v=1.0), index=pd.date_range('2022-01-01', periods=len(c), freq='D'))
+
+
+def _v78_cup(cj=101.0, lip_h=100.0, bottom=85.0, handle_low=88.0, handle_high=93.0, left_extra=None, prev=None, bump=None):
+    h = [90.0] * 60; l = [86.0] * 60; c = [88.0] * 60
+    h[5] = 100.0                                                              # left lip (day j-55)
+    l[30] = bottom                                                            # cup bottom
+    h[48] = lip_h                                                             # right lip (day j-12)
+    for i in range(49, 60):
+        h[i], l[i], c[i] = handle_high, handle_low, (handle_high + handle_low) / 2
+    if left_extra is not None:
+        h[left_extra[0]] = left_extra[1]
+    if prev is not None:
+        c[59] = prev
+    if bump is not None:
+        h[bump[0]] = bump[1]
+    return _v78_days(h + [max(cj, 99.0)], l + [90.0], c + [cj])
+
+
+def test_v78_synthetic_cup_edges():
+    f = lambda D: L78._cup_v(D, L78.CP, True).values[-1]
+    assert f(_v78_cup())
+    assert not f(_v78_cup(cj=100.0))                                          # close equal to the lip
+    assert f(_v78_cup(lip_h=95.0)) and not f(_v78_cup(lip_h=94.99))           # right lip >= 0.95 H1 (handle highs 93)
+    assert f(_v78_cup(bottom=85.0)) and not f(_v78_cup(bottom=85.01))         # depth >= 15%
+    assert f(_v78_cup(handle_low=88.0)) and not f(_v78_cup(handle_low=87.99))   # handle >= 0.88 R
+    assert f(_v78_cup(bump=(58, 100.0))) and not f(_v78_cup(bump=(58, 100.01)))   # handle (j-2) never above R
+    assert not f(_v78_cup(prev=100.5))                                        # day j-1 already above
+    assert f(_v78_cup(left_extra=(19, 101.0), cj=101.5))                      # day j-41 is in the left-lip window
+    assert not f(_v78_cup(left_extra=(19, 101.0), cj=101.0))
+    assert f(_v78_cup(left_extra=(20, 101.0), cj=101.0))                      # day j-40 is outside it
+    assert f(_v78_cup(left_extra=(45, 99.0)))                                 # j-15 high below R does not move r
+    D = _v78_cup(); h = D.h.values.copy(); h[45] = 100.0; D2 = D.assign(h=h)
+    assert not f(D2)                                                          # tie: earliest right-lip day (j-15) anchors, its handle dips to 86
+    inv = lambda D: L78._cup_v(D.assign(h=200 - D.l, l=200 - D.h, c=200 - D.c), L78.CP, False).values[-1]
+    assert inv(_v78_cup()) and not inv(_v78_cup(cj=100.0))
+    assert inv(_v78_cup(lip_h=95.0)) and not inv(_v78_cup(lip_h=94.99))     # mirror: right low <= 1.05 x left low
+
+
+def test_v78_regime_gate_including_excluded_side(monkeypatch):
+    btc = _ms(_mk(2600, '4h', 52))
+    for key, seed, up, ok in (('l78_cup_handle_4h', 42, True, (0, 1)), ('l78_cup_handle_4h', 44, True, (0, 1)),
+                              ('s78_inverted_cup_4h', 41, False, (0, -1)), ('s78_inverted_cup_4h', 118, False, (0, -1))):
+        coin = _ms(_mk(2600, '4h', seed)); d = S.indicators(coin); cr = L.coin_regime(d)
+        f = np.asarray(L78._cup(d, L78.CP, up))
+        full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+        np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+        assert f.any()
+        for forced in (1.0, 0.0, -1.0):
+            monkeypatch.setattr(L78.L1, 'coin_regime', lambda d, v=forced: np.full(len(d), v))
+            g = _sig(key, coin, btc); gg = np.asarray(g['le']) | np.asarray(g['se'])
+            assert gg.any() == (forced in ok), (key, forced)
+            monkeypatch.undo()
+    t = pd.to_datetime(_V78_COIN['l78_cup_handle_4h']().t).dt.normalize()
+    coin = _V78_COIN['l78_cup_handle_4h'](); full = _sig('l78_cup_handle_4h', coin, btc)
+    for i in np.flatnonzero(np.asarray(full['le'])):
+        assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+        cut = coin[t != t.iloc[i] - pd.Timedelta(days=50)].reset_index(drop=True)
+        k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+        assert not np.asarray(_sig('l78_cup_handle_4h', cut, btc)['le'])[k0]
