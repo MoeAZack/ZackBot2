@@ -2906,3 +2906,75 @@ def test_v61_entries_are_hour_zero_and_gaps_block():
                 fired += 1
                 assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
     assert fired
+
+
+import longscout_v62 as L62
+L62.register()
+
+
+def _v62_coin(seed=58):
+    c = _mk(2600, '4h', seed); day = np.arange(len(c)) // 6
+    return _ms(c.assign(v=c.v * np.where(day % 5 == 0, 8.0, 1.0)))       # every 5th day trades 8x volume
+
+
+@pytest.mark.parametrize('key', sorted(L62.CANDIDATES))
+def test_v62_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _v62_coin(), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert (le if key.startswith('l62') else se).sum()
+    cr = L.coin_regime(S.indicators(coin))
+    assert np.isin(cr[le], (0, 1)).all() and np.isin(cr[se], (0, -1)).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v62_ref(D, top, n=20, k=3.0):
+    days = list(D.index); H, Lo, C, V = list(D.h), list(D.l), list(D.c), list(D.v); res = np.zeros(len(days), bool)
+    for j in range(n, len(days)):
+        if days[j] - days[j - n] != pd.Timedelta(days=n):
+            continue
+        rng = H[j] - Lo[j]; pos = (C[j] - Lo[j]) / rng if rng > 0 else np.nan
+        vol = V[j] > k * np.mean(V[j - n:j])
+        if top:
+            res[j] = H[j] > max(H[j - n:j]) and vol and pos < 0.5
+        else:
+            res[j] = Lo[j] < min(Lo[j - n:j]) and vol and pos > 0.5
+    return res
+
+
+def test_v62_flags_match_an_independent_loop_and_prefixes():
+    hits = {True: 0, False: 0}
+    for seed in range(50, 66):
+        D = L27._days_v(S.indicators(_v62_coin(seed)))
+        for top in (True, False):
+            v = L62._climax_v(D, L62.CP, top).values
+            np.testing.assert_array_equal(v, _v62_ref(D, top), err_msg=str((seed, top)))
+            hits[top] += int(v.sum())
+            if seed == 58:
+                for cut in range(40, len(D), 23):
+                    np.testing.assert_array_equal(L62._climax_v(D.iloc[:cut], L62.CP, top).values, v[:cut])
+    assert all(hits.values())
+    D = L27._days_v(S.indicators(_v62_coin(58)))
+    loose = L62._climax_v(D, dict(L62.CP, k=0.0), True)
+    assert loose.sum() > L62._climax_v(D, L62.CP, True).sum()               # the volume rule removes days
+
+
+def test_v62_entries_are_hour_zero_and_gaps_block():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for key in sorted(L62.CANDIDATES):
+        coin = _v62_coin(); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig(key, coin, btc)
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se'])):
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            for back in (2, 15):
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
+    assert fired
