@@ -3360,3 +3360,140 @@ def test_v67_entries_are_hour_zero_and_gaps_block():
                 fired += 1
                 assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
     assert fired
+
+
+import longscout_v68 as L68
+L68.register()
+
+_V68_COIN = {'l68_dormant_high_4h': lambda: _ms(_mk(2600, '4h', 59)),
+             's68_dormant_low_4h': lambda: _ms(_mk(2600, '4h', 48)),
+             'l68_breakout_retest_4h': lambda: _ms(_mk(2600, '4h', 56))}
+
+
+@pytest.mark.parametrize('key', sorted(L68.CANDIDATES))
+def test_v68_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V68_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l68': le.sum() and not se.any(), 's68': se.sum() and not le.any()}[key[:3]]
+    cr = L.coin_regime(S.indicators(coin))
+    ok = {'l68_dormant_high_4h': (0, 1), 's68_dormant_low_4h': (0, -1), 'l68_breakout_retest_4h': (1,)}[key]
+    assert np.isin(cr[le | se], ok).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v68_dormant_ref(D, up, n=20, quiet=60):
+    days = list(D.index); C = list(D.c); m = len(C)
+    new = [j >= n and (C[j] > max(C[j - n:j]) if up else C[j] < min(C[j - n:j])) for j in range(m)]
+    res = np.zeros(m, bool)
+    for j in range(n + quiet, m):
+        if days[j] - days[j - n - quiet] != pd.Timedelta(days=n + quiet):
+            continue
+        res[j] = new[j] and not any(new[j - quiet:j])
+    return res
+
+
+def _v68_retest_ref(D, n=30, w=10, tol=0.01):
+    days = list(D.index); H, Lo, C = list(D.h), list(D.l), list(D.c); m = len(C)
+    res = np.zeros(m, bool)
+    for j in range(n + w, m):
+        if days[j] - days[j - n - w] != pd.Timedelta(days=n + w):
+            continue
+        bs = [b for b in range(j - w, j) if C[b] > max(H[b - n:b])]
+        if not bs:
+            continue
+        b = bs[-1]; lv = max(H[b - n:b])
+        hit = [k for k in range(b + 1, j + 1) if Lo[k] <= (1 + tol) * lv and C[k] > lv]
+        res[j] = hit[:1] == [j]
+    return res
+
+
+def test_v68_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (48, 53, 56, 57, 59):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for kind, fn, p, ref in (('dh', L68._dormant_v, L68.DP, lambda D: _v68_dormant_ref(D, True)),
+                                 ('dl', L68._dormant_v, L68.DP, lambda D: _v68_dormant_ref(D, False)),
+                                 ('rt', L68._retest_v, dict(n=30, w=10, tol=0.01), _v68_retest_ref)):
+            call = (lambda X: fn(X, p, kind == 'dh')) if kind != 'rt' else (lambda X: fn(X, p))
+            v = call(D).values
+            np.testing.assert_array_equal(v, ref(D), err_msg=str((seed, kind)))
+            hits[kind] = hits.get(kind, 0) + int(v.sum())
+            if seed == 56:
+                for cut in range(45, len(D), 37):
+                    np.testing.assert_array_equal(call(D.iloc[:cut]).values, v[:cut])
+    assert all(hits.values()), hits
+
+
+def _v68_days(rows, start=0):
+    idx = pd.date_range('2022-01-01', periods=len(rows), freq='D')[start:]
+    h, l, c = zip(*rows)
+    return pd.DataFrame(dict(h=h, l=l, c=c, v=1.0), index=idx[:len(rows)] if not start else idx)
+
+
+def test_v68_retest_synthetic_level_tolerance_and_first_touch():
+    base = [(100.0, 98.0, 99.0)] * 40                                   # level L = 100 (highest high)
+    p = dict(n=30, w=10, tol=0.01)
+    def run(tail):
+        return L68._retest_v(_v68_days(base + tail), p).values[40:]
+    brk = (106.0, 99.0, 105.0)                                           # day 40 closes above L
+    assert run([brk, (107.0, 104.0, 106.0), (103.0, 100.9, 102.0), (103.0, 100.5, 102.0)]).tolist() == [0, 0, 1, 0]
+    assert not run([brk, (103.0, 101.01, 102.0)]).any()                  # low 1.0101 L: no touch
+    assert run([brk, (103.0, 101.0, 102.0)]).tolist() == [0, 1]           # low exactly 1.01 L: touch
+    assert not run([brk, (103.0, 99.0, 100.0)]).any()                     # close == L does not hold
+    assert run([brk, (103.0, 99.0, 99.5), (103.0, 100.2, 101.0)]).tolist() == [0, 0, 1]   # failed touch is not a retest
+    assert not run([(100.0, 98.0, 100.0), (103.0, 100.2, 101.0)]).any()   # close == L is no breakout
+    late = [brk] + [(104.0, 102.0, 103.0)] * 10 + [(103.0, 100.2, 101.0)]
+    assert not run(late).any()                                            # breakout 11 days back is outside w=10
+    late = [brk] + [(104.0, 102.0, 103.0)] * 9 + [(103.0, 100.2, 101.0)]
+    assert run(late)[-1]
+    gap = L68._retest_v(_v68_days(base + [brk, (103.0, 100.5, 102.0)]).drop(pd.Timestamp('2022-01-05')), p).values
+    assert not gap.any()
+
+
+def test_v68_dormant_synthetic_quiet_window():
+    p = dict(n=20, quiet=60)
+    def run(c):
+        return L68._dormant_v(_v68_days([(x + 1, x - 1, x) for x in c]), p, True).values
+    c = [100.0] * 100 + [101.0]
+    assert run(c)[-1]                                                     # first new high after a flat spell
+    c2 = [100.0] * 40 + [100.5] + [100.0] * 59 + [101.0]                   # a new 20-day high 60 days back: inside quiet
+    assert not run(c2)[-1]
+    c3 = [100.0] * 39 + [100.5] + [100.0] * 60 + [101.0]                   # 61 days back: outside quiet
+    assert run(c3)[-1]
+    c4 = [100.0] * 100 + [100.0]                                          # equal close is not a new high
+    assert not run(c4)[-1]
+
+
+def test_v68_entries_are_hour_zero_and_gaps_block():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for key in sorted(L68.CANDIDATES):
+        coin = _V68_COIN[key](); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig(key, coin, btc)
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))[:20]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            for back in (2, 40):
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
+    assert fired
+
+
+def test_v68_regime_gate_admits_sideways_only_where_frozen():
+    btc = _ms(_mk(2600, '4h', 52)); seen = {}
+    for key, seed, fn, ok in (('l68_dormant_high_4h', 44, lambda d: L68._dormant(d, L68.DP, True), (0, 1)),
+                              ('s68_dormant_low_4h', 48, lambda d: L68._dormant(d, L68.DP, False), (0, -1)),
+                              ('l68_breakout_retest_4h', 42, lambda d: L68._retest(d, dict(n=30, w=10, tol=0.01)), (1,))):
+        coin = _ms(_mk(2600, '4h', seed)); d = S.indicators(coin)
+        cr = L.coin_regime(d); fl = np.asarray(fn(d))
+        full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+        np.testing.assert_array_equal(got, fl & np.isin(cr, ok), err_msg=key)
+        seen[key] = int((fl & (cr == 0)).sum())
+    assert all(seen.values()), seen
