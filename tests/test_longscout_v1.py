@@ -1781,3 +1781,77 @@ def test_v49_trix_cross_across_a_missing_day_does_not_fire():
                 sig = np.asarray(_sig('r49_daily_trix_4h', cut, btc)[side])
                 assert not sig[np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]]
     assert fired
+
+
+import longscout_v50 as L50
+L50.register()
+
+_V50_COIN = {'l50_atr_pullback_4h': lambda: _v36_coin(1),
+             's50_atr_rebound_4h': lambda: _v36_coin(2, drift=-0.001),
+             'l50_elder_impulse_4h': lambda: _ms(_mk(2600, '4h', 56))}
+
+
+@pytest.mark.parametrize('key', sorted(L50.CANDIDATES))
+def test_v50_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V50_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert le.sum() or se.sum(), key
+    cr = L.coin_regime(S.indicators(coin))
+    assert (cr[le] == 1).all() and (cr[se] == -1).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v50_helper_values_match_on_every_prefix():
+    c = S.indicators(_v36_coin(1))
+    D = L27._days_v(c)
+    a, g = L50._datr(D, 14), L50._green(D)
+    full = {'pl': L50._pb(c, L50.PB, True), 'ps': L50._pb(c, L50.PB, False), 'im': L50._impulse(c, {})}
+    assert full['pl'].sum() and full['im'].sum()
+    for cut in range(700, 2600, 23):
+        part = c.iloc[:cut].reset_index(drop=True)
+        Dp = L27._days_v(part)
+        np.testing.assert_allclose(L50._datr(Dp, 14).values, a.values[:len(Dp)], equal_nan=True)
+        np.testing.assert_array_equal(L50._green(Dp).values, g.values[:len(Dp)])
+        np.testing.assert_array_equal(L50._pb(part, L50.PB, True), full['pl'][:cut])
+        np.testing.assert_array_equal(L50._pb(part, L50.PB, False), full['ps'][:cut])
+        np.testing.assert_array_equal(L50._impulse(part, {}), full['im'][:cut])
+
+
+def test_v50_pullback_matches_an_independent_loop():
+    coin, btc = _V50_COIN['s50_atr_rebound_4h'](), _ms(_mk(2600, '4h', 52))
+    c = S.indicators(coin); D = L27._days_v(c)
+    h, l, cl = D.h.values, D.l.values, D.c.values
+    tr = np.r_[np.nan, [max(h[i] - l[i], abs(h[i] - cl[i - 1]), abs(l[i] - cl[i - 1])) for i in range(1, len(cl))]]
+    flag = np.zeros(len(cl), bool)
+    for i in range(15, len(cl)):
+        atr = tr[i - 13:i + 1].mean()
+        flag[i] = cl[i] >= cl[i - 10:i].min() + 3 * atr
+    t = pd.to_datetime(c.t).dt.normalize().values
+    sig = np.asarray(_sig('s50_atr_rebound_4h', coin, btc)['se'])
+    assert sig.sum()
+    for i in np.flatnonzero(sig):
+        j = D.index.get_loc(pd.Timestamp(t[i]) - pd.Timedelta(days=1))
+        assert flag[j] and not flag[j - 1] and pd.Timestamp(c.t.iloc[i]).hour == 0
+
+
+def test_v50_first_flag_across_a_missing_day_does_not_fire():
+    btc = _ms(_mk(2600, '4h', 52))
+    fired = 0
+    for key, side, flagf in (('s50_atr_rebound_4h', 'se', lambda D: L50._pb_flag(D, L50.PB, False)),
+                             ('l50_elder_impulse_4h', 'le', L50._green)):
+        coin = _V50_COIN[key](); t = pd.to_datetime(coin.t).dt.normalize()
+        for i in np.flatnonzero(np.asarray(_sig(key, coin, btc)[side])):
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=2)].reset_index(drop=True)
+            D = L27._days_v(S.indicators(cut)); f = flagf(D)
+            j = D.index.get_loc(t.iloc[i] - pd.Timedelta(days=1))
+            if f.iloc[j] and not f.iloc[j - 1]:
+                fired += 1
+                sig = np.asarray(_sig(key, cut, btc)[side])
+                assert not sig[np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]], key
+    assert fired
