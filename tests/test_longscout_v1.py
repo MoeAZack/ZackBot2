@@ -1605,3 +1605,33 @@ def test_v46_helper_values_match_on_every_prefix():
         full = fn(c); assert full.sum() > 0
         for cut in range(700, 2600, 23):
             np.testing.assert_array_equal(fn(c.iloc[:cut].reset_index(drop=True)), full[:cut])
+
+
+import longscout_v47 as L47
+L47.register()
+
+
+@pytest.mark.parametrize('key', sorted(L47.CANDIDATES))
+def test_v47_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _ms(_mk(2600, '4h', 56)), _ms(_mk(2600, '4h', 55))
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    hours = set(pd.to_datetime(coin.t).dt.hour.values[ent])
+    assert hours == ({8} if 'us_' in key else {20})
+    bars = sorted(set(ent[ent >= 300][:60]) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v47_strong_close_reference():
+    c = S.indicators(_ms(_mk(2600, '4h', 56))); t = pd.to_datetime(c.t); day = t.dt.normalize().values
+    got = L47._strong_close(c, dict(edge=0.1)); assert got.sum() > 10
+    for i in range(len(c)):
+        m = day == day[i]
+        if t.dt.hour.values[i] != 20 or m.sum() != 6:
+            assert not got[i]; continue
+        hi, lo = c.h.values[m].max(), c.l.values[m].min()
+        assert got[i] == ((c.c.values[i] - lo) / (hi - lo) >= 0.9)
