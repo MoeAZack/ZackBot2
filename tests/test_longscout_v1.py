@@ -3839,3 +3839,134 @@ def test_v71_short_side_strictness_synthetic():
     assert run([110.0, 110.0, 111.0, 100.0, 100.0]) == [True, False, True, False, False]
     c2 = c.copy(); c2[3] = 100.0
     assert run([110.0, 110.0, 111.0, 100.0, 100.0], c2) == [False] * 5    # price at its own low: no lead
+
+
+import longscout_v72 as L72
+L72.register()
+
+_V72_COIN = {'l72_follow_through_4h': lambda: _ms(_mk(2600, '4h', 51)),
+             's72_distribution_4h': lambda: _ms(_mk(2600, '4h', 44))}
+_V72_FN = {'l72_follow_through_4h': (lambda D: L72._ftd_v(D, L72.CANDIDATES['l72_follow_through_4h']['params']), (0, 1)),
+           's72_distribution_4h': (lambda D: L72._dist_v(D, L72.CANDIDATES['s72_distribution_4h']['params']), (-1,))}
+
+
+@pytest.mark.parametrize('key', sorted(L72.CANDIDATES))
+def test_v72_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V72_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l72': le.sum() and not se.any(), 's72': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v72_ftd_ref(D, n=30, a0=4, a1=10, up=0.03):
+    days = list(D.index); C, V = list(D.c), list(D.v); m = len(C)
+    hit = [i > 0 and C[i] >= (1 + up) * C[i - 1] and V[i] > V[i - 1] for i in range(m)]
+    res = np.zeros(m, bool)
+    for j in range(n, m):
+        if days[j] - days[j - n] != pd.Timedelta(days=n) or not hit[j]:
+            continue
+        lo = min(C[j - n:j + 1]); a = max(i for i in range(j - n, j + 1) if C[i] == lo)
+        res[j] = j - a1 <= a <= j - a0 and not any(hit[a + 1:j])
+    return res
+
+
+def _v72_dist_ref(D, n=25, k=6, dn=0.01):
+    days = list(D.index); C, V = list(D.c), list(D.v); m = len(C)
+    dd = [i > 0 and C[i] <= (1 - dn) * C[i - 1] and V[i] > V[i - 1] for i in range(m)]
+    res = np.zeros(m, bool)
+    for j in range(n, m):
+        if days[j] - days[j - n] != pd.Timedelta(days=n):
+            continue
+        res[j] = dd[j] and sum(dd[j - n + 1:j + 1]) >= k and sum(dd[j - n:j]) < k
+    return res
+
+
+def test_v72_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (43, 44, 47, 51, 53):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for key, ref in (('l72_follow_through_4h', _v72_ftd_ref), ('s72_distribution_4h', _v72_dist_ref)):
+            call = _V72_FN[key][0]
+            v = call(D).values
+            np.testing.assert_array_equal(v, ref(D), err_msg=str((seed, key)))
+            hits[key] = hits.get(key, 0) + int(v.sum())
+            if seed == 51:
+                for cut in range(35, len(D), 37):
+                    np.testing.assert_array_equal(call(D.iloc[:cut]).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(call(gap).values, ref(gap), err_msg=str(('gap', key)))
+    assert all(hits.values()), hits
+
+
+def _v72_days(c, v):
+    return pd.DataFrame(dict(h=c, l=c, c=c, v=v), index=pd.date_range('2022-01-01', periods=len(c), freq='D'))
+
+
+def test_v72_follow_through_synthetic_age_size_and_first():
+    p = L72.CANDIDATES['l72_follow_through_4h']['params']
+    def run(tail, vt=None):
+        c = [100.0] * 26 + [80.0] + tail
+        v = [10.0] * 27 + (vt or [10.0 + i for i in range(1, len(tail) + 1)])
+        return L72._ftd_v(_v72_days(c, v), p).values[27:].tolist()
+    assert run([81.0, 81.0, 81.0, 81.0 * 1.03]) == [0, 0, 0, 1]                       # 4 days after the low, +3% exactly
+    assert run([81.0, 81.0, 81.0, 81.0 * 1.0299]) == [0, 0, 0, 0]
+    assert run([81.0, 81.0, 81.0, 83.43], [11.0, 12.0, 13.0, 13.0]) == [0, 0, 0, 0]  # volume not above prior day
+    assert run([81.0, 81.0, 83.43]) == [0, 0, 0]                                      # 3 days after the low: too soon
+    assert run([81.0, 83.43, 81.0, 81.0, 83.43])[-1] == 0                            # an earlier follow-through came first
+    assert run([81.0] * 9 + [83.43])[-1] == 1                                         # 10 days after the low
+    assert run([81.0] * 10 + [83.43])[-1] == 0                                        # 11 days: too late
+
+
+def test_v72_distribution_synthetic_count_and_first():
+    p = L72.CANDIDATES['s72_distribution_4h']['params']
+    c, v = [100.0] * 30, [10.0] * 30
+    for i in (24, 26, 28, 30, 32):
+        c += [c[-1] * 0.99, c[-1] * 0.99]; v += [11.0 + i, 5.0]                    # a -1% day on rising volume, then flat
+    f = L72._dist_v(_v72_days(c, v), p).values
+    assert f.sum() == 0                                                               # five distribution days only
+    c2, v2 = c + [c[-1] * 0.99], v + [100.0]
+    assert L72._dist_v(_v72_days(c2, v2), p).values[-1]                               # sixth one fires
+    c3, v3 = c + [c[-1] * 0.9901], v + [100.0]
+    assert not L72._dist_v(_v72_days(c3, v3), p).values[-1]                           # -0.99% is not a distribution day
+    c4, v4 = c2 + [c2[-1] * 0.99], v2 + [200.0]
+    assert not L72._dist_v(_v72_days(c4, v4), p).values[-1]                           # seventh is not a first day
+
+
+def test_v72_regime_gate_and_hour_zero_with_gaps():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0; seen = {}
+    for key in sorted(L72.CANDIDATES):
+        fn, ok = _V72_FN[key]
+        coin = _V72_COIN[key](); d = S.indicators(coin); cr = L.coin_regime(d); D = L27._days_v(d)
+        f = np.asarray(L27._next_day(fn(D), D, d))
+        full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+        np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+        seen[key] = (int((f & (cr == 0)).sum()), int((f & (cr == 1)).sum()))
+        t = pd.to_datetime(coin.t).dt.normalize()
+        for i in np.flatnonzero(got)[:20]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=20)].reset_index(drop=True)
+            part = _sig(key, cut, btc)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            fired += 1
+            assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), key
+    assert fired and all(all(x) for x in seen.values()), seen
+
+
+def test_v72_tied_low_uses_latest_and_equal_volume_is_not_distribution():
+    p = L72.CANDIDATES['l72_follow_through_4h']['params']
+    c = [100.0] * 20 + [80.0] + [90.0] * 10 + [80.0, 81.0, 81.0, 81.0, 83.43]           # tied lows on days 20 and 31
+    v = [10.0] * 32 + [11.0, 12.0, 13.0, 14.0]
+    assert L72._ftd_v(_v72_days(c, v), p).values[-1]                                  # age counted from the latest low (4)
+    q = L72.CANDIDATES['s72_distribution_4h']['params']
+    c, v = [100.0] * 30, [10.0] * 30
+    for i in range(6):
+        c += [c[-1] * 0.99, c[-1] * 0.99]; v += [20.0 + i, 5.0]
+    assert L72._dist_v(_v72_days(c, v), q).values[-2]
+    v[-2] = v[-3]                                                                     # sixth day on equal volume
+    assert not L72._dist_v(_v72_days(c, v), q).values[-2]
