@@ -3497,3 +3497,117 @@ def test_v68_regime_gate_admits_sideways_only_where_frozen():
         np.testing.assert_array_equal(got, fl & np.isin(cr, ok), err_msg=key)
         seen[key] = int((fl & (cr == 0)).sum())
     assert all(seen.values()), seen
+
+
+import longscout_v69 as L69
+L69.register()
+
+_V69_COIN = {'l69_morning_star_4h': lambda: _ms(_mk(2600, '4h', 58)),
+             's69_dead_cat_fail_4h': lambda: _ms(_mk(2600, '4h', 54))}
+
+
+@pytest.mark.parametrize('key', sorted(L69.CANDIDATES))
+def test_v69_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V69_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l69': le.sum() and not se.any(), 's69': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v69_mstar_ref(D, n=20):
+    days = list(D.index); O, H, Lo, C = list(D.o), list(D.h), list(D.l), list(D.c); m = len(C)
+    res = np.zeros(m, bool)
+    for j in range(n, m):
+        if days[j] - days[j - n] != pd.Timedelta(days=n):
+            continue
+        b2 = O[j - 2] - C[j - 2]
+        res[j] = (b2 > 0 and b2 >= 0.6 * (H[j - 2] - Lo[j - 2]) and abs(C[j - 1] - O[j - 1]) <= 0.3 * b2
+                  and C[j] > O[j] and C[j] > (O[j - 2] + C[j - 2]) / 2 and min(Lo[j - 2:j + 1]) <= min(Lo[j - n + 1:j + 1]))
+    return res
+
+
+def _v69_dcat_ref(D, n=30, k=0.10):
+    days = list(D.index); C = list(D.c); m = len(C)
+    res = np.zeros(m, bool)
+    for j in range(n, m):
+        if days[j] - days[j - n] != pd.Timedelta(days=n):
+            continue
+        lo = min(C[j - n:j])
+        if C[j] >= lo:
+            continue
+        a = max(i for i in range(j - n, j) if C[i] == lo)
+        res[j] = any(C[i] >= (1 + k) * lo for i in range(a + 1, j))
+    return res
+
+
+def test_v69_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (40, 49, 54, 58, 63):
+        d = S.indicators(_ms(_mk(2600, '4h', seed)))
+        for kind, D, call, ref in (('ms', L17._days(d), lambda X: L69._mstar_v(X, dict(n=20)), _v69_mstar_ref),
+                                   ('dc', L27._days_v(d), lambda X: L69._dcat_v(X, dict(n=30, bounce=0.10)), _v69_dcat_ref)):
+            v = call(D).values
+            np.testing.assert_array_equal(v, ref(D), err_msg=str((seed, kind)))
+            hits[kind] = hits.get(kind, 0) + int(v.sum())
+            if seed == 54:
+                for cut in range(35, len(D), 37):
+                    np.testing.assert_array_equal(call(D.iloc[:cut]).values, v[:cut])
+    assert all(hits.values()), hits
+
+
+def test_v69_dead_cat_synthetic_bounce_size_and_latest_low():
+    p = dict(n=30, bounce=0.10)
+    def run(tail, head=[100.0] * 28):
+        c = head + tail
+        D = pd.DataFrame(dict(h=c, l=c, c=c, v=1.0), index=pd.date_range('2022-01-01', periods=len(c), freq='D'))
+        return L69._dcat_v(D, p).values
+    assert run([90.0, 99.01, 95.0, 89.0])[-1]                             # bounce just over +10%, then new low
+    assert not run([90.0, 98.9, 95.0, 89.0])[-1]                          # bounce +9.9%: not enough
+    assert not run([90.0, 99.01, 95.0, 90.0])[-1]                          # equal close is no new low
+    assert not run([90.0, 99.01, 90.0, 89.0])[-1]                          # latest low has no bounce after it
+    c = [100.0] * 28 + [90.0, 99.01, 95.0, 89.0]
+    D = pd.DataFrame(dict(h=c, l=c, c=c, v=1.0), index=pd.date_range('2022-01-01', periods=len(c), freq='D'))
+    assert not L69._dcat_v(D.drop(D.index[5]), p).values[-1]             # missing day inside the window blocks
+
+
+def test_v69_regime_gate_and_hour_zero_with_gaps():
+    btc = _ms(_mk(2600, '4h', 52)); seen = {}; fired = 0
+    for key, ok, fl in (('l69_morning_star_4h', (0, 1), lambda d: L27._next_day(L69._mstar_v(L17._days(d), dict(n=20)), L17._days(d), d)),
+                        ('s69_dead_cat_fail_4h', (-1,), lambda d: L27._next_day(L69._dcat_v(L27._days_v(d), dict(n=30, bounce=0.10)), L27._days_v(d), d))):
+        for seed in (40, {'l': 58, 's': 54}[key[0]]):
+            coin = _ms(_mk(2600, '4h', seed)); d = S.indicators(coin); cr = L.coin_regime(d); f = np.asarray(fl(d))
+            full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+            np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+            seen[(key, 0)] = seen.get((key, 0), 0) + int((f & (cr == 0)).sum())
+            seen[(key, -1)] = seen.get((key, -1), 0) + int((f & (cr == -1)).sum())
+            t = pd.to_datetime(coin.t).dt.normalize()
+            for i in np.flatnonzero(got)[:10]:
+                assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+                for back in (2, 15):
+                    cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+                    part = _sig(key, cut, btc)
+                    k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                    fired += 1
+                    assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
+    assert all(seen.values()) and fired, seen
+
+
+def test_v69_morning_star_synthetic_body_rules():
+    flat = [(100.0, 101.0, 99.0, 100.0)] * 25                            # o, h, l, c
+    def run(tail):
+        rows = flat + tail
+        o, h, l, c = (list(x) for x in zip(*rows))
+        D = pd.DataFrame(dict(o=o, h=h, l=l, c=c, v=1.0), index=pd.date_range('2022-01-01', periods=len(rows), freq='D'))
+        return L69._mstar_v(D, dict(n=20)).values[-1]
+    red = (100.0, 100.5, 89.5, 90.0)                                     # body 10 of range 11, new 20-day low
+    assert run([red, (89.0, 89.5, 88.0, 89.5), (90.0, 96.0, 89.5, 95.5)])
+    assert not run([red, (89.0, 89.5, 88.0, 89.5), (95.5, 96.0, 89.5, 95.5)])   # doji day j (c == o) is not green
+    assert not run([red, (89.0, 89.5, 88.0, 89.5), (90.0, 96.0, 89.5, 95.0)])   # close at the midpoint does not count
+    assert not run([red, (89.0, 89.5, 88.0, 92.5), (90.0, 96.0, 89.5, 95.5)])   # middle body 3.5 > 30% of 10
+    assert not run([(100.0, 108.0, 89.5, 90.0), (89.0, 89.5, 88.0, 89.5), (90.0, 96.0, 89.5, 95.5)])  # body < 60% of range
