@@ -3119,3 +3119,73 @@ def test_v64_flat_days_count_as_neither_up_nor_down():
     c2 = np.r_[np.full(9, 100.0), 100 - np.arange(1, 15), np.full(7, 86.0)]
     D2 = pd.DataFrame({'h': c2 + 1, 'l': c2 - 1, 'c': c2, 'v': 1.0}, index=idx)
     assert L64._ratio_v(D2, L64.RP, False).sum() == 1
+
+
+import longscout_v65 as L65
+L65.register()
+
+
+@pytest.mark.parametrize('key', sorted(L65.CANDIDATES))
+def test_v65_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _ms(_mk(2600, '4h', 59)), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert (le if key.startswith('l65') else se).sum()
+    cr = L.coin_regime(S.indicators(coin))
+    assert np.isin(cr[le], (0, 1)).all() and np.isin(cr[se], (0, -1)).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v65_ref(D, high, n=180, age=5):
+    days = list(D.index); H, Lo, C, V = list(D.h), list(D.l), list(D.c), list(D.v)
+    tp = [(H[i] + Lo[i] + C[i]) / 3 for i in range(len(C))]
+    res = np.zeros(len(C), bool)
+    vw = lambda a, t: sum(tp[i] * V[i] for i in range(a, t + 1)) / sum(V[i] for i in range(a, t + 1))
+    for j in range(n, len(C)):
+        if days[j] - days[j - n] != pd.Timedelta(days=n):
+            continue
+        w = range(j - n, j)
+        a = max(w, key=lambda k: (H[k], -k)) if high else min(w, key=lambda k: (Lo[k], k))
+        if a > j - age:
+            continue
+        now, prev = vw(a, j), vw(a, j - 1)
+        res[j] = (C[j] < now and C[j - 1] >= prev) if high else (C[j] > now and C[j - 1] <= prev)
+    return res
+
+
+def test_v65_avwap_matches_an_independent_loop_and_prefixes():
+    hits = {True: 0, False: 0}
+    for seed in (55, 57, 59, 61):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for high in (True, False):
+            v = L65._avwap_v(D, L65.AP, high).values
+            np.testing.assert_array_equal(v, _v65_ref(D, high), err_msg=str((seed, high)))
+            hits[high] += int(v.sum())
+            if seed == 59:
+                for cut in range(190, len(D), 29):
+                    np.testing.assert_array_equal(L65._avwap_v(D.iloc[:cut], L65.AP, high).values, v[:cut])
+    assert all(hits.values())
+
+
+def test_v65_young_anchor_is_refused_and_gaps_block():
+    D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', 59))))
+    loose = L65._avwap_v(D, dict(L65.AP, age=0), True)
+    assert loose.sum() > L65._avwap_v(D, L65.AP, True).sum()
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for key in sorted(L65.CANDIDATES):
+        coin = _ms(_mk(2600, '4h', 59)); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig(key, coin, btc)
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se'])):
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            for back in (2, 100):
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
+    assert fired
