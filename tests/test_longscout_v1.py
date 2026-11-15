@@ -4063,3 +4063,129 @@ def test_v73_regime_gate_and_hour_zero_with_gaps():
             fired += 1
             assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), key
     assert fired and all(all(x) for x in seen.values()), seen
+
+
+import longscout_v74 as L74
+L74.register()
+
+_V74_COIN = {'l74_fractal_break_4h': lambda: _ms(_mk(2600, '4h', 46)),
+             'r74_prior_month_break_4h': lambda: _ms(_mk(2600, '4h', 40))}
+
+
+@pytest.mark.parametrize('key', sorted(L74.CANDIDATES))
+def test_v74_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V74_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l74': le.sum() and not se.any(), 'r74': le.sum() and se.sum()}[key[:3]]
+    cr = L.coin_regime(S.indicators(coin))
+    assert (cr[le] == 1).all() and (cr[se] == -1).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v74_frac_ref(D, n=20):
+    days = list(D.index); H, C = list(D.h), list(D.c); m = len(C)
+    res = np.zeros(m, bool)
+    for j in range(n + 2, m):
+        if days[j] - days[j - n - 2] != pd.Timedelta(days=n + 2):
+            continue
+        fr = [k for k in range(j - n, j - 2) if all(H[k] > H[i] for i in (k - 2, k - 1, k + 1, k + 2))]
+        if fr:
+            lv = H[fr[-1]]
+            res[j] = C[j] > lv and C[j - 1] <= lv
+    return res
+
+
+def _v74_pm_ref(D, up):
+    days = list(D.index); H, Lo, C = list(D.h), list(D.l), list(D.c); have = set(days)
+    res = np.zeros(len(C), bool)
+    for j, t in enumerate(days):
+        first = pd.Timestamp(t.year, t.month, 1)
+        prev = pd.Timestamp(t.year - (t.month == 1), 12 if t.month == 1 else t.month - 1, 1)
+        need = pd.date_range(prev, t, freq='D')
+        if not all(x in have for x in need):
+            continue
+        pm = [i for i, x in enumerate(days) if prev <= x < first]
+        cm = [i for i, x in enumerate(days) if first <= x < t]
+        if up:
+            lv = max(H[i] for i in pm); res[j] = C[j] > lv and not any(C[i] > lv for i in cm)
+        else:
+            lv = min(Lo[i] for i in pm); res[j] = C[j] < lv and not any(C[i] < lv for i in cm)
+    return res
+
+
+def test_v74_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (40, 44, 46, 49, 51):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for kind, call, ref in (('fr', lambda X: L74._frac_v(X, dict(n=20)), _v74_frac_ref),
+                                ('pu', lambda X: L74._pm_v(X, True), lambda X: _v74_pm_ref(X, True)),
+                                ('pd', lambda X: L74._pm_v(X, False), lambda X: _v74_pm_ref(X, False))):
+            v = call(D).values
+            np.testing.assert_array_equal(v, ref(D), err_msg=str((seed, kind)))
+            hits[kind] = hits.get(kind, 0) + int(v.sum())
+            if seed == 46:
+                for cut in range(30, len(D), 37):
+                    np.testing.assert_array_equal(call(D.iloc[:cut]).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(call(gap).values, ref(gap), err_msg=str(('gap', kind)))
+    assert all(hits.values()), hits
+
+
+def test_v74_synthetic_fractal_and_month_edges():
+    def days(h, c, start='2022-01-01'):
+        return pd.DataFrame(dict(h=h, l=[x - 5 for x in c], c=c, v=1.0), index=pd.date_range(start, periods=len(c), freq='D'))
+    h = [100.0] * 23; c = [99.0] * 23
+    h[18] = 110.0                                                          # fractal on day 18, known from day 20
+    f = lambda hh, cc: L74._frac_v(days(hh, cc), dict(n=20)).values
+    assert f(h + [100.0], c + [111.0])[-1]                                 # day 23 (k = j-5) breaks it
+    assert not f(h + [100.0], c + [110.0])[-1]                             # close equal to the fractal high
+    h2 = list(h); h2[19] = 110.0                                           # equal neighbour high: no fractal
+    assert not f(h2 + [100.0], c + [111.0])[-1]
+    h3 = [100.0] * 21; c3 = [99.0] * 21; h3[18] = 110.0
+    assert not f(h3, c3[:-1] + [111.0])[-1]                                # k = j-2 is not yet confirmed
+    c4 = list(c); c4[22] = 110.5
+    assert not f(h + [100.0], c4 + [111.0])[-1]                            # day j-1 already closed above
+    # month: Jan 1..Feb 5, Jan high 100, Feb closes 99, 99, 101, 102, 101
+    hj = [100.0] * 31 + [99.0, 99.0, 101.0, 102.0, 101.0]; cj = [95.0] * 31 + [99.0, 99.0, 101.0, 102.0, 101.0]
+    up = L74._pm_v(days(hj, cj), True).values
+    assert up[31:].tolist() == [0, 0, 1, 0, 0]                              # only the first close above this month
+    assert not L74._pm_v(days(hj, cj).drop(pd.Timestamp('2022-01-10')), True).any()   # incomplete prior month
+    cj2 = cj[:33] + [100.0] + cj[34:]
+    assert L74._pm_v(days(hj, cj2), True).values[31:].tolist() == [0, 0, 0, 1, 0]   # close equal to the high is not above
+
+
+def test_v74_regime_gate_and_hour_zero_with_gaps():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0; seen = {}
+    for key in sorted(L74.CANDIDATES):
+        coin = _V74_COIN[key](); d = S.indicators(coin); cr = L.coin_regime(d); D = L27._days_v(d)
+        if key.startswith('l74'):
+            fu = np.asarray(L27._next_day(L74._frac_v(D, dict(n=20)), D, d)); fd = np.zeros(len(d), bool)
+        else:
+            fu = np.asarray(L27._next_day(L74._pm_v(D, True), D, d)); fd = np.asarray(L27._next_day(L74._pm_v(D, False), D, d))
+        full = _sig(key, coin, btc)
+        np.testing.assert_array_equal(np.asarray(full['le']), fu & (cr == 1))
+        np.testing.assert_array_equal(np.asarray(full['se']), fd & (cr == -1))
+        seen[key] = int(((fu | fd) & (cr == 0)).sum())
+        t = pd.to_datetime(coin.t).dt.normalize()
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))[:20]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            back = 21 if key.startswith('l74') else pd.Timestamp(coin.t.iloc[i]).day + 3
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+            part = _sig(key, cut, btc)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            fired += 1
+            assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), key
+    assert fired and all(seen.values()), seen
+
+
+def test_v74_fractal_window_needs_days_back_to_k_minus_two():
+    h = [100.0] * 24; c = [99.0] * 24; h[3] = 110.0; c[23] = 111.0          # fractal at k = j-20
+    D = pd.DataFrame(dict(h=h, l=[95.0] * 24, c=c, v=1.0), index=pd.date_range('2022-01-01', periods=24, freq='D'))
+    assert L74._frac_v(D, dict(n=20)).values[-1]
+    assert not L74._frac_v(D.drop(D.index[1]), dict(n=20)).values[-1]       # day j-22 (k-2) missing blocks
