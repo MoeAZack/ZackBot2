@@ -73,11 +73,39 @@ def test_addendum_is_pinned_and_cannot_touch_existing_books(tmp_path, monkeypatc
 
 def test_integrity_amendment_needs_its_exact_parents(tmp_path, monkeypatch):
     fz = RF.load_freeze(check=True)
-    assert fz['integrity_amendments'] == ['A2'] and fz['code_sha256'] == RF.code_shas()
+    assert fz['integrity_amendments'] == ['A2', 'A3'] and fz['code_sha256'] == RF.code_shas()
     f = tmp_path / 'freeze.json'; f.write_text(open(RF.FREEZE, encoding='utf-8').read() + '\n', encoding='utf-8')   # a different parent
     (tmp_path / 'freeze.sha256').write_text(hashlib.sha256(f.read_bytes()).hexdigest(), encoding='utf-8')
     monkeypatch.setattr(RF, 'FREEZE', str(f)); monkeypatch.setattr(RF, 'FREEZE_SHA_FILE', str(tmp_path / 'freeze.sha256'))
     with pytest.raises(SystemExit, match='parent freeze'): RF.load_freeze(check=True)
+
+
+def test_a3_is_bound_to_a2(tmp_path, monkeypatch):
+    fz = RF.load_freeze(check=True)
+    assert fz['integrity_amendments'] == ['A2', 'A3']
+    import shutil
+    for f in os.listdir(HERE):
+        if f.startswith('freeze'): shutil.copy(os.path.join(HERE, f), tmp_path / f)
+    a2 = tmp_path / 'freeze_amendment_a2.json'
+    a2.write_text(a2.read_text(encoding='utf-8') + '\n', encoding='utf-8')               # altered A2 with a recomputed sidecar
+    (tmp_path / 'freeze_amendment_a2.sha256').write_text(hashlib.sha256(a2.read_bytes()).hexdigest(), encoding='utf-8')
+    monkeypatch.setattr(RF, 'HERE', str(tmp_path)); monkeypatch.setattr(RF, 'FREEZE', str(tmp_path / 'freeze.json'))
+    monkeypatch.setattr(RF, 'FREEZE_SHA_FILE', str(tmp_path / 'freeze.sha256'))
+    with pytest.raises(SystemExit, match='parent amendment'): RF.load_freeze(check=True)
+
+
+@pytest.mark.skipif(not os.path.exists(os.path.join(ROOT, 'data_long', '1h', 'BTCUSDT_1h.csv')), reason='sample data missing')
+def test_overlap_mismatch_on_one_coin_stops_every_book(tmp_path):
+    B = pd.Timestamp('2026-02-10').value // 10 ** 6
+    base = _fixture(tmp_path, [B])
+    p = tmp_path / 'fwd' / str(B) / 'ATOMUSDT_1h.csv'
+    d = pd.read_csv(p); d.loc[3, 'c'] = d.loc[3, 'c'] * 1.01; d.to_csv(p, index=False, encoding='utf-8')
+    man = tmp_path / 'fwd' / str(B) / 'fetch_manifest.json'
+    m = json.load(open(man, encoding='utf-8')); m['symbols']['ATOMUSDT']['sha256'] = hashlib.sha256(p.read_bytes()).hexdigest()
+    json.dump(m, open(man, 'w', encoding='utf-8'))
+    r = _run(tmp_path, base, B); assert r.returncode == 0, r.stderr[-3000:]
+    row = json.load(open(tmp_path / 'rows' / 'test' / str(B) / 'row.json', encoding='utf-8'))
+    assert row['status'] == 'INCOMPLETE' and row['leads'] == {} and row['coverage']['ATOMUSDT']['status'] == 'MISMATCH'
 
 
 def test_tampered_freeze_is_refused(tmp_path, monkeypatch):
@@ -128,6 +156,13 @@ def test_merge_zero_overlap_is_never_ok():                 # Codex A2 witness: f
     assert info['status'] == 'OVERLAP_MISSING' and info['overlap_expected'] == 0 and len(m) == 100
     m, info = RF.merge_coin(base, fwd, T0 + 150 * H, FS)     # fetch claims to start at FS but holds none of the overlap
     assert info['status'] == 'OVERLAP_MISSING' and info['n_missing'] == 10
+
+
+def test_merge_real_mismatch_wins_over_missing_overlap():      # Codex A3 witness
+    base = pd.DataFrame(dict(t=[T0, T0 + H, T0 + 2 * H], o=1.0, h=1.0, l=1.0, c=1.0, v=1.0, qv=1.0))
+    fwd = pd.DataFrame(dict(t=[T0 + H, T0 + 3 * H, T0 + 4 * H], o=1.0, h=1.0, l=1.0, c=[9.0, 1.0, 1.0], v=1.0, qv=1.0))
+    m, info = RF.merge_coin(base, fwd, T0 + 5 * H, T0)
+    assert m is None and info['status'] == 'MISMATCH' and info['column'] == 'c' and info['t_ms'] == T0 + H
 
 
 def test_merge_partial_overlap_is_missing():
@@ -228,7 +263,8 @@ def test_parity_detects_changed_missing_added_trades_signals_and_opens():
     s1 = dict(sym='A', decision_bar_open_utc='2026-01-02 00:00:00', side='long', eligible=True)
     s0 = dict(sym='C', decision_bar_open_utc='2026-01-01 00:00:00', side='long', eligible=True)
     s2 = dict(sym='B', decision_bar_open_utc='2026-01-06 00:00:00', side='long', eligible=True)
-    op = dict(sym='D', t_in='2026-01-04 04:00:00')
+    op = dict(sym='D', t_in='2026-01-04 04:00:00', side=1, entry_ref=10.0, entry_fill=10.002, qty=4.0, risk_usd=8.0, stop_dist=2.0,
+              initial_stop=8.002, target=14.002)
     prev = _row([t1], [s1], [op])
     assert RF.parity(prev, _row([t1, t2], [s1, s2], [op], '2026-01-08 00:00')) == []
     assert RF.parity(prev, _row([t1, t2, dict(op, t_out='2026-01-07 00:00:00', R15=2.0)], [s1, s2], [], '2026-01-08 00:00')) == []
@@ -254,6 +290,30 @@ def test_parity_rejects_changed_entry_facts_of_an_earlier_open_position():
                  ('initial_stop', 110.0), ('target', 80.0)):
         assert RF.parity(prev, _row([], [], [dict(ok_open, **{f: v})], '2026-01-08 00:00')), f'OPEN->OPEN {f}'
         assert RF.parity(prev, _row([dict(ok_closed, **{f: v})], [], [], '2026-01-08 00:00')), f'OPEN->CLOSED {f}'
+
+
+def test_parity_requires_present_finite_entry_facts_on_both_sides():
+    E = dict(side=1, entry_ref=100.0, entry_fill=100.02, qty=2.0, risk_usd=8.0, stop_dist=4.0, initial_stop=96.02, target=112.02)
+    op = dict(sym='D', t_in='2026-01-04 04:00:00', **E)
+    cl = dict(op, t_out='2026-01-06 08:00:00', why='tp', R15=1.9)
+    assert RF.parity(_row([], [], [op]), _row([], [], [op], '2026-01-08 00:00')) == []
+    assert RF.parity(_row([], [], [op]), _row([cl], [], [], '2026-01-08 00:00')) == []
+    bare = dict(sym='D', t_in=op['t_in'], side=1)                                  # Codex witness: receipts missing on both sides
+    assert RF.parity(_row([], [], [bare]), _row([], [], [bare], '2026-01-08 00:00'))
+    assert RF.parity(_row([], [], [bare]), _row([dict(bare, t_out='2026-01-06 08:00:00')], [], [], '2026-01-08 00:00'))
+    for f in RF.IMMUTABLE_ENTRY:
+        for bad in (None, float('nan'), float('inf'), 'x'):
+            x = dict(op, **{f: bad})
+            assert RF.parity(_row([], [], [x]), _row([], [], [x], '2026-01-08 00:00')), (f, bad)       # equal bad values on both sides
+            assert RF.parity(_row([], [], [x]), _row([dict(cl, **{f: bad})], [], [], '2026-01-08 00:00')), (f, bad)
+        y = {k: v for k, v in op.items() if k != f}
+        assert RF.parity(_row([], [], [y]), _row([], [], [y], '2026-01-08 00:00')), f
+        assert RF.parity(_row([], [], [op]), _row([], [], [y], '2026-01-08 00:00')), f                    # one-sided missing
+    for f in ('entry_ref', 'entry_fill', 'qty', 'risk_usd', 'stop_dist'):
+        for bad in (0.0, -1.0):
+            x = dict(op, **{f: bad}); assert RF.parity(_row([], [], [x]), _row([], [], [x], '2026-01-08 00:00')), (f, bad)
+    for bad in (0, 2, True, 1.5):
+        x = dict(op, side=bad); assert RF.parity(_row([], [], [x]), _row([], [], [x], '2026-01-08 00:00')), bad
 
 
 def test_review_flags():

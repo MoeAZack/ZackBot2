@@ -74,6 +74,13 @@ Codex put the books on HOLD at 047349c4 (#351 comment 6902262210) over two pre-s
 
 `freeze.json` and `freeze_a1_s54.json` are byte-identical to their parents. A2 is a separate file, `freeze_amendment_a2.json`, with its own sha, and it records the parent shas, its UTC time and the new runner and test shas. The runner refuses A2 unless the parents match. t_fwd and all seven books are unchanged.
 
+## Amendment A3: integrity guards, second pass (before t_fwd, no row existed)
+Codex put A2 on HOLD (#351 comment 6902417655) over two remaining gaps, and A3 closes both:
+- **Entry facts must really exist.** Each immutable entry fact must be present and valid on both the earlier and the later record. A missing value, null, NaN or a non-number never counts as "equal". Side must be +1 or -1. Prices, quantity, risk and stop distance must be finite and above zero. Stop and target must be finite: none of them can be null, because every frozen book has both.
+- **A real mismatch wins.** Overlapping bars are compared first. Any bar that differs is a MISMATCH, which stops every book for that row, even if other overlap bars are missing.
+
+A3 is a separate file, `freeze_amendment_a3.json`. It binds the shas of `freeze.json`, `freeze_a1_s54.json` and `freeze_amendment_a2.json`, all of which are byte-identical to before. The runner checks every link in that chain.
+
 ## Tests (cloud, non-official)
 `python -m pytest -q research/lead_fwd/test_lead_fwd.py` covers:
 - unit tests for merge, coverage, closed-bar fetch with settle time, two-way parity, flags, open positions, and the freeze and code pins;

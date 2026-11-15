@@ -19,7 +19,7 @@ X31 = os.path.join(ROOT, 'research', 'extra31_screen')
 sys.path.insert(0, X31)
 FREEZE = os.path.join(HERE, 'freeze.json')
 FREEZE_SHA_FILE = os.path.join(HERE, 'freeze.sha256')
-INTEGRITY_AMENDMENTS = ['freeze_amendment_a2.json']   # applied in order; each pins the runner code that replaces the previous pins
+INTEGRITY_AMENDMENTS = ['freeze_amendment_a2.json', 'freeze_amendment_a3.json']   # applied in order; each pins the runner code that replaces the previous pins
 H = 3600000
 COLS = ['o', 'h', 'l', 'c', 'v', 'qv']
 
@@ -53,6 +53,9 @@ def load_freeze(check=True):
         if check:
             for ad in fz.get('addenda', []):
                 if A['parent_addenda_sha256'].get(ad['file']) != ad['sha256']: raise SystemExit(f'{name}: parent addendum sha differs')
+            for prev in INTEGRITY_AMENDMENTS[:INTEGRITY_AMENDMENTS.index(name)]:   # A3+: bound to every earlier amendment
+                if A.get('parent_amendments_sha256', {}).get(prev) != sha(os.path.join(HERE, prev)):
+                    raise SystemExit(f'{name}: parent amendment {prev} sha differs')
         fz['code_sha256'] = A['code_sha256']
         fz.setdefault('integrity_amendments', []).append(A['id'])
     if check:
@@ -114,6 +117,14 @@ def merge_coin(base, fwd, B, fetch_start):
     fwd = fwd[fwd.t < B]
     ov = base.merge(fwd, on='t', suffixes=('_b', '_f'))
     info['overlap_bars'] = int(len(ov))
+    for c in COLS:                                      # A3: a real differing common bar is MISMATCH first, whatever else is missing
+        a, b = ov[c + '_b'].values, ov[c + '_f'].values
+        both_nan = np.isnan(a) & np.isnan(b)
+        diff = ~(both_nan | (a == b))
+        if diff.any():
+            j = int(np.flatnonzero(diff)[0])
+            info.update(status='MISMATCH', column=c, t_ms=int(ov.t.iloc[j]), base=float(a[j]), fwd=float(b[j]), n_diff=int(diff.sum()))
+            return None, info
     exp = base.t[base.t >= fetch_start].values
     info['overlap_expected'] = int(len(exp))
     if not len(exp) or not np.isin(exp, fwd.t.values).all():
@@ -122,14 +133,6 @@ def merge_coin(base, fwd, B, fetch_start):
                     first_missing_ms=int(miss[0]) if len(miss) else None,
                     reason='no base bar at or after the fetch start' if not len(exp) else 'expected overlap bar absent from the forward data')
         return base.copy(), info
-    for c in COLS:
-        a, b = ov[c + '_b'].values, ov[c + '_f'].values
-        both_nan = np.isnan(a) & np.isnan(b)
-        diff = ~(both_nan | (a == b))
-        if diff.any():
-            j = int(np.flatnonzero(diff)[0])
-            info.update(status='MISMATCH', column=c, t_ms=int(ov.t.iloc[j]), base=float(a[j]), fwd=float(b[j]), n_diff=int(diff.sum()))
-            return None, info
     last = int(base.t.iloc[-1]) if len(base) else -1
     if len(base) and int(fwd.t.iloc[0]) > last + H:
         info.update(status='CUT', cut_after_ms=last, reason='forward data starts after a missing hour')
@@ -211,6 +214,16 @@ def build_data(base_paths, fwd_paths, B, work, fetch_start):
 
 # ------------------------------------------------------------------ worker (one lead, inside its exported source)
 IMMUTABLE_ENTRY = ('side', 'entry_ref', 'entry_fill', 'qty', 'risk_usd', 'stop_dist', 'initial_stop', 'target')
+
+
+def valid_entry(r):
+    """A3: every immutable entry fact present and valid. side is +1 or -1; prices, quantity, risk and stop distance are finite
+    and > 0; initial stop and target are finite (every frozen book has a stop and a tp_r target, so none is nullable)."""
+    import math
+    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+    if not all(f in r for f in IMMUTABLE_ENTRY) or r['side'] not in (1, -1) or isinstance(r['side'], bool): return False
+    if not all(num(r[f]) and r[f] > 0 for f in ('entry_ref', 'entry_fill', 'qty', 'risk_usd', 'stop_dist')): return False
+    return num(r['initial_stop']) and num(r['target'])
 
 
 def entry_facts(f, management, slip):
@@ -343,7 +356,7 @@ def parity(prev, cur):
         now = {key(r): r for r in c['primary']['closed'] + c['primary']['open']}
         for r in p['primary']['open']:                  # still open or closed since; the entry facts must be identical (A2)
             n = now.get(key(r))
-            if n is None or any(n.get(f) != r.get(f) for f in IMMUTABLE_ENTRY):
+            if n is None or not valid_entry(r) or not valid_entry(n) or any(n[f] != r[f] for f in IMMUTABLE_ENTRY):
                 probs.append(f'{k}: earlier open position {key(r)} is missing or differs in its entry facts')
     return probs
 
