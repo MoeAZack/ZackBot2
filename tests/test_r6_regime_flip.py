@@ -986,3 +986,353 @@ def test_exits_only_context_is_replaced_only_by_given_callables():
         assert R.register_exits_only('x', resolve=a) is foreign and R._CTX['resolve'] is None   # foreign: untouched
     finally:
         del S.STRATEGIES[R.KEY]
+
+
+# ---------------------------------------------------------------- R6-FRAME-ID-01 (#352): concurrent cache refresh
+import logging                                                              # noqa: E402
+import threading                                                            # noqa: E402
+
+
+def _rows(d):
+    return [[int(t.value // 10**6), o, h, l, c, v, int(t.value // 10**6) + 14400000 - 1, v * c]
+            for t, o, h, l, c, v in zip(d.t, d.o, d.h, d.l, d.c, d.v)]
+
+
+def _feed(e, frames, seen=None):
+    """Public-data fake: 4h rows per symbol (historical rows -> every engine.candles call is a cache miss = a refresh);
+    1h D01 candles all liquid."""
+    def klines(sym, tf, limit=1500, end_time=None, start_time=None):
+        if seen is not None: seen.append((sym, tf, threading.current_thread().name))
+        if tf == '4h' or start_time is None: return [list(r) for r in _rows(frames[sym])[-limit:]]
+        hh = h1(pd.Timestamp(start_time, unit='ms'), pd.Timestamp(end_time + 1, unit='ms') - pd.Timedelta(hours=1), qv=1e6)
+        return [[int(t.value // 10**6), 1, 1, 1, 1, 1, int(t.value // 10**6) + 3599999, q] for t, q in zip(hh.t, hh.qv)]
+    e.data = type('D', (), {})(); e.data.klines = klines
+
+
+def _refresh_in_other_thread(e, sym, name='preview_worker'):
+    """A second producer (another thread, e.g. the panel preview) refreshes the same cache key and replaces it."""
+    th = threading.Thread(target=lambda: e.candles(sym, '4h'), name=name)
+    th.start(); th.join()
+
+
+@pytest.mark.parametrize('side', ['le', 'se'])
+@pytest.mark.parametrize('fallback', [True, False])
+def test_displaced_frame_still_admits_its_entry(side, fallback, monkeypatch, caplog):
+    """Trading-cycle thread fetches AAVE, a second thread replaces the cache entry before the cycle evaluates: the cycle's
+    (now displaced) frame must still resolve to AAVE and admit the entry. fallback=False is the witness: without the
+    provenance fallback the same race refuses the entry as 'symbol of the frame unknown' (the 15 Nov canary warnings)."""
+    d = flip_frame(side)
+    e, E, R = a4_engine()
+    _feed(e, {'AAVEUSDT': d})
+    OV.install(e, pace=False)
+    end = pd.Timestamp(d.t.iloc[-1]) + pd.Timedelta(hours=4)
+    R._CTX['clock'] = lambda: end.timestamp() + 90
+    e.S['SLEEVES'] = [OV.sleeve(True)]
+    if not fallback: monkeypatch.setattr(OV, '_provenance', lambda eng, x: (None, 'fallback disabled (witness)'))
+    orig_ctx = S.build_context
+
+    def ctx_after_race(al, *a, **k):                    # after the cycle's own candles(), before S.signals
+        _refresh_in_other_thread(e, 'AAVEUSDT')
+        return orig_ctx(al, *a, **k)
+    monkeypatch.setattr(S, 'build_context', ctx_after_race)
+    out = {}
+    th = threading.Thread(target=lambda: out.update(r=e.compute_signals('4h', ['AAVEUSDT'])), name='cycle-4h')
+    caplog.set_level(logging.INFO, logger='zackbot')
+    th.start(); th.join()
+    sigs, frames = out['r']
+    assert frames['AAVEUSDT'] is not e._kc[('AAVEUSDT', '4h')][0]           # the race really displaced the cycle's frame
+    g = sigs['EX14|AAVEUSDT']
+    other = 'se' if side == 'le' else 'le'
+    assert g[other] is False
+    if fallback:
+        assert g[side] is True and R.LAST_GATE['AAVEUSDT']['ok']
+        assert e._r6_prov['by_fallback'] >= 1 and not e._r6_prov['unresolved']
+        msg = [r.getMessage() for r in caplog.records if 'resolved by provenance' in r.getMessage()]
+        assert msg and '"thread": "cycle-4h"' in msg[0] and '"phase": "compute_signals:4h"' in msg[0]
+        assert '"expected": "AAVEUSDT"' in msg[0]
+    else:
+        assert g[side] is False and 'AAVEUSDT' not in R.LAST_GATE
+        bad = e._r6_prov['unresolved'][-1]
+        assert bad['expected'] == 'AAVEUSDT' and bad['thread'] == 'cycle-4h' and bad['phase'] == 'compute_signals:4h'
+        assert bad['decision_open'] == str(pd.Timestamp(d.t.iloc[-1]))
+
+
+def _deadline_setup(side, k, fresh_fail=False):
+    R = mod()
+    e, E, R = a4_engine()
+    entry = pd.Timestamp('2026-06-01 04:00')
+    d = frame_rows(entry + k * R.STEP)
+    d['c'] = np.linspace(100.0, 300.0, len(d)) if side == 'LONG' else np.linspace(300.0, 100.0, len(d))
+    d['o'] = d['h'] = d['l'] = d['c']
+    e.state['lots']['EX14|AAVEUSDT|' + side] = dict(sleeve='EX14', key_strategy=R.KEY, symbol='AAVEUSDT', side=side,
+                                                    qty=1.0, avg=100.0, r6_entry_bar=entry.isoformat(),
+                                                    opened=(entry + pd.Timedelta(minutes=4)).isoformat() + '+00:00')
+    _feed(e, {'AAVEUSDT': d})
+    if fresh_fail:
+        del e.rules['ZRXUSDT']
+        with pytest.raises(OV.R6InstallError): OV.install(e, pace=False)
+        assert S.STRATEGIES[R.KEY] is R._EXITS_ONLY
+    else:
+        OV.install(e, pace=False)
+    return e, R, entry
+
+
+@pytest.mark.parametrize('fresh_fail', [False, True])
+@pytest.mark.parametrize('side', ['LONG', 'SHORT'])
+@pytest.mark.parametrize('k,due', [(119, False), (120, True), (121, True)])
+def test_displaced_frame_keeps_the_canonical_deadline(side, k, due, fresh_fail):
+    """A held lot's frame displaced by a concurrent refresh still gets its canonical exit at entry + 120 bars (PAPER and
+    the fresh-process exits-only fallback), never earlier; the current frame agrees."""
+    e, R, entry = _deadline_setup(side, k, fresh_fail)
+    mine = e.candles('AAVEUSDT', '4h')
+    _refresh_in_other_thread(e, 'AAVEUSDT')
+    cur = e._kc[('AAVEUSDT', '4h')][0]
+    assert cur is not mine
+    ex = 'lx' if side == 'LONG' else 'sx'
+    raw = R.raw_signals(mine)
+    assert not raw[ex].iloc[-1]                                             # only the deadline can close it here
+    want = raw[ex].values | (pd.to_datetime(mine.t).values >= np.datetime64(entry + R.MAX_BARS * R.STEP))
+    for frame in (mine, cur):
+        out = sig(R, frame)
+        assert bool(out[ex][-1]) == due
+        np.testing.assert_array_equal(out[ex], want)
+        if fresh_fail: assert not out['le'].any() and not out['se'].any()
+
+
+def test_displaced_frame_deadline_witness_without_fallback(monkeypatch):
+    e, R, entry = _deadline_setup('SHORT', 120)
+    mine = e.candles('AAVEUSDT', '4h')
+    _refresh_in_other_thread(e, 'AAVEUSDT')
+    monkeypatch.setattr(OV, '_provenance', lambda eng, x: (None, 'fallback disabled (witness)'))
+    assert not sig(R, mine)['sx'][-1]                                     # the #352 defect: backstop only
+    assert sig(R, e._kc[('AAVEUSDT', '4h')][0])['sx'][-1]
+
+
+def _produced(e, sym='AAVEUSDT'):
+    d = flip_frame('le')
+    _feed(e, {sym: d, 'ZRXUSDT': d, 'BTCUSDT': d})
+    return e.candles(sym, '4h')
+
+
+def test_provenance_refuses_untrusted_or_inconsistent_frames(caplog):
+    R = mod()
+    e, E, R = a4_engine()
+    OV.install(e, pace=False)
+    res = OV.frame_resolver(e)
+    mine = _produced(e)
+    assert res(mine) == 'AAVEUSDT'                                        # current cache identity
+    _refresh_in_other_thread(e, 'AAVEUSDT')
+    assert res(mine) == 'AAVEUSDT'                                        # displaced: provenance
+    cp = mine.copy(); cp.attrs['symbol'] = 'AAVEUSDT'; cp.attrs['tf'] = '4h'
+    assert res(cp) is None                                                # df.attrs are never trusted
+    assert e._r6_prov['unresolved'][-1]['why'] == 'frame not produced by the engine candle producer'
+    one_h = e.candles('AAVEUSDT', '1h')
+    assert res(one_h) is None                                             # wrong timeframe: never recorded
+    btc = e.candles('BTCUSDT', '4h'); _refresh_in_other_thread(e, 'BTCUSDT')
+    assert res(btc) is None                                               # outside the frozen list: never recorded
+    mut = e.candles('ZRXUSDT', '4h'); _refresh_in_other_thread(e, 'ZRXUSDT')
+    mut.loc[mut.index[-1], 'c'] = mut.c.iloc[-1] * 1.01
+    assert res(mut) is None and 'rows changed' in e._r6_prov['unresolved'][-1]['why']
+    assert all(r['thread'] for r in e._r6_prov['unresolved'])
+    assert id(one_h) not in e._r6_prov['frames'] and id(btc) not in e._r6_prov['frames']   # the producer records only these
+
+
+def test_provenance_refuses_wrong_symbol_metadata():
+    R = mod()
+    e, E, R = a4_engine()
+    OV.install(e, pace=False)
+    res = OV.frame_resolver(e)
+    mine = _produced(e)
+    _refresh_in_other_thread(e, 'AAVEUSDT')
+    reg = e._r6_prov
+    ref, sym, tf, fp = reg['frames'][id(mine)]
+    reg['frames'][id(mine)] = (ref, 'ZRXUSDT', tf, fp)                    # registry says ZRX ...
+    for col in ('o', 'h', 'l', 'c'):
+        zrx = flip_frame('le'); zrx[col] = zrx[col] * 2                    # same candle times, different prices
+        _feed(e, {'ZRXUSDT': zrx}); e.candles('ZRXUSDT', '4h')            # ... but ZRX's cached candle disagrees
+        assert res(mine) is None and 'disagrees' in reg['unresolved'][-1]['why'], col
+    zrx = flip_frame('le'); zrx['t'] = zrx['t'] + pd.Timedelta(hours=2)    # ZRX cache sharing no candle time at all
+    _feed(e, {'ZRXUSDT': zrx}); e.candles('ZRXUSDT', '4h')
+    assert res(mine) is None and 'no shared candle' in reg['unresolved'][-1]['why']
+    del e._kc[('ZRXUSDT', '4h')]
+    assert res(mine) is None and 'no current cached' in reg['unresolved'][-1]['why']
+    reg['frames'][id(mine)] = (ref, sym, '1h', fp)
+    assert res(mine) is None and 'wrong timeframe' in reg['unresolved'][-1]['why']
+    reg['frames'][id(mine)] = (ref, 'BTCUSDT', '4h', fp)
+    assert res(mine) is None and 'not in the frozen list' in reg['unresolved'][-1]['why']
+    other = mine.copy()
+    reg['frames'][id(mine)] = (weakref_to(other), sym, tf, fp)
+    assert res(mine) is None and 'another' in reg['unresolved'][-1]['why']
+    reg['frames'][id(mine)] = (ref, sym, tf, fp)
+    OV._remember(reg, mine, 'ZRXUSDT', '4h')                               # one object claimed by two symbols
+    assert res(mine) is None and reg['unresolved'][-1]['why'] == 'conflicting provenance'
+
+
+def weakref_to(x):
+    import weakref
+    return weakref.ref(x)
+
+
+def test_provenance_refuses_when_the_evaluator_asked_for_another_symbol():
+    R = mod()
+    e, E, R = a4_engine()
+    OV.install(e, pace=False)
+    res = OV.frame_resolver(e)
+    mine = _produced(e)
+    _refresh_in_other_thread(e, 'AAVEUSDT')
+    import weakref
+    OV._TL.phase, OV._TL.got = 'compute_signals:4h', {id(mine): (weakref.ref(mine), 'ZRXUSDT', '4h')}
+    try:
+        assert res(mine) is None and 'evaluator asked for ZRXUSDT' in e._r6_prov['unresolved'][-1]['why']
+        assert e._r6_prov['unresolved'][-1]['expected'] == 'ZRXUSDT'
+    finally:
+        OV._TL.phase, OV._TL.got = None, None
+
+
+def test_single_thread_cache_behaviour_and_other_sleeves_unchanged():
+    """Cache hits return the very same object with no fetch; a frame aligned to the last closed bar is fetched once;
+    another sleeve's signals are identical with and without the provenance wrapper."""
+    import time as _t
+    step = 14400
+    last_open = (int(_t.time()) // step - 1) * step
+    d = frame_rows(pd.Timestamp(last_open, unit='s'))
+    d['c'] = 100 + np.sin(np.arange(len(d)) / 9.0) * 10; d['o'] = d['c'].shift().fillna(100.0)
+    d['h'] = d[['o', 'c']].max(axis=1) + 1; d['l'] = d[['o', 'c']].min(axis=1) - 1
+    outs = []
+    for wrap in (False, True):
+        R = mod()
+        e, E, R = a4_engine()
+        seen = []
+        _feed(e, {'AAVEUSDT': d, 'BTCUSDT': d}, seen)
+        if wrap:
+            OV.install_frame_provenance(e)
+            assert OV.install_frame_provenance(e) is e._r6_prov                # idempotent: no double wrap
+        a = e.candles('AAVEUSDT', '4h'); b = e.candles('AAVEUSDT', '4h')
+        assert a is b and a is e._kc[('AAVEUSDT', '4h')][0]
+        assert sum(1 for x in seen if x[:2] == ('AAVEUSDT', '4h')) == 1
+        e.S['SLEEVES'] = [E.sleeve('EX01', 'ema_mom', 1 / 12, 0.024, 1, ['AAVEUSDT'])]
+        sigs, _ = e.compute_signals('4h', ['AAVEUSDT'])
+        outs.append(sigs['EX01|AAVEUSDT'])
+        if wrap: assert id(a) in e._r6_prov['frames'] and OV._TL.__dict__.get('got') is None   # phase restored
+    assert outs[0] == outs[1]
+
+
+def test_registry_is_bounded_and_prunes_dead_frames(monkeypatch):
+    R = mod()
+    e, E, R = a4_engine()
+    OV.install_frame_provenance(e)
+    monkeypatch.setattr(OV, 'PROV_MAX', 3)
+    keep = []
+    for i in range(6):
+        f = frame_rows(pd.Timestamp('2026-06-01') + i * R.STEP, n=5)
+        keep.append(f)
+        OV._remember(e._r6_prov, f, 'AAVEUSDT', '4h')
+    assert len(e._r6_prov['frames']) == 3 and id(keep[-1]) in e._r6_prov['frames'] and id(keep[0]) not in e._r6_prov['frames']
+
+
+# ---------------------------------------------------------------- #352 adversarial review: regressions
+@pytest.mark.parametrize('side', ['LONG', 'SHORT'])
+def test_frame_displaced_by_an_OLDER_refresh_keeps_the_deadline(side):
+    """A slower refresh spanning the bar boundary stores a frame ending one bar EARLIER after the cycle stored its own:
+    the cycle's newer frame must still resolve (shared candle = the cache's last one) and exit at entry + 120."""
+    e, R, entry = _deadline_setup(side, 120)
+    mine = e.candles('AAVEUSDT', '4h')
+    full = frame_rows(entry + 120 * R.STEP)
+    full['c'] = np.linspace(100.0, 300.0, len(full)) if side == 'LONG' else np.linspace(300.0, 100.0, len(full))
+    full['o'] = full['h'] = full['l'] = full['c']
+    _feed(e, {'AAVEUSDT': full.iloc[:-1].reset_index(drop=True)})          # the slower producer's older rows
+    _refresh_in_other_thread(e, 'AAVEUSDT')
+    cur = e._kc[('AAVEUSDT', '4h')][0]
+    assert pd.Timestamp(cur.t.iloc[-1]) < pd.Timestamp(mine.t.iloc[-1])
+    ex = 'lx' if side == 'LONG' else 'sx'
+    assert sig(R, mine)[ex][-1]
+    res = OV.frame_resolver(e)
+    bad = mine.copy(); OV._remember(e._r6_prov, bad, 'AAVEUSDT', '4h')
+    bad.loc[bad.index[-2], 'c'] = bad.c.iloc[-2] * 1.5                    # older cached candle disagrees -> refused
+    e._r6_prov['frames'][id(bad)] = (e._r6_prov['frames'][id(bad)][0], 'AAVEUSDT', '4h', OV._fp(bad))
+    assert res(bad) is None and 'disagrees' in e._r6_prov['unresolved'][-1]['why']
+
+
+def test_resolver_never_raises_on_a_broken_registered_frame():
+    R = mod()
+    e, E, R = a4_engine()
+    OV.install(e, pace=False)
+    mine = _produced(e)
+    _refresh_in_other_thread(e, 'AAVEUSDT')
+    mine.drop(mine.index, inplace=True)
+    assert OV.frame_resolver(e)(mine) is None
+    assert 'provenance check error' in e._r6_prov['unresolved'][-1]['why']
+
+
+def test_fingerprint_covers_the_last_candle_time():
+    R = mod()
+    e, E, R = a4_engine()
+    OV.install(e, pace=False)
+    mine = _produced(e)
+    _refresh_in_other_thread(e, 'AAVEUSDT')
+    mine.loc[mine.index[-1], 't'] = mine.t.iloc[-1] + pd.Timedelta(hours=4)
+    assert OV.frame_resolver(e)(mine) is None and 'rows changed' in e._r6_prov['unresolved'][-1]['why']
+
+
+def test_install_is_idempotent_and_a_recording_error_never_reaches_the_engine(monkeypatch):
+    R = mod()
+    e, E, R = a4_engine()
+    reg = OV.install_frame_provenance(e)
+    c1, cs1 = e.candles, e.compute_signals
+    assert OV.install_frame_provenance(e) is reg and e.candles is c1 and e.compute_signals is cs1
+    d = flip_frame('le'); _feed(e, {'AAVEUSDT': d})
+    monkeypatch.setattr(OV, '_remember', lambda *a: (_ for _ in ()).throw(RuntimeError('boom')))
+    got = e.candles('AAVEUSDT', '4h')
+    assert got is e._kc[('AAVEUSDT', '4h')][0] and len(got) == 1500
+
+
+def test_nested_compute_signals_restores_the_outer_phase():
+    R = mod()
+    e, E, R = a4_engine()
+    d = flip_frame('le'); _feed(e, {'AAVEUSDT': d, 'BTCUSDT': d})
+    inner_seen = {}
+    orig = e.compute_signals
+
+    def base(tf, syms, *a, **k):
+        g = OV._TL.got
+        if tf == '4h':
+            inner_seen['fresh'] = (g == {})
+            orig_inner('1h', syms)
+            inner_seen['outer_kept'] = (OV._TL.got is g and OV._TL.phase == 'compute_signals:4h')
+        return {}, {}
+    e.compute_signals = base
+    orig_inner = lambda tf, syms: None
+    OV.install_frame_provenance(e)
+    wrapped = e.compute_signals
+    orig_inner = lambda tf, syms: wrapped(tf, syms)
+    OV._TL.phase, OV._TL.got = 'outer-sentinel', {'x': 1}
+    try:
+        wrapped('4h', ['AAVEUSDT'])
+        assert inner_seen == {'fresh': True, 'outer_kept': True}
+        assert OV._TL.phase == 'outer-sentinel' and OV._TL.got == {'x': 1}
+    finally:
+        OV._TL.phase, OV._TL.got = None, None
+
+
+def test_registry_reuses_a_dead_entry_and_prunes_dead_before_live(monkeypatch):
+    import gc, weakref
+    R = mod()
+    e, E, R = a4_engine()
+    reg = OV.install_frame_provenance(e)
+    a = frame_rows(pd.Timestamp('2026-06-01'), n=5)
+    OV._remember(reg, a, 'AAVEUSDT', '4h')
+    k = id(a)
+    b = frame_rows(pd.Timestamp('2026-06-02'), n=5)
+    reg['frames'][id(b)] = (weakref.ref(frame_rows(pd.Timestamp('2026-06-03'), n=5)), 'ZRXUSDT', '4h', None)
+    gc.collect()                                                         # that entry's object is gone (as after id reuse)
+    OV._remember(reg, b, 'AAVEUSDT', '4h')
+    assert reg['frames'][id(b)][1] == 'AAVEUSDT' and reg['frames'][id(b)][0]() is b   # replaced, not poisoned
+    monkeypatch.setattr(OV, 'PROV_MAX', 3)
+    live = [b, a]
+    for i in range(3):
+        tmp = frame_rows(pd.Timestamp('2026-07-01') + i * R.STEP, n=5)
+        OV._remember(reg, tmp, 'AAVEUSDT', '4h'); del tmp
+    gc.collect()
+    c = frame_rows(pd.Timestamp('2026-08-01'), n=5); live.append(c)
+    OV._remember(reg, c, 'AAVEUSDT', '4h')
+    assert k in reg['frames'] and id(b) in reg['frames'] and id(c) in reg['frames'] and len(reg['frames']) == 3

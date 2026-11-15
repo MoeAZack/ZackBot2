@@ -19,6 +19,8 @@ import logging
 import os
 import threading
 import time
+import weakref
+from collections import OrderedDict, deque
 
 import pandas as pd
 import strategies as S
@@ -77,12 +79,152 @@ def slots_problem(sleeves):
     return None
 
 
+PROV_MAX = 4096                 # bounded provenance registry (live 4h frames of the frozen list; dead ones pruned first)
+UNRESOLVED_MAX = 200           # bounded in-memory diagnostics of frames that could not be resolved
+_TL = threading.local()        # per-thread evaluation phase + the frames THIS thread received from the producer
+
+
+def _fp(df):
+    """Checkpoint of a produced frame: row count, last candle open time and last close ONLY. A change to any of these after
+    production breaks the provenance match. It is NOT a whole-frame or equal-history guarantee: earlier rows and indicator
+    columns are not compared (no ordinary installed path mutates a produced frame, and a separate producer refresh may
+    legitimately carry revised history)."""
+    return (len(df), int(pd.Timestamp(df.t.iloc[-1]).value), float(df.c.iloc[-1]))
+
+
+def install_frame_provenance(engine):
+    """R6-FRAME-ID-01 (#352). Instance-level wrappers, no engine.py change:
+    - engine.candles: every 4h frame of a frozen-list symbol RETURNED by the engine's own producer (fresh fetch or cache
+      hit) is recorded in a registry owned by this overlay, keyed by object identity with a weak reference (never df.attrs,
+      which pandas copies onto derived frames). The same object is returned: caching and fetching are unchanged.
+    - engine.compute_signals: marks the calling thread's evaluation phase and collects the frames that thread received,
+      so a resolution can be cross-checked against the symbol the evaluating thread itself asked for.
+    Idempotent; never raises into the engine."""
+    reg = getattr(engine, '_r6_prov', None)
+    if reg is not None: return reg
+    reg = dict(lock=threading.Lock(), frames=OrderedDict(), unresolved=deque(maxlen=UNRESOLVED_MAX), by_fallback=0)
+    orig_candles, orig_cs = engine.candles, engine.compute_signals
+
+    def candles(sym, tf, *a, **k):
+        df = orig_candles(sym, tf, *a, **k)
+        try:
+            if tf == '4h' and sym in _FROZEN and df is not None and len(df):
+                _remember(reg, df, sym, tf)
+                got = getattr(_TL, 'got', None)
+                if got is not None: got[id(df)] = (weakref.ref(df), sym, tf)
+        except Exception:
+            pass
+        return df
+
+    def compute_signals(tf, syms, *a, **k):
+        prev = (getattr(_TL, 'phase', None), getattr(_TL, 'got', None))
+        _TL.phase, _TL.got = f'compute_signals:{tf}', {}
+        try:
+            return orig_cs(tf, syms, *a, **k)
+        finally:
+            _TL.phase, _TL.got = prev
+
+    engine.candles, engine.compute_signals = candles, compute_signals
+    engine._r6_prov = reg
+    return reg
+
+
+_FROZEN = frozenset(R.SYMBOLS)
+
+
+def _remember(reg, df, sym, tf):
+    with reg['lock']:
+        fr = reg['frames']
+        k = id(df)
+        cur = fr.get(k)
+        if cur is not None and cur[0]() is df:
+            if (cur[1], cur[2]) != (sym, tf):                       # one object, two identities: poisoned (fail closed)
+                fr[k] = (cur[0], None, None, cur[3])
+            return
+        fr[k] = (weakref.ref(df), sym, tf, _fp(df))
+        if len(fr) > PROV_MAX:
+            for kk in [kk for kk, v in fr.items() if v[0]() is None]: del fr[kk]
+            while len(fr) > PROV_MAX: fr.popitem(last=False)
+
+
+def _provenance(engine, d):
+    """-> (symbol or None, reason). Validated fallback for a frame that is no longer the engine's current cached object.
+    Never raises (a failed check is a refusal)."""
+    try:
+        return _provenance_checked(engine, d)
+    except Exception as ex:
+        return None, f'provenance check error ({type(ex).__name__})'
+
+
+_OHLC = ('o', 'h', 'l', 'c')
+
+
+def _provenance_checked(engine, d):
+    reg = getattr(engine, '_r6_prov', None)
+    if reg is None: return None, 'no provenance registry'
+    with reg['lock']:
+        ent = reg['frames'].get(id(d))
+    if ent is None: return None, 'frame not produced by the engine candle producer'
+    ref, sym, tf, fp = ent
+    if ref() is not d: return None, 'provenance belongs to another (freed) object'
+    if sym is None: return None, 'conflicting provenance'
+    if tf != '4h': return None, f'wrong timeframe {tf}'
+    if sym not in _FROZEN: return None, f'{sym} not in the frozen list'
+    if _fp(d) != fp: return None, 'frame rows changed after it was produced'
+    got = getattr(_TL, 'got', None)                            # CONDITIONAL: checked only when this exact object is in
+    if got is not None and id(d) in got:                        # the evaluating thread's receipt map (inside its own
+                                                                # compute_signals); otherwise the trusted producer registry
+                                                                # plus the shared-candle check below decide
+        gref, gsym, gtf = got[id(d)]
+        if gref() is d and (gsym, gtf) != (sym, tf): return None, f'evaluator asked for {gsym}/{gtf}'
+    hit = getattr(engine, '_kc', {}).get((sym, '4h'))          # cross-check: the engine's current frame for that symbol
+    cur = hit[0] if hit else None                              # must hold the same candle (open/high/low/close)
+    if cur is None or not len(cur): return None, f'no current cached {sym} frame to cross-check'
+    t_last = pd.Timestamp(d.t.iloc[-1])
+    ct = pd.to_datetime(cur.t)
+    # the shared candle: the frame's last one, or - when a slower refresh left an OLDER frame in the cache - the cache's
+    # last one, which the newer frame must also hold
+    t_ref = t_last if ct.max() >= t_last else pd.Timestamp(ct.max())
+    a = cur[ct == t_ref]
+    b = d[pd.to_datetime(d.t) == t_ref]
+    if not len(a) or not len(b): return None, f'no shared candle with the current cached {sym} frame at {t_ref}'
+    a, b = a.iloc[-1], b.iloc[-1]
+    if any(float(a[c]) != float(b[c]) for c in _OHLC):
+        return None, f'disagrees with the current cached {sym} frame at {t_ref}'
+    return sym, 'provenance'
+
+
+def _diag(engine, d, why, sym=None):
+    try:
+        got = getattr(_TL, 'got', None) or {}
+        g = got.get(id(d))
+        row = dict(why=why, provenance=sym, expected=(g[1] if g and g[0]() is d else None),
+                   decision_open=str(pd.Timestamp(d.t.iloc[-1])) if len(d) else None, rows=len(d),
+                   last_close=float(d.c.iloc[-1]) if len(d) else None, phase=getattr(_TL, 'phase', None) or 'outside compute_signals',
+                   thread=threading.current_thread().name, utc=pd.Timestamp.now(tz='UTC').isoformat())
+    except Exception as ex:
+        row = dict(why=why, diag_error=type(ex).__name__, thread=threading.current_thread().name)
+    return row
+
+
 def frame_resolver(engine):
-    """frame -> symbol, by identity with the engine's own closed-candle cache (read only). compute_signals passes the
-    cached DataFrame object itself to the strategy; anything else resolves to None (entry refused)."""
+    """frame -> symbol. Primary: identity with the engine's current closed-candle cache (compute_signals passes the cached
+    object itself). Fallback (#352): a frame displaced from the cache by a concurrent refresh resolves through the
+    overlay's producer-owned provenance, validated (see _provenance). Anything else -> None (entry refused; deadline left to
+    the raw exit / 124-bar backstop) with a diagnostic line naming the phase and thread."""
     def resolve(d):
         for (sym, tf), hit in list(getattr(engine, '_kc', {}).items()):
             if tf == '4h' and hit and hit[0] is d: return sym
+        sym, why = _provenance(engine, d)
+        reg = getattr(engine, '_r6_prov', None)
+        row = _diag(engine, d, why, sym)
+        if sym is not None:
+            if reg is not None:
+                with reg['lock']: reg['by_fallback'] += 1
+            log.info('R6 frame resolved by provenance (displaced from the cache): ' + json.dumps(row, default=str))
+            return sym
+        if reg is not None: reg['unresolved'].append(row)
+        log.warning('R6 frame unresolved: ' + json.dumps(row, default=str))
         return None
     return resolve
 
@@ -344,6 +486,7 @@ def install(engine, app_module=None, pace=True):
     is off; if a saved EX14 slot / lot already refers to the strategy, an EXITS-ONLY entry is registered first so the
     other slots keep their 4h cycle (a missing key would raise KeyError for every slot)."""
     try:
+        install_frame_provenance(engine)               # passive (records only); also serves an exits-only fallback
         why = settings_problem(engine)
         if why: raise R6InstallError(f'R6 overlay: {why}')
         base = engine.trade.base
@@ -419,7 +562,9 @@ def remove_sleeve(engine):
 
 
 def uninstall(engine, app_module=None):
-    """Last rollback step: unregister only when no slot and no lot refers to the strategy (else KeyError for all slots)."""
+    """Last rollback step: unregister only when no slot and no lot refers to the strategy (else KeyError for all slots).
+    The passive frame-provenance wrappers (#352) stay on the instance until the process restarts without the launcher
+    lines; they only record metadata and change no result."""
     if _referenced(engine): raise R6InstallError('R6 overlay: a slot or lot still refers to the strategy - remove it first')
     R.unregister()
     if app_module is not None: restore_panel(app_module)

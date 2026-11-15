@@ -15,7 +15,7 @@ confirmation PR #349. These are results on data that has already been used, not 
 | `r6_regime_flip.py` | Strategy. Import registers nothing. Frozen R1 core is copied verbatim; D01 admission; fail-closed live gate; `register_for_paper` only for mode `paper` at an exact testnet HTTPS origin; `unregister` cleans up. |
 | `r6_paper_overlay.py` | Account-4 overlay, called from a launcher **after** `engine.connect()`. Changes no deployed file. |
 | `tools/r6_sizing_receipt.py` | Read-only receipt. Runs the real `open_lot` of a given source tree on a copy of a real settings.json with a fake exchange. |
-| `tests/test_r6_regime_flip.py` | 101 targeted tests. |
+| `tests/test_r6_regime_flip.py` | 130 targeted tests. |
 
 ## Rule (frozen, unchanged)
 
@@ -184,9 +184,51 @@ exits**, and the panel cannot remove the slot either. The adversarial review fou
    - **Never** remove the launcher lines while the slot or a lot still exists. A restart would then raise KeyError for every slot.
      The exits-only fail-safe covers only a failed `install()`, not a missing call.
 
+## Frame provenance across concurrent cache refreshes (R6-FRAME-ID-01, issue #352)
+
+Found on the live canary (15 Nov 2026): `engine.candles` replaces `_kc[(symbol, tf)]` without a lock, and the panel's
+preview worker and chart paths call it outside the trading-cycle lock. A frame the cycle already holds can then be
+displaced by another thread's refresh. Identity-only resolution returned None for it: the entry was refused (fail
+closed), and, for a held lot, the canonical 120-bar exit was not added (only the raw regime exit and the 124-bar backstop
+remained).
+
+The fix is overlay-only (engine.py unchanged):
+
+- `install_frame_provenance` wraps the instance's `candles` and `compute_signals`. Every 4h frame of a frozen-list symbol
+  returned by the engine's own producer (fresh fetch or cache hit) goes into a registry owned by the overlay. The registry
+  is keyed by object identity with a weak reference, so it never pins frames in memory and is bounded (4,096 entries).
+  `df.attrs` is never used: pandas copies attrs onto derived frames.
+- `frame_resolver` keeps cache identity as the primary path, unchanged. A frame that IS the engine's current cached object
+  resolves to that cache key directly; the registry is not consulted (and so cannot override it). A displaced frame
+  resolves only if every check below passes:
+  - the registry entry refers to this same live object, recorded by the engine's own producer wrapper (the trusted scope
+    is that in-process wrapper; it is not revalidated against a deliberately corrupted registry);
+  - it has one identity (an object claimed by two symbols is poisoned);
+  - its timeframe is 4h and its symbol is in the frozen list;
+  - its checkpoint is unchanged since production: row count, last candle open time and last close only. This is not a
+    whole-frame or equal-history guarantee; earlier rows and indicator columns are not compared;
+  - conditionally, when this exact object is in the evaluating thread's receipt map (it was returned to that thread by the
+    producer inside its own `compute_signals`), the symbol that thread asked for must match. With no receipt entry, the
+    trusted registry and the shared-candle check decide;
+  - the engine's current cached frame for that symbol has an identical candle (open/high/low/close) at the frame's last
+    time. When a slower refresh left an older frame in the cache, the check uses the cache's last candle instead, which
+    the newer frame must also hold. Only that one candle is compared.
+
+  Anything else fails closed. Resolution needs no network fetch.
+- Every fallback resolution (info) and every failure (warning) is logged as one JSON line. Each line carries the reason,
+  the expected symbol (what the evaluating thread asked for), the decision candle, the rows, the last close, the phase
+  (`compute_signals:<tf>` or outside it) and the thread name, so preview and trading-cycle calls can be told apart.
+  Failures are also kept in a bounded in-memory list (200).
+- `uninstall()` leaves these passive wrappers on the instance until the process restarts without the launcher lines.
+- Unchanged:
+  - the R6 formulas and the 163 list;
+  - D01, the entry window, max1 / $8, the 120-bar row, the 124 backstop and the lot-entry anchor;
+  - stops and other sleeves;
+  - cache hits (same object, no fetch).
+
 ## Tests (sandbox Linux, non-official)
 
-- `tests/test_r6_regime_flip.py`: 101 passed (r2, sandbox, non-official). They also pass under a CP1252 default-encoding shim.
+- `tests/test_r6_regime_flip.py`: 130 passed (R6-FRAME-ID-01, sandbox, non-official). They also pass under a CP1252 default-encoding shim.
 - Parity and causality:
   - The rule equals the verbatim research copy and Codex's formulation on all 40 repo 4h coins.
   - Prefix causality holds at 6 cut points.
