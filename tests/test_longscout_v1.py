@@ -2978,3 +2978,72 @@ def test_v62_entries_are_hour_zero_and_gaps_block():
                 fired += 1
                 assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
     assert fired
+
+
+import longscout_v63 as L63
+L63.register()
+
+_V63_COIN = {'l63_vcp_breakout_4h': lambda: _v36_coin(1), 's63_vcp_breakdown_4h': lambda: _v36_coin(2, drift=-0.001)}
+
+
+@pytest.mark.parametrize('key', sorted(L63.CANDIDATES))
+def test_v63_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V63_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert (le if key.startswith('l63') else se).sum()
+    cr = L.coin_regime(S.indicators(coin))
+    assert (cr[le] == 1).all() and (cr[se] == -1).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v63_ref(D, up, w=10, ratio=0.5):
+    days = list(D.index); H, Lo, C = list(D.h), list(D.l), list(D.c); res = np.zeros(len(days), bool)
+    rng = lambda a, b: (max(H[a:b]) - min(Lo[a:b])) / max(H[a:b])
+    for j in range(3 * w, len(days)):
+        if days[j] - days[j - 3 * w] != pd.Timedelta(days=3 * w):
+            continue
+        A, B, Cc = rng(j - 30, j - 20), rng(j - 20, j - 10), rng(j - 10, j)
+        tight = A > B > Cc and Cc <= ratio * A
+        brk = C[j] > max(H[j - 30:j]) if up else C[j] < min(Lo[j - 30:j])
+        res[j] = tight and brk
+    return res
+
+
+def test_v63_flags_match_an_independent_loop_and_prefixes():
+    hits = {True: 0, False: 0}
+    for seed in list(range(50, 66)) + ['v1', 'v2']:
+        coin = _v36_coin(1) if seed == 'v1' else _v36_coin(2, drift=-0.001) if seed == 'v2' else _ms(_mk(2600, '4h', seed))
+        D = L27._days_v(S.indicators(coin))
+        for up in (True, False):
+            v = L63._vcp_v(D, L63.VP, up).values
+            np.testing.assert_array_equal(v, _v63_ref(D, up), err_msg=str((seed, up)))
+            hits[up] += int(v.sum())
+            if seed in ('v1', 'v2'):
+                for cut in range(40, len(D), 23):
+                    np.testing.assert_array_equal(L63._vcp_v(D.iloc[:cut], L63.VP, up).values, v[:cut])
+    assert all(hits.values())
+
+
+def test_v63_contraction_rule_is_needed_and_gaps_block():
+    D = L27._days_v(S.indicators(_v36_coin(1)))
+    loose = L63._vcp_v(D, dict(L63.VP, ratio=10.0), True); strict = L63._vcp_v(D, L63.VP, True)
+    assert (strict <= loose).all() and loose.sum() > strict.sum()
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for key in sorted(L63.CANDIDATES):
+        coin = _V63_COIN[key](); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig(key, coin, btc)
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se'])):
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            for back in (2, 25):
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
+    assert fired
