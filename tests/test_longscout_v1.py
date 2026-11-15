@@ -1855,3 +1855,106 @@ def test_v50_first_flag_across_a_missing_day_does_not_fire():
                 sig = np.asarray(_sig(key, cut, btc)[side])
                 assert not sig[np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]], key
     assert fired
+
+
+import longscout_v51 as L51
+L51.register()
+
+_V51 = {'r51_btc_quiet_squeeze_4h': (lambda: _ms(_mk(2600, '4h', 56)), lambda: _v36_coin(3)),
+        'l51_momentum_accel_4h': (lambda: _ms(_mk(2600, '4h', 56)), lambda: _ms(_mk(2600, '4h', 52))),
+        's51_momentum_accel_4h': (lambda: _v36_coin(2, drift=-0.001), lambda: _ms(_mk(2600, '4h', 52)))}
+
+
+@pytest.mark.parametrize('key', sorted(L51.CANDIDATES))
+def test_v51_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V51[key][0](), _V51[key][1]()
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert le.sum() or se.sum(), key
+    if key.startswith('r51'):
+        assert le.sum() and se.sum()
+    cr = L.coin_regime(S.indicators(coin))
+    assert (cr[le] == 1).all() and (cr[se] == -1).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def test_v51_helper_values_match_on_every_prefix():
+    coin, btc = _ms(_mk(2600, '4h', 56)), _v36_coin(3)
+    c, b = S.indicators(coin), S.indicators(btc)
+    P = dict(w=7, look=60)
+    L.set_btc(b); fq = L51._squeeze(c, P); D, J = L33._joint(c); fl = L51._squeeze_flag(J, P)
+    roc, acc = L51._accel_v(D, dict(n=10))
+    fa = {up: L51._accel(c, dict(n=10), up) for up in (True, False)}
+    assert fq.sum() and fa[True].sum() and fa[False].sum()
+    for cut in range(700, 2600, 23):
+        part = c.iloc[:cut].reset_index(drop=True)
+        L.set_btc(b.iloc[:cut].reset_index(drop=True))
+        Dp, Jp = L33._joint(part)
+        np.testing.assert_array_equal(L51._squeeze_flag(Jp, P).values, fl.values[:len(Dp)])
+        np.testing.assert_array_equal(L51._squeeze(part, P), fq[:cut])
+        r2, a2 = L51._accel_v(Dp, dict(n=10))
+        np.testing.assert_allclose(a2.values, acc.values[:len(Dp)], equal_nan=True)
+        for up in (True, False):
+            np.testing.assert_array_equal(L51._accel(part, dict(n=10), up), fa[up][:cut])
+
+
+def test_v51_squeeze_matches_an_independent_loop():
+    coin, btc = _ms(_mk(2600, '4h', 56)), _v36_coin(3)
+    c = S.indicators(coin); L.set_btc(S.indicators(btc))
+    D, J = L33._joint(c)
+    rb = J.rb.values
+    sd = np.full(len(rb), np.nan)
+    for i in range(6, len(rb)):
+        w = rb[i - 6:i + 1]
+        if not np.isnan(w).any():
+            sd[i] = np.std(w, ddof=1)
+    flag = np.zeros(len(rb), bool)
+    for i in range(61, len(rb)):
+        prev = sd[i - 60:i]
+        if not np.isnan(prev).any() and not np.isnan(sd[i]):
+            flag[i] = sd[i] < prev.min()
+    np.testing.assert_array_equal(L51._squeeze_flag(J, dict(w=7, look=60)).values, flag)
+    assert flag.sum()
+
+
+def test_v51_first_flag_across_a_missing_day_does_not_fire():
+    fired = 0
+    for key, side in (('r51_btc_quiet_squeeze_4h', None), ('s51_momentum_accel_4h', 'se')):
+        coin, btc = _V51[key][0](), _V51[key][1]()
+        full = _sig(key, coin, btc); t = pd.to_datetime(coin.t).dt.normalize()
+        sig0 = np.asarray(full['le']) | np.asarray(full['se'])
+        for i in np.flatnonzero(sig0):
+            gap = t.iloc[i] - pd.Timedelta(days=2)
+            cut = coin[t != gap].reset_index(drop=True)
+            part = _sig(key, cut, btc)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            fired += 1
+            assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), key
+    assert fired
+
+
+def test_v51_entries_sit_on_the_first_flag_or_cross_day():
+    coin, btc = _V51['r51_btc_quiet_squeeze_4h'][0](), _V51['r51_btc_quiet_squeeze_4h'][1]()
+    full = _sig('r51_btc_quiet_squeeze_4h', coin, btc)
+    c = S.indicators(coin); D, J = L33._joint(c); f = L51._squeeze_flag(J, dict(w=7, look=60))
+    t = pd.to_datetime(c.t).dt.normalize().values
+    sig = np.asarray(full['le']) | np.asarray(full['se'])
+    assert sig.sum()
+    for i in np.flatnonzero(sig):
+        j = D.index.get_loc(pd.Timestamp(t[i]) - pd.Timedelta(days=1))
+        assert f.iloc[j] and not f.iloc[j - 1] and pd.Timestamp(c.t.iloc[i]).hour == 0
+    assert (f & f.shift(fill_value=False)).sum()                 # multi-day squeezes exist, so "first day" matters
+    coin, btc = _V51['s51_momentum_accel_4h'][0](), _V51['s51_momentum_accel_4h'][1]()
+    c = S.indicators(coin); D = L27._days_v(c); t = pd.to_datetime(c.t).dt.normalize().values
+    cl = D.c.values
+    sig = np.asarray(_sig('s51_momentum_accel_4h', coin, btc)['se'])
+    assert sig.sum()
+    for i in np.flatnonzero(sig):
+        j = D.index.get_loc(pd.Timestamp(t[i]) - pd.Timedelta(days=1))
+        roc = lambda k: cl[k] / cl[k - 10] - 1
+        assert roc(j) < 0 and roc(j) - roc(j - 10) < 0 <= roc(j - 1) - roc(j - 11)
