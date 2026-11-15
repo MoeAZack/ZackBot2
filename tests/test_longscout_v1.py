@@ -3047,3 +3047,75 @@ def test_v63_contraction_rule_is_needed_and_gaps_block():
                 fired += 1
                 assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
     assert fired
+
+
+import longscout_v64 as L64
+L64.register()
+
+_V64_COIN = {'l64_up_day_ratio_4h': lambda: _ms(_mk(2600, '4h', 56)), 's64_down_day_ratio_4h': lambda: _ms(_mk(2600, '4h', 54))}
+
+
+@pytest.mark.parametrize('key', sorted(L64.CANDIDATES))
+def test_v64_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V64_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert (le if key.startswith('l64') else se).sum()
+    cr = L.coin_regime(S.indicators(coin))
+    assert (cr[le] == 1).all() and (cr[se] == -1).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v64_ref(D, up, n=20, k=14):
+    days = list(D.index); C = list(D.c); res = np.zeros(len(days), bool)
+    cnt = lambda j: sum(1 for i in range(j - n + 1, j + 1) if (C[i] > C[i - 1] if up else C[i] < C[i - 1]))
+    for j in range(n + 1, len(days)):
+        if days[j] - days[j - n - 1] != pd.Timedelta(days=n + 1):
+            continue
+        res[j] = cnt(j) >= k and cnt(j - 1) < k
+    return res
+
+
+def test_v64_flags_match_an_independent_loop_and_prefixes():
+    hits = {True: 0, False: 0}
+    for seed in range(50, 66):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for up in (True, False):
+            v = L64._ratio_v(D, L64.RP, up).values
+            np.testing.assert_array_equal(v, _v64_ref(D, up), err_msg=str((seed, up)))
+            hits[up] += int(v.sum())
+            if seed in (54, 56):
+                for cut in range(30, len(D), 23):
+                    np.testing.assert_array_equal(L64._ratio_v(D.iloc[:cut], L64.RP, up).values, v[:cut])
+    assert all(hits.values())
+
+
+def test_v64_entries_are_hour_zero_and_gaps_block():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for key in sorted(L64.CANDIDATES):
+        coin = _V64_COIN[key](); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig(key, coin, btc)
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se'])):
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            for back in (2, 15):
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
+    assert fired
+
+
+def test_v64_flat_days_count_as_neither_up_nor_down():
+    idx = pd.date_range('2024-01-01', periods=30, freq='D')
+    c = np.r_[np.full(9, 100.0), 100 - np.arange(1, 14), np.full(8, 87.0)]      # 13 down days then flat days
+    D = pd.DataFrame({'h': c + 1, 'l': c - 1, 'c': c, 'v': 1.0}, index=idx)
+    assert not L64._ratio_v(D, L64.RP, False).any()                      # flat days must not reach 14 "down"
+    c2 = np.r_[np.full(9, 100.0), 100 - np.arange(1, 15), np.full(7, 86.0)]
+    D2 = pd.DataFrame({'h': c2 + 1, 'l': c2 - 1, 'c': c2, 'v': 1.0}, index=idx)
+    assert L64._ratio_v(D2, L64.RP, False).sum() == 1
