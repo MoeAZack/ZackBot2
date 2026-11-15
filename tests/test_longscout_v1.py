@@ -1635,3 +1635,41 @@ def test_v47_strong_close_reference():
             assert not got[i]; continue
         hi, lo = c.h.values[m].max(), c.l.values[m].min()
         assert got[i] == ((c.c.values[i] - lo) / (hi - lo) >= 0.9)
+
+
+import longscout_v48 as L48
+L48.register()
+
+
+@pytest.mark.parametrize('key', sorted(L48.CANDIDATES))
+def test_v48_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _v33_pair(3)
+    full = _sig(key, coin, btc)
+    ent = np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se']))
+    assert len(ent), key
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+    a2 = _sig(key, coin.iloc[:2000].reset_index(drop=True), btc.iloc[:2000].reset_index(drop=True))
+    b2 = _sig(key, coin.iloc[:2000].reset_index(drop=True), btc)
+    for k in ('le', 'se', 'lx', 'sx'):
+        assert (a2[k] == b2[k]).all(), (key, k)
+
+
+def test_v48_btc_day_reference_and_prefixes():
+    coin, btc = _v33_pair(3)
+    L.set_btc(btc); c = S.indicators(coin); t = pd.to_datetime(c.t).dt.normalize().values
+    got = L48._btc_day(c, dict(move=0.05), True); assert got.sum() > 0
+    bd = pd.Series(btc.c.values, index=pd.to_datetime(btc.t)).resample('1D').last()
+    for i in np.flatnonzero(got):
+        y = pd.Timestamp(t[i]) - pd.Timedelta(days=1)
+        assert bd[y] / bd[y - pd.Timedelta(days=1)] - 1 <= -0.05
+    for fn in (lambda x: L48._btc_day(x, dict(move=0.05), True), lambda x: L48._btc_day(x, dict(move=0.05), False),
+               lambda x: L48._lag(x, dict(n=20))):
+        full = fn(c); assert full.sum() > 0
+        for cut in range(700, 2600, 23):
+            L.set_btc(btc.iloc[:cut].reset_index(drop=True))
+            np.testing.assert_array_equal(fn(c.iloc[:cut].reset_index(drop=True)), full[:cut])
+        L.set_btc(btc)
