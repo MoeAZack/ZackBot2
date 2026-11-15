@@ -2453,3 +2453,81 @@ def test_v56_entries_are_next_day_hour_zero_and_gaps_block():
                 fired += 1
                 assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
     assert fired
+
+
+import longscout_v57 as L57
+L57.register()
+
+_V57_COIN = {'r57_triangle_break_4h': lambda: _ms(_mk(2600, '4h', 57)),
+             's57_rising_wedge_4h': lambda: _ms(_mk(2600, '4h', 57)),
+             'l57_falling_wedge_4h': lambda: _ms(_mk(2600, '4h', 56))}
+
+
+@pytest.mark.parametrize('key', sorted(L57.CANDIDATES))
+def test_v57_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V57_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'r57': le.sum() and se.sum(), 's57': se.sum(), 'l57': le.sum()}[key[:3]]
+    cr = L.coin_regime(S.indicators(coin))
+    assert np.isin(cr[le], (0, 1)).all() and np.isin(cr[se], (0, -1)).all()
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v57_ref(D, n=20):
+    days = list(D.index); H, Lo, C = np.asarray(D.h), np.asarray(D.l), np.asarray(D.c); m = len(days)
+    sh, ph, sl, pl = (np.full(m, np.nan) for _ in range(4))
+    for j in range(n, m):
+        bh, ah = np.polyfit(np.arange(n), H[j - n:j], 1); bl, al = np.polyfit(np.arange(n), Lo[j - n:j], 1)
+        sh[j], ph[j], sl[j], pl[j] = bh, ah + bh * n, bl, al + bl * n
+    out = {k: np.zeros(m, bool) for k in ('tri_up', 'tri_dn', 'rw', 'fw')}
+    for j in range(n + 1, m):
+        if days[j] - days[j - n - 1] != pd.Timedelta(days=n + 1):
+            continue
+        up = C[j] > ph[j] and C[j - 1] <= ph[j - 1]
+        dn = C[j] < pl[j] and C[j - 1] >= pl[j - 1]
+        out['tri_up'][j] = sh[j] < 0 < sl[j] and up
+        out['tri_dn'][j] = sh[j] < 0 < sl[j] and dn
+        out['rw'][j] = 0 < sh[j] < sl[j] and dn
+        out['fw'][j] = sh[j] < sl[j] < 0 and up
+    return out, (sh, ph, sl, pl)
+
+
+def test_v57_lines_and_shapes_match_an_independent_polyfit():
+    hits = dict(tri_up=0, tri_dn=0, rw=0, fw=0)
+    for seed in range(50, 62):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        ref, lines = _v57_ref(D)
+        for a, b in zip(L57._lines(D, 20), lines):
+            np.testing.assert_allclose(a.values, b, equal_nan=True, rtol=1e-7, atol=1e-9)
+        got = L57._shapes(D, dict(n=20))
+        for k in hits:
+            np.testing.assert_array_equal(got[k].values, ref[k], err_msg=str((seed, k)))
+            hits[k] += int(ref[k].sum())
+        if seed == 57:
+            for cut in range(60, len(D), 37):
+                g2 = L57._shapes(D.iloc[:cut], dict(n=20))
+                for k in hits:
+                    np.testing.assert_array_equal(g2[k].values, got[k].values[:cut])
+    assert all(hits.values()), hits
+
+
+def test_v57_entries_are_next_day_hour_zero_and_gaps_block():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for key in sorted(L57.CANDIDATES):
+        coin = _V57_COIN[key](); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig(key, coin, btc)
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se'])):
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            for back in (2, 12, 22):
+                cut = coin[t != t.iloc[i] - pd.Timedelta(days=back)].reset_index(drop=True)
+                part = _sig(key, cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                fired += 1
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0]), (key, back)
+    assert fired
