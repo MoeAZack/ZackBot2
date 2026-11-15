@@ -1958,3 +1958,109 @@ def test_v51_entries_sit_on_the_first_flag_or_cross_day():
         j = D.index.get_loc(pd.Timestamp(t[i]) - pd.Timedelta(days=1))
         roc = lambda k: cl[k] / cl[k - 10] - 1
         assert roc(j) < 0 and roc(j) - roc(j - 10) < 0 <= roc(j - 1) - roc(j - 11)
+
+
+import longscout_v52 as L52
+L52.register()
+
+_V52_COINS = {'r52_daily_chop_trend_4h': (lambda: _v36_coin(1), lambda: _v36_coin(2, drift=-0.001)),
+              'l52_weekly_ema_touch_4h': (lambda: _ms(_mk(2600, '4h', 55)),),
+              's52_weekly_ema_touch_4h': (lambda: _ms(_mk(2600, '4h', 55)),)}
+
+
+@pytest.mark.parametrize('key', sorted(L52.CANDIDATES))
+def test_v52_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    btc = _ms(_mk(2600, '4h', 52))
+    sides = set()
+    for mk in _V52_COINS[key]:
+        coin = mk()
+        full = _sig(key, coin, btc)
+        le, se = np.asarray(full['le']), np.asarray(full['se'])
+        sides |= {'le'} if le.sum() else set(); sides |= {'se'} if se.sum() else set()
+        cr = L.coin_regime(S.indicators(coin))
+        assert (cr[le] == 1).all() and (cr[se] == -1).all()
+        ent = np.flatnonzero(le | se)
+        bars = sorted(set(ent[ent >= 300][:60]) | set(ent[ent >= 300][:60] - 1) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+        for i in bars:
+            part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+            for k in ('le', 'se', 'lx', 'sx'):
+                assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+    assert sides == ({'le', 'se'} if key.startswith('r52') else {'le'} if key.startswith('l52') else {'se'})
+
+
+def test_v52_helper_values_match_on_every_prefix():
+    c = S.indicators(_ms(_mk(2600, '4h', 55)))
+    D = L27._days_v(c)
+    ch = L52._chop_v(D, 14); e, eo = L52._weekly_ema(D, 10)
+    assert e.notna().sum() > 100
+    full = {k: f(c) for k, f in (('ch', lambda x: L52._chop(x, dict(n=14, lvl=38.2))),
+                                 ('tl', lambda x: L52._touch(x, dict(n=10), True)),
+                                 ('ts', lambda x: L52._touch(x, dict(n=10), False)))}
+    assert full['tl'].sum() and full['ts'].sum()
+    for cut in range(700, 2600, 23):
+        part = c.iloc[:cut].reset_index(drop=True)
+        Dp = L27._days_v(part)
+        np.testing.assert_allclose(L52._chop_v(Dp, 14).values, ch.values[:len(Dp)], equal_nan=True)
+        e2, o2 = L52._weekly_ema(Dp, 10)
+        np.testing.assert_allclose(e2.values, e.values[:len(Dp)], equal_nan=True)
+        np.testing.assert_allclose(o2.values, eo.values[:len(Dp)], equal_nan=True)
+        np.testing.assert_array_equal(L52._chop(part, dict(n=14, lvl=38.2)), full['ch'][:cut])
+        np.testing.assert_array_equal(L52._touch(part, dict(n=10), True), full['tl'][:cut])
+        np.testing.assert_array_equal(L52._touch(part, dict(n=10), False), full['ts'][:cut])
+
+
+def test_v52_weekly_ema_and_chop_match_an_independent_loop():
+    D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', 55))))
+    days = list(D.index)
+    weeks = {}
+    for dday, cl in zip(days, D.c.values):
+        weeks.setdefault(dday - pd.Timedelta(days=dday.dayofweek), []).append((dday, cl))
+    full = sorted((m, v[-1][1]) for m, v in weeks.items() if len(v) == 7)
+    ema, out, prev_m, run = None, {}, None, 0
+    for m, cl in full:
+        run = run + 1 if prev_m is not None and m - prev_m == pd.Timedelta(days=7) else 1
+        ema = cl if ema is None else (2 / 11) * cl + (9 / 11) * ema
+        out[m] = ema if run >= 11 else np.nan
+        prev_m = m
+    e, _ = L52._weekly_ema(D, 10)
+    for dday, v in e.items():
+        ref = out.get(dday - pd.Timedelta(days=dday.dayofweek) - pd.Timedelta(days=7), np.nan)
+        assert (np.isnan(v) and np.isnan(ref)) or abs(v - ref) < 1e-9 * abs(ref), dday
+    h, l, c = D.h.values, D.l.values, D.c.values
+    tr = np.r_[h[0] - l[0], [max(h[i] - l[i], abs(h[i] - c[i - 1]), abs(l[i] - c[i - 1])) for i in range(1, len(c))]]
+    ch = np.full(len(c), np.nan)
+    for i in range(13, len(c)):
+        ch[i] = 100 * np.log10(tr[i - 13:i + 1].sum() / (h[i - 13:i + 1].max() - l[i - 13:i + 1].min())) / np.log10(14)
+    np.testing.assert_allclose(L52._chop_v(D, 14).values, ch, equal_nan=True, rtol=1e-9)
+
+
+def test_v52_chop_cross_across_a_missing_day_does_not_fire():
+    btc = _ms(_mk(2600, '4h', 52)); fired = 0
+    for mk in _V52_COINS['r52_daily_chop_trend_4h']:
+        coin = mk(); t = pd.to_datetime(coin.t).dt.normalize()
+        full = _sig('r52_daily_chop_trend_4h', coin, btc)
+        for i in np.flatnonzero(np.asarray(full['le']) | np.asarray(full['se'])):
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=3)].reset_index(drop=True)
+            D = L27._days_v(S.indicators(cut)); x = L52._chop_v(D, 14)
+            j = D.index.get_loc(t.iloc[i] - pd.Timedelta(days=1))
+            if x.iloc[j] < 38.2 <= x.iloc[j - 1]:
+                fired += 1
+                part = _sig('r52_daily_chop_trend_4h', cut, btc)
+                k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+                assert not (np.asarray(part['le'])[k0] or np.asarray(part['se'])[k0])
+    assert fired
+
+
+def test_v52_touch_entries_touch_and_close_on_the_right_side():
+    btc = _ms(_mk(2600, '4h', 52)); coin = _ms(_mk(2600, '4h', 55))
+    c = S.indicators(coin); D = L27._days_v(c); e, eo = L52._weekly_ema(D, 10)
+    t = pd.to_datetime(c.t).dt.normalize().values
+    for key, side in (('l52_weekly_ema_touch_4h', 'le'), ('s52_weekly_ema_touch_4h', 'se')):
+        sig = np.asarray(_sig(key, coin, btc)[side])
+        assert sig.sum()
+        for i in np.flatnonzero(sig):
+            j = D.index.get_loc(pd.Timestamp(t[i]) - pd.Timedelta(days=1))
+            if side == 'le':
+                assert e.iloc[j] > eo.iloc[j] and D.l.iloc[j] <= e.iloc[j] < D.c.iloc[j]
+            else:
+                assert e.iloc[j] < eo.iloc[j] and D.h.iloc[j] >= e.iloc[j] > D.c.iloc[j]
