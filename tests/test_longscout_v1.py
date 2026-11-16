@@ -5306,3 +5306,145 @@ def test_v84_regime_gate_and_hour_zero(monkeypatch):
             g = _sig(key, coin, btc)
             assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
             monkeypatch.undo()
+
+
+import longscout_v85 as L85
+L85.register()
+
+_V85_COIN = {'l85_volume_confirms_rally_4h': lambda: _ms(_mk(2600, '4h', 46)),
+             's85_volume_confirms_selloff_4h': lambda: _ms(_mk(2600, '4h', 40))}
+
+
+@pytest.mark.parametrize('key', sorted(L85.CANDIDATES))
+def test_v85_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V85_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l85': le.sum() and not se.any(), 's85': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent - 1) | set(ent) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v85_ref(D, up, n=30, lvl=0.4):
+    days = list(D.index); c = [float(x) for x in D.c]; v = [float(x) for x in D.v]; m = len(c)
+
+    def rho(j):
+        xs = [math.log(c[t] / c[t - 1]) for t in range(j - n + 1, j + 1)]
+        ys = [math.log(v[t]) for t in range(j - n + 1, j + 1)]
+        mx, my = sum(xs) / n, sum(ys) / n
+        sxy = sum((a - mx) * (b - my) for a, b in zip(xs, ys))
+        sxx = sum((a - mx) ** 2 for a in xs); syy = sum((b - my) ** 2 for b in ys)
+        return sxy / math.sqrt(sxx * syy) if sxx > 0 and syy > 0 else None
+
+    res = np.zeros(m, bool)
+    for j in range(n + 1, m):
+        if days[j] - days[j - n - 1] != pd.Timedelta(days=n + 1):
+            continue
+        a, b = rho(j), rho(j - 1)
+        if a is None or b is None:
+            continue
+        R = math.log(c[j] / c[j - n])
+        res[j] = (a > lvl and b <= lvl and R > 0) if up else (a < -lvl and b >= -lvl and R < 0)
+    return res
+
+
+def test_v85_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (46, 40, 48, 50):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for up in (True, False):
+            v = L85._pv_v(D, L85.IP, up).values
+            np.testing.assert_array_equal(v, _v85_ref(D, up), err_msg=str((seed, up)))
+            hits[up] = hits.get(up, 0) + int(v.sum())
+            if seed == 40:
+                for cut in range(35, len(D), 37):
+                    np.testing.assert_array_equal(L85._pv_v(D.iloc[:cut], L85.IP, up).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(L85._pv_v(gap, L85.IP, up).values, _v85_ref(gap, up))
+    assert all(hits.values()), hits
+
+
+def _v85_days(r, v):
+    c = np.exp(np.r_[0.0, np.cumsum(r)])
+    return pd.DataFrame(dict(h=c, l=c, c=c, v=np.r_[1.0, v]), index=pd.date_range('2022-01-01', periods=len(c), freq='D'))
+
+
+def test_v85_synthetic_price_volume():
+    # 40 days: volume uncorrelated with the +-1% alternating returns, then up days on heavy volume
+    base_r = np.tile([0.01, -0.01], 20); base_v = np.tile([1.0, 1.0, 2.0, 2.0], 10)
+    r = np.r_[base_r, [0.03] * 8, [0.0] * 3]; v = np.r_[base_v, [8.0] * 8, [1.0] * 3]
+    D = _v85_days(r, v)
+    up = L85._pv_v(D, L85.IP, True).values
+    rho = L85._rho(D, 30)
+    k = up.tolist().index(True)
+    assert rho.iloc[k] > 0.4 >= rho.iloc[k - 1] and up.sum() == 1
+    assert not L85._pv_v(D, L85.IP, False).any()
+    Dn = _v85_days(-r, v)
+    dn = L85._pv_v(Dn, L85.IP, False).values
+    assert dn.tolist().index(True) == k and dn.sum() == 1
+    assert not L85._pv_v(Dn, L85.IP, True).any()
+    # heavy volume on down days inside a 30-day net gain: correlation negative but R > 0 -> no short
+    r2 = np.r_[base_r, [0.06] * 5 + [-0.02] * 8]; v2 = np.r_[base_v, [1.0] * 5 + [8.0] * 8]
+    D2 = _v85_days(r2, v2)
+    assert (L85._rho(D2, 30) < -0.4).any() and not L85._pv_v(D2, L85.IP, False).any()
+    g = _v85_days(r, v)
+    assert not L85._pv_v(g.drop(g.index[k - 31]), L85.IP, True).any()      # day j-31 missing
+    assert not L85._pv_v(g.drop(g.index[k - 30]), L85.IP, True).any()      # day j-30 (base of R) missing
+
+
+def test_v85_level_and_return_boundaries(monkeypatch):
+    n = 36
+    def run(rh, R, up):
+        c = np.exp(np.r_[np.zeros(32), R])
+        D = pd.DataFrame(dict(h=c, l=c, c=c, v=1.0), index=pd.date_range('2022-01-01', periods=n, freq='D'))
+        monkeypatch.setattr(L85, '_rho', lambda D, k: pd.Series(np.r_[np.full(32, np.nan), rh], index=D.index))
+        out = L85._pv_v(D, L85.IP, up).values[32:].tolist()
+        monkeypatch.undo()
+        return out
+    pos = [0.1, 0.1, 0.1, 0.1]
+    assert run([0.3, 0.5, 0.6, 0.3], pos, True) == [False, True, False, False]
+    assert run([0.4, 0.5, 0.4, 0.5], pos, True) == [False, True, False, True]     # previous exactly 0.4 counts
+    assert run([0.3, 0.4, 0.5, 0.3], pos, True) == [False, False, True, False]    # exactly 0.4 is not above
+    assert run([0.3, 0.5, 0.3, 0.5], [0.1, 0.0, 0.1, 0.1], True) == [False, False, False, True]   # R exactly 0 is not a gain
+    neg = [-0.1, -0.1, -0.1, -0.1]
+    assert run([-0.3, -0.5, -0.6, -0.3], neg, False) == [False, True, False, False]
+    assert run([-0.4, -0.5, -0.4, -0.5], neg, False) == [False, True, False, True]
+    assert run([-0.3, -0.4, -0.5, -0.3], neg, False) == [False, False, True, False]
+    assert run([-0.3, -0.5, -0.3, -0.5], [-0.1, 0.0, -0.1, -0.1], False) == [False, False, False, True]
+
+
+def test_v85_regime_gate_and_hour_zero(monkeypatch):
+    btc = _ms(_mk(2600, '4h', 52))
+    for key, up, ok in (('l85_volume_confirms_rally_4h', True, (1,)), ('s85_volume_confirms_selloff_4h', False, (-1,))):
+        coin = _V85_COIN[key](); d = S.indicators(coin); cr = L.coin_regime(d)
+        f = np.asarray(L85._pv(d, L85.IP, up))
+        full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+        assert got.any(), key
+        np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+        t = pd.to_datetime(coin.t).dt.normalize()
+        for i in np.flatnonzero(got)[:15]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=20)].reset_index(drop=True)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            g = _sig(key, cut, btc)
+            assert not (np.asarray(g['le'])[k0] or np.asarray(g['se'])[k0]), key
+        for forced in (1.0, 0.0, -1.0):
+            monkeypatch.setattr(L85.L1, 'coin_regime', lambda d, v=forced: np.full(len(d), v))
+            g = _sig(key, coin, btc)
+            assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
+            monkeypatch.undo()
+
+
+def test_v85_return_uses_day_j_minus_30(monkeypatch):
+    c = np.ones(36); c[2] = 2.0; c[32] = 1.5                                # R_32 = log(1.5 / c[2]) < 0, though c[32] > c[3]
+    D = pd.DataFrame(dict(h=c, l=c, c=c, v=1.0), index=pd.date_range('2022-01-01', periods=36, freq='D'))
+    monkeypatch.setattr(L85, '_rho', lambda D, k: pd.Series(np.r_[np.full(31, np.nan), 0.3, 0.5, 0.3, 0.3, 0.3], index=D.index))
+    assert not L85._pv_v(D, L85.IP, True).any()
+    c2 = np.ones(36); c2[2] = 0.5; c2[32] = 0.8
+    D2 = pd.DataFrame(dict(h=c2, l=c2, c=c2, v=1.0), index=D.index)
+    monkeypatch.setattr(L85, '_rho', lambda D, k: pd.Series(np.r_[np.full(31, np.nan), -0.3, -0.5, -0.3, -0.3, -0.3], index=D.index))
+    assert not L85._pv_v(D2, L85.IP, False).any()
