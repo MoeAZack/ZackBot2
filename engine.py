@@ -4522,16 +4522,15 @@ class Engine:
             if fin or l['qty'] <= 0: self._finish(key, fin or pd_['why'])
             else: self._replace_stop(l)
             return True
-        if fr['state'] != 'nosource':                                    # AUD-03 r1: a KNOWN order is decided only by its record
-            if fr['state'] == 'notfound' and age > 20:                   # Binance has no such order: it never executed
-                del l['pending']; log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} never reached Binance - will retry")
-                return True
+        if fr['state'] not in ('nosource', 'notfound'):                  # AUD-03 r1: a KNOWN order is decided only by its record
             if age > 300:                                                # no record within the evidence window: timed resync
                 del l['pending']
                 self.err(f"{l['symbol']} [{l['sleeve']}] could not read the order record of a {pd_['kind']} for 5 min "
                          f"({fr['state']}) - resyncing to the exchange")
                 return False
             return None                                                  # wait: the position alone could pick the wrong cause
+        # LANE3-F1: 'not found' is NOT proof that it never executed (a lookup can trail the matching engine): like a lost
+        # record it is decided by the position below - filled / unchanged after 20 s / the 5-minute resync
         # a close of the whole position includes that dust (close_lot), and a position never goes below zero
         target = max(0.0, expected - pd_['qty']) if pd_['kind'] == 'close' else expected + pd_['qty']
         near = lambda d: -tol <= d <= tol                                # whole step multiples: only float noise is tolerated
