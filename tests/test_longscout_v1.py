@@ -5177,3 +5177,132 @@ def test_v83_regime_gate_and_hour_zero(monkeypatch):
             g = _sig(key, coin, btc)
             assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
             monkeypatch.undo()
+
+
+import math
+import longscout_v84 as L84
+L84.register()
+
+_V84_COIN = {'l84_downside_variance_flush_4h': lambda: _ms(_mk(2600, '4h', 44)),
+             's84_upside_variance_spike_4h': lambda: _ms(_mk(2600, '4h', 44))}
+
+
+@pytest.mark.parametrize('key', sorted(L84.CANDIDATES))
+def test_v84_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V84_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l84': le.sum() and not se.any(), 's84': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent - 1) | set(ent) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v84_ref(D, up, n=30, lvl=0.5):
+    days = list(D.index); c = [float(x) for x in D.c]; m = len(c)
+
+    def sj(j):
+        p = q = 0.0
+        for t in range(j - n + 1, j + 1):
+            r = math.log(c[t] / c[t - 1])
+            if r > 0:
+                p += r * r
+            elif r < 0:
+                q += r * r
+        return (p - q) / (p + q) if p + q > 0 else None
+
+    res = np.zeros(m, bool)
+    for j in range(n + 1, m):
+        if days[j] - days[j - n - 1] != pd.Timedelta(days=n + 1):
+            continue
+        a, b = sj(j), sj(j - 1)
+        if a is None or b is None:
+            continue
+        res[j] = (a > lvl and b <= lvl) if up else (a < -lvl and b >= -lvl)
+    return res
+
+
+def test_v84_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (44, 41, 47, 50):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for up in (True, False):
+            v = L84._cross_v(D, L84.IP, up).values
+            np.testing.assert_array_equal(v, _v84_ref(D, up), err_msg=str((seed, up)))
+            hits[up] = hits.get(up, 0) + int(v.sum())
+            if seed == 44:
+                for cut in range(35, len(D), 37):
+                    np.testing.assert_array_equal(L84._cross_v(D.iloc[:cut], L84.IP, up).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(L84._cross_v(gap, L84.IP, up).values, _v84_ref(gap, up))
+    assert all(hits.values()), hits
+
+
+def _v84_days(r):
+    c = np.exp(np.r_[0.0, np.cumsum(r)])
+    return pd.DataFrame(dict(h=c, l=c, c=c, v=1.0), index=pd.date_range('2022-01-01', periods=len(c), freq='D'))
+
+
+def test_v84_synthetic_semivariance():
+    # 40 alternating +-1% days (SJ = 0), then one +8% day: SJ = (64 +- 1) / (64 + 29) > 0.5 (units of 1e-4)
+    r = np.r_[np.tile([0.01, -0.01], 20), 0.08, 0.0, 0.0]
+    D = _v84_days(r)
+    sj = L84._sj(D, 30)
+    assert abs(sj.iloc[40]) < 1e-12 and sj.iloc[41] > 0.5
+    up = L84._cross_v(D, L84.IP, True).values
+    assert up.tolist().index(True) == 41 and up.sum() == 1
+    assert not L84._cross_v(D, L84.IP, False).any()
+    dn = L84._cross_v(_v84_days(np.r_[np.tile([0.01, -0.01], 20), -0.08, 0.0]), L84.IP, False).values
+    assert dn.tolist().index(True) == 41 and dn.sum() == 1
+    flat = _v84_days(np.zeros(45))                                         # zero variance: SJ undefined, never fires
+    assert not L84._cross_v(flat, L84.IP, True).any() and not L84._cross_v(flat, L84.IP, False).any()
+    z = L84._cross_v(_v84_days(np.r_[np.zeros(40), 0.08, 0.0]), L84.IP, True).values
+    assert not z.any()                                                     # previous SJ undefined (0/0) is not a cross
+    g = _v84_days(r)
+    assert not L84._cross_v(g.drop(g.index[10]), L84.IP, True).any()       # day j-31 of the shifted fire day missing
+    assert not L84._cross_v(g.drop(g.index[11]), L84.IP, True).any()       # day j-30 missing
+
+
+def test_v84_level_boundaries(monkeypatch):
+    D = pd.DataFrame(dict(h=1.0, l=1.0, c=1.0, v=1.0), index=pd.date_range('2022-01-01', periods=36, freq='D'))
+    def run(v, up):
+        monkeypatch.setattr(L84, '_sj', lambda D, n: pd.Series(np.r_[np.full(32, np.nan), v], index=D.index))
+        out = L84._cross_v(D, L84.IP, up).values[32:].tolist()
+        monkeypatch.undo()
+        return out
+    assert run([0.4, 0.6, 0.7, 0.4], True) == [False, True, False, False]
+    assert run([0.5, 0.6, 0.5, 0.6], True) == [False, True, False, True]    # previous exactly 0.5 counts
+    assert run([0.4, 0.5, 0.6, 0.4], True) == [False, False, True, False]   # exactly 0.5 is not above
+    assert run([-0.4, -0.6, -0.7, -0.4], False) == [False, True, False, False]
+    assert run([-0.5, -0.6, -0.5, -0.6], False) == [False, True, False, True]
+    assert run([-0.4, -0.5, -0.6, -0.4], False) == [False, False, True, False]
+    idx = pd.date_range('2022-01-01', periods=37, freq='D').delete(1)      # day 1 missing; 36 rows
+    G = pd.DataFrame(dict(h=1.0, l=1.0, c=1.0, v=1.0), index=idx)
+    monkeypatch.setattr(L84, '_sj', lambda D, n: pd.Series(np.r_[np.full(30, np.nan), 0.4, 0.6, 0.4, 0.6, 0.6, 0.6], index=D.index))
+    # row 31 is day 32: days 2..32 present but day j-31 = 1 missing -> no signal; row 33 (day 34) has days 3..34 complete
+    assert L84._cross_v(G, L84.IP, True).values[30:].tolist() == [False, False, False, True, False, False]
+
+
+def test_v84_regime_gate_and_hour_zero(monkeypatch):
+    btc = _ms(_mk(2600, '4h', 52))
+    for key, up, ok in (('l84_downside_variance_flush_4h', False, (0, 1)), ('s84_upside_variance_spike_4h', True, (0, -1))):
+        coin = _V84_COIN[key](); d = S.indicators(coin); cr = L.coin_regime(d)
+        f = np.asarray(L84._cross(d, L84.IP, up))
+        full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+        assert got.any(), key
+        np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+        t = pd.to_datetime(coin.t).dt.normalize()
+        for i in np.flatnonzero(got)[:15]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=20)].reset_index(drop=True)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            g = _sig(key, cut, btc)
+            assert not (np.asarray(g['le'])[k0] or np.asarray(g['se'])[k0]), key
+        for forced in (1.0, 0.0, -1.0):
+            monkeypatch.setattr(L84.L1, 'coin_regime', lambda d, v=forced: np.full(len(d), v))
+            g = _sig(key, coin, btc)
+            assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
+            monkeypatch.undo()
