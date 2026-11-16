@@ -4970,3 +4970,94 @@ def test_v81_regime_gate_and_hour_zero(monkeypatch):
             else:
                 assert gs == (forced in ok) and not gl, (key, forced)
             monkeypatch.undo()
+
+
+import longscout_v82 as L82
+L82.register()
+
+_V82_COIN = {'l82_liquidity_improves_4h': lambda: _ms(_mk(2600, '4h', 47)),
+             's82_liquidity_dries_4h': lambda: _ms(_mk(2600, '4h', 40))}
+
+
+@pytest.mark.parametrize('key', sorted(L82.CANDIDATES))
+def test_v82_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V82_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l82': le.sum() and not se.any(), 's82': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent - 1) | set(ent) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v82_ref(D, low, m=20, n=120):
+    days = list(D.index); C, V = list(D.c), list(D.v); L_ = len(C)
+    il = [None] + [abs(np.log(C[t] / C[t - 1])) / (C[t] * V[t]) for t in range(1, L_)]
+    A = [None] * L_
+    for t in range(m, L_):
+        A[t] = sum(il[t - m + 1:t + 1]) / m
+    raw = np.zeros(L_, bool)
+    for j in range(n + m, L_):
+        if days[j] - days[j - n - m] != pd.Timedelta(days=n + m):
+            continue
+        prev = A[j - n:j]
+        raw[j] = (A[j] < min(prev)) if low else (A[j] > max(prev))
+    return raw & ~np.r_[False, raw[:-1]]
+
+
+def test_v82_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (40, 43, 47, 50):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for low in (True, False):
+            v = L82._illiq_v(D, L82.IP, low).values
+            np.testing.assert_allclose(v, _v82_ref(D, low), err_msg=str((seed, low)))
+            hits[low] = hits.get(low, 0) + int(v.sum())
+            if seed == 47:
+                for cut in range(145, len(D), 37):
+                    np.testing.assert_array_equal(L82._illiq_v(D.iloc[:cut], L82.IP, low).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(L82._illiq_v(gap, L82.IP, low).values, _v82_ref(gap, low))
+    assert all(hits.values()), hits
+
+
+def test_v82_synthetic_edges():
+    def days(c, v):
+        return pd.DataFrame(dict(h=c, l=c, c=c, v=v), index=pd.date_range('2022-01-01', periods=len(c), freq='D'))
+    rng = np.random.default_rng(3)
+    c = list(100 * np.exp(np.cumsum(rng.choice([-0.01, 0.01], 160)))); v = [1000.0] * 160
+    v = [1e5 / x for x in c]                                                 # constant dollar volume and |return|
+    v2 = v[:-1] + [v[-1] * 100]                                              # a huge-volume last day lowers A
+    assert L82._illiq_v(days(c, v2), L82.IP, True).values[-1]
+    assert not L82._illiq_v(days(c, v2), L82.IP, False).values[-1]
+    v3 = v[:-1] + [v[-1] / 100]                                              # a tiny-volume last day raises A
+    assert L82._illiq_v(days(c, v3), L82.IP, False).values[-1]
+    v4 = v[:-2] + [v[-2] * 100, v[-1] * 1000]                                # second consecutive low is not a first day
+    flat = days([100.0] * 160, [1000.0] * 160)                               # A is constant: equal values are no new extreme
+    assert not L82._illiq_v(flat, L82.IP, True).any() and not L82._illiq_v(flat, L82.IP, False).any()
+    assert L82._illiq_v(days(c, v4), L82.IP, True).values[-2:].tolist() == [True, False]
+    assert not L82._illiq_v(days(c, v2).drop(days(c, v2).index[30]), L82.IP, True).values[-1]   # a missing day inside j-140..j
+
+
+def test_v82_regime_gate_and_hour_zero(monkeypatch):
+    btc = _ms(_mk(2600, '4h', 52))
+    for key, low, ok in (('l82_liquidity_improves_4h', True, (1,)), ('s82_liquidity_dries_4h', False, (-1,))):
+        coin = _V82_COIN[key](); d = S.indicators(coin); cr = L.coin_regime(d)
+        f = np.asarray(L82._illiq(d, L82.IP, low))
+        full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+        np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+        t = pd.to_datetime(coin.t).dt.normalize()
+        for i in np.flatnonzero(got)[:15]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=100)].reset_index(drop=True)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            g = _sig(key, cut, btc)
+            assert not (np.asarray(g['le'])[k0] or np.asarray(g['se'])[k0]), key
+        for forced in (1.0, 0.0, -1.0):
+            monkeypatch.setattr(L82.L1, 'coin_regime', lambda d, v=forced: np.full(len(d), v))
+            g = _sig(key, coin, btc)
+            assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
+            monkeypatch.undo()
