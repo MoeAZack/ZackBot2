@@ -265,7 +265,9 @@ class BinanceUsdMTestnetVenue:
                                   exchange_order_id=exchange_id)
         if status not in _FINAL:
             raise _Unknown('unknown_status')
-        executed = _decimal(data.get('executedQty', '0'), 'executedQty')
+        if 'executedQty' not in data:                    # LANE3-F3: a final order (a CANCELED / EXPIRED one may have
+            raise _Unknown('final_without_executed_qty')  # filled in part) without its executed quantity is not 'zero'
+        executed = _decimal(data.get('executedQty'), 'executedQty')
         avg = _decimal(data.get('avgPrice'), 'avgPrice') if executed > 0 else None
         if executed > 0 and (avg is None or avg <= 0):
             raise _Unknown('final_without_price')
@@ -394,7 +396,9 @@ class BinanceUsdMTestnetVenue:
                 raise _Unknown('malformed')
             exchange_id = _positive_id(row.get(id_name))
             total = _decimal(row.get(qty_name), qty_name)
-            executed = _decimal(row.get('executedQty', '0'), 'executedQty')
+            if not algo and 'executedQty' not in row:    # LANE3-F4: remaining = origQty - executedQty; a classic row
+                raise _Unknown('open_without_executed_qty')  # without it cannot say what is still open (never assume 0).
+            executed = _decimal(row.get('executedQty', '0'), 'executedQty')   # an algo row has none: not triggered yet
             if executed > total:
                 raise _Unknown('malformed')
             remaining = total - executed
