@@ -51,3 +51,25 @@ def test_power_of_ten_steps_bit_identical_to_before():
 def test_engine_rd_follows():
     import engine as E
     assert E.Engine._rd(0.76, 0.25) == 0.75
+
+
+def legacy_fmt(x, step):
+    dec = max(0, -int(math.floor(math.log10(step)))) if step < 1 else 0
+    return f'{x:.{dec}f}'
+
+
+@pytest.mark.parametrize('x,step,want', [(0.76, 0.25, '0.75'), (101.3, 0.25, '101.25'), (7.6, 2.5, '7.5'),
+                                         (0.0376, 0.025, '0.025')])
+def test_order_wire_format_stays_on_the_grid(x, step, want):
+    """Adversarial review: the value SENT (Engine._fmt of the floored size / price) must be the on-grid value too."""
+    import engine as E
+    assert E.Engine._fmt(E.Engine._rd(x, step), step) == want
+
+
+def test_order_wire_format_unchanged_for_power_of_ten_steps():
+    import engine as E
+    rnd = random.Random(5)
+    for step in [10.0 ** -k for k in range(9)] + [float(f'1e-{k}') for k in range(1, 9)] + [1, 10]:
+        for _ in range(2000):
+            x = F.round_step(rnd.uniform(0, 1e5), step)
+            assert E.Engine._fmt(x, step) == legacy_fmt(x, step), (step, x)

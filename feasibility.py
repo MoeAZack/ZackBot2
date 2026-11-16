@@ -48,8 +48,14 @@ def round_step(x, step):
     LANE3-F6: the result is rounded to the step's own decimal places. The order-of-magnitude places alone (0.25 -> 1)
     turned the floored 0.75 into 0.8 - above the input and off the step grid. For a power-of-ten step (every current
     Binance step / tick) both counts are equal, so the result is unchanged there."""
+    return round(math.floor(x / step + 1e-9) * step, step_decimals(step))
+
+
+def step_decimals(step):
+    """Decimal places for a value on the step grid (round_step and the engine's order formatting, Engine._fmt): the
+    order-of-magnitude places, raised to the step's own places (LANE3-F6: 0.25 -> 2). Equal for a power-of-ten step."""
     dec = max(0, -int(math.floor(math.log10(step)))) if step < 1 else 0
-    return round(math.floor(x / step + 1e-9) * step, max(dec, _step_places(step)))
+    return max(dec, _step_places(step))
 
 
 def ceil_step(x, step):
