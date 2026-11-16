@@ -1,0 +1,2531 @@
+{
+  "captured_cairo": "2026-11-16T16:54:29.042419+02:00",
+  "master_sha": "42ef787f6b6e8c9363705b76df13cdb487f840f0",
+  "files": [
+    {
+      "account": "acct1",
+      "path": "source/actual_costs.py",
+      "sha256": "4197fe824cf3ef6bf24eda686412f992f1f3b17cc9daefe81a766bc656397884",
+      "size": 28392,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/ai_filter.py",
+      "sha256": "2aa0b0e4cd0771a4ea0ae62193af51c72b310a44b8e22316709128fce383b96d",
+      "size": 13651,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/ai_scan.py",
+      "sha256": "8b6c4bc96fdf55b62d71c5c3d2d905f1ba2cae8f111eaf80cc80b059efab1c7d",
+      "size": 40097,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/ai_scan_dataplane.py",
+      "sha256": "5008158b3c2fee1c2727e0ad17657407e936d984a2f261abba961be9e69e07a7",
+      "size": 44599,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/ai_scan_ledger.py",
+      "sha256": "6904b9e25ef51a3cc9107a7ae2c51f80a2a6a13bb0a8310e8892b1bf659e17b4",
+      "size": 25689,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/app.py",
+      "sha256": "ceb4c9efa43ef195c9b1281bef39c15bde5958a1da266b1c8f0b1abcd1d0c601",
+      "size": 127469,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 0,
+        "removed": 12
+      }
+    },
+    {
+      "account": "acct1",
+      "path": "source/backtest.py",
+      "sha256": "d9d4856429c62a0a78a6141f5e8897ad4123812190a64f99ed7be002782a3025",
+      "size": 45411,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 2,
+        "removed": 9
+      }
+    },
+    {
+      "account": "acct1",
+      "path": "source/binance_client.py",
+      "sha256": "e5f2822647c8966449d5a26c6bae6701d7f08555be97a70b710732deab0c1837",
+      "size": 47141,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 19,
+        "removed": 107
+      }
+    },
+    {
+      "account": "acct1",
+      "path": "source/book_ledger.py",
+      "sha256": "f0e1054ded09c3901c8c66db00f82b6fe9e018f5b4bec8457164f8db54b980b5",
+      "size": 7434,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/build_info.py",
+      "sha256": "9f58436b3ed04f83da6013b31cccb835685e4c5786ff4c0eb383fe3ca5ef8df9",
+      "size": 30,
+      "master_relation": "runtime-only",
+      "line_delta": {
+        "added": 1,
+        "removed": 0
+      }
+    },
+    {
+      "account": "acct1",
+      "path": "source/ca_bundle.py",
+      "sha256": "46970be6b11771f55e2cf077c4ccd5ca0e9af40b3d7a826ae93ddcdcaed9e2cc",
+      "size": 5366,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/cand_evict_ack.py",
+      "sha256": "5f58146f69aaead7b97c2fa47bcff30172d6f344d46c96c1ab3a730852ab73b7",
+      "size": 7458,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/candidates.py",
+      "sha256": "eec936153a7e544bf60d5e14567e81844cc4f3fcc8b6a0cf6bc3d0f30c88ab31",
+      "size": 2005,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/engine.py",
+      "sha256": "495b94af42dbcf624b56d8a114bba8ee4fb688549ebdb88eae5ff525db5136bc",
+      "size": 568472,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 11,
+        "removed": 74
+      }
+    },
+    {
+      "account": "acct1",
+      "path": "source/exchange_rules.py",
+      "sha256": "796ad0dcd7b38e104cf059925a43ce8ba1564089ad7c782e44d403ee8960d39c",
+      "size": 6853,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/exec_calibration.py",
+      "sha256": "4d55fed823a40f75991173a1b867dfb3cfcd46408b1ea4ed44a8fb7a2c48195f",
+      "size": 31726,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/f01_canary.py",
+      "sha256": "4353355f1a26c69e0360599453c2eb2018c951b3c9afdc4856be1891f7af2fe1",
+      "size": 34082,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/feasibility.py",
+      "sha256": "b689ecc494f83fc8e9000159f667dbad0ae15b575a8eaa409bb50ce725570d0f",
+      "size": 28848,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/grid.py",
+      "sha256": "d80be0bfb4cea9aa8cf422673604fe1b51ce712ea18224b104907f22260013f4",
+      "size": 65739,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/installer_check.ps1",
+      "sha256": "83c51e833b8299e2ca65a77fb52e8f33f9952d3c9c3bc087b6b90a95718a8478",
+      "size": 4250,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 0,
+        "removed": 0
+      }
+    },
+    {
+      "account": "acct1",
+      "path": "source/instance.py",
+      "sha256": "b1d1c48c2359199732d168e5db44630641438621ad10e45664df43734df0e256",
+      "size": 8526,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/lab.py",
+      "sha256": "56185b70089d108cfab14fe84fb08c22e662c117a4a51b7ec9dd77ae0e44570a",
+      "size": 51247,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 2,
+        "removed": 9
+      }
+    },
+    {
+      "account": "acct1",
+      "path": "source/load_data.py",
+      "sha256": "6235e59c7509e92ac048b1a88969deb300dddbe9a5a7ac36e5e2dc03434e5619",
+      "size": 333,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/market_collector.py",
+      "sha256": "e183aeef5f9f0ad1f70323a852fff3ba23538780b3770699d49b0ad7b3ac1ad9",
+      "size": 10363,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/market_data.py",
+      "sha256": "aa16e76fdadfd1d39d3cb4cd4e8d144044aea750e8ba44ae1348c644e6440148",
+      "size": 31846,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/ml_shadow/__init__.py",
+      "sha256": "1124c76652c58844e1f0593b62d331db8a40177cae467619ec0097d7a9c7a1a9",
+      "size": 1248,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/ml_shadow/common.py",
+      "sha256": "61c226fb2bd679c1ec409824f6051cf22969eb19d7bf1c782f2bb10e0756edef",
+      "size": 3492,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/ml_shadow/context.py",
+      "sha256": "0f4a1c5e0a7a4d39e203b0090bf13a037edf37952d9c83cb301813470d2af255",
+      "size": 6190,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/ml_shadow/features.py",
+      "sha256": "f51351687bcf05dfdae387eb34285d625d650f487f12288af796b7727a1e93a7",
+      "size": 6293,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/ml_shadow/labels.py",
+      "sha256": "a45234078e441e9daecb13a3049360c463ea153f2ffd04ff05c46be6c6a8d19f",
+      "size": 2025,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/ml_shadow/ledger.py",
+      "sha256": "9e5f9d51b48604a9f5d29827059bc67ddf5205437a9dc36e68333c45d5d026e8",
+      "size": 8786,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/ml_shadow/pairs.py",
+      "sha256": "b2ee517de898bbbfd20898584f430b113aa8f9f33918b97e570c1ac334b8af27",
+      "size": 22873,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/ml_shadow/sanitize.py",
+      "sha256": "d36892dcc3612ab87796fce2c921f6f033c5f152aca0a95b1857058778324370",
+      "size": 8846,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/ml_shadow/scoring.py",
+      "sha256": "8fb8d49ae0d6c6267736a035ed920edc0fec37499893ee040f472cde8cd818fb",
+      "size": 1667,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/ml_shadow/trainer.py",
+      "sha256": "b96b438b6a2a77e8f83a719c64e71c3e17f3728194eb3b2beda48477b8c40f0e",
+      "size": 11357,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/ml_shadow/writer.py",
+      "sha256": "96308e81519ce5851ab72978d6e378b1114f04d7cfbc65fd7fa461f144ce6af0",
+      "size": 10247,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/__init__.py",
+      "sha256": "aff92522ef19010a9c549ca29a9f400bbb3b4b8e2f1bf319d10847370b7c6c54",
+      "size": 368,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/__init__.py",
+      "sha256": "7765b461f3617340290a90cc5bf0995ce880b09a3b73207f176da9eea5ef8e76",
+      "size": 3658,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/account.py",
+      "sha256": "cb72f40ec1afbbe52d6fb9fbbb8774e25b423339a09e80b587d6b7277802184f",
+      "size": 8386,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/base.py",
+      "sha256": "8fab649b66b708ce4d1ac971580fea2b0b8a0b0a3c3b2ede3591d583974698cc",
+      "size": 10452,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/codec.py",
+      "sha256": "dcf23a685972d25e0d9afbff2ec0f31206cb728e69334cc9b5886f2be3fefa85",
+      "size": 12720,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/decision.py",
+      "sha256": "41456594cf8d35d2d2dc1a965c2abaa1e1c891c87c3ec8171a259cb6b11f1b6c",
+      "size": 9084,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/errors.py",
+      "sha256": "b2338d8e277b8f61be69489e2d308f9da62990239b4792bcee19aaf9155adaa9",
+      "size": 2172,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/events.py",
+      "sha256": "54f6ca3ed61572eec973a6505bf8bdb58d82f94a3eb2cc1784bc56e060e4d52e",
+      "size": 14709,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/facts.py",
+      "sha256": "b1a32861f0e412d8fade370cde1e52ee8ea06cbc2610fa439dee734995931ddd",
+      "size": 6789,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/incident.py",
+      "sha256": "849fe4a7fb8c79c8ffb8af4819682889c5de1a3881233d682187461e03e4b4ce",
+      "size": 4573,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/instrument.py",
+      "sha256": "4633f43ec3419441a2c0bd7764788951ede7b66ac04fb36a8e85c0cdd75a6516",
+      "size": 6220,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/ledger.py",
+      "sha256": "cc6356d22bc9ef116ece0e9f280916a0742bbb7803f93e22f5acc97f398c2d4f",
+      "size": 3431,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/modes.py",
+      "sha256": "e3c5a2b4ea6bc86f83cd1bc68d98d4a3316ac9423b508924b6cd8b7bde183ecb",
+      "size": 5412,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/orders.py",
+      "sha256": "f9fc023ed9a3a3f482e5a4cb3d0f6d50674b2940402b68170e0df67e09b83c8b",
+      "size": 31138,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/portfolio.py",
+      "sha256": "8a6a0485c75678814bcb64c681a9312d93093de2d267342dd9822c5c4f456ea9",
+      "size": 25639,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/protection.py",
+      "sha256": "a74d62ed0d192d3c03b9ad05afe85e9da588a8f8d35cc1e381ff48e48f2e86d6",
+      "size": 10293,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/reasons.py",
+      "sha256": "84e968456b8c9bde99e613fbf1f8bde7d4907c784ed0bacd85ebd25932ac567d",
+      "size": 20982,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/domain/snapshot.py",
+      "sha256": "2e3935a3246e9f65bd9cabe3da1757c375364d08ab9cae7bd74db290ffc89138",
+      "size": 2931,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/ports/__init__.py",
+      "sha256": "e483b9e8b8285a56b44369df2fd2531e71ffd79e2a60a9d30d7d49d8c4393fd6",
+      "size": 1370,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 0,
+        "removed": 1
+      }
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/ports/bars.py",
+      "sha256": "1e7b6a4e73bdff0d5536ec03dcd02572b991d5b4e34ac9a404b6a779aa9cf75f",
+      "size": 3020,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/ports/journal.py",
+      "sha256": "75acfaeaab3bbb629c4e0e1ddb921367b42d642f749e17d6db7b69c0f6666280",
+      "size": 30706,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/ports/values.py",
+      "sha256": "4a448a891916dd76fe8dc101322d127d706c5ff00d157a79f8b88cc167a183a5",
+      "size": 1401,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/ports/venue.py",
+      "sha256": "b0df5492442ae381608d176bf1d3eccd3756167a88da9df3c4840a7c1499c8b6",
+      "size": 11010,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/store/__init__.py",
+      "sha256": "91f9da866287ef21018e398557f1062411f2dc1446a65ad270caa0debc7dacc1",
+      "size": 2034,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/store/errors.py",
+      "sha256": "2921eae7ce66bd9e1424cd5bf0f445679a1912a1c26945c7a6875949534e442d",
+      "size": 2256,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/store/evidence.py",
+      "sha256": "771c26c9bec295c410321532d2a211337493af0b8d3a19b4ec2c0f6102e4f325",
+      "size": 3949,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/store/fold.py",
+      "sha256": "479478dbcef363e322dccefc2aa71a5168c21f4a1816eb39112b513ca36fabdf",
+      "size": 9169,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/store/frame.py",
+      "sha256": "6d1f2a04f49493c083723a9cf3c2891165e910d4f067502bb2c19bdac691ea3d",
+      "size": 8193,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/store/fs.py",
+      "sha256": "911fd9fa5089f6272897e3e991e55c85e05db7c9adeed1acc063dbe75fe7b270",
+      "size": 8964,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/store/header.py",
+      "sha256": "2bbf449d7c3663ef267dd62690911dc9173a6d3efda60f4a626290d89be73493",
+      "size": 6893,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/store/hold.py",
+      "sha256": "58f9294d4f228e04665ce416b1020d61670d326d3338d76da1c09cc00f0dfb50",
+      "size": 5364,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/store/journal.py",
+      "sha256": "01c455f354990df5944296984636938bfcfd90f4ff5f13e2cd225fcd20db2418",
+      "size": 16518,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/store/recovery.py",
+      "sha256": "be1cd9c7f27c270b722fb96390e67df5fc6fecc787d246484dfb9c11f6131419",
+      "size": 18741,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/panel.html",
+      "sha256": "fd209d90ab89342f738289eaf8117941e2673c00e85423bc350a9173c5803049",
+      "size": 354934,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 0,
+        "removed": 2
+      }
+    },
+    {
+      "account": "acct1",
+      "path": "source/paper_books.py",
+      "sha256": "8088fcfeab9881a8a626227e7b1699d3c62f177f1bf22d8e0ba07bc00a123ec6",
+      "size": 2697,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/replay.py",
+      "sha256": "261264b2b4fdc7bee0a57878b2027e0968f4d6eb93fb75e7c72b9fe5ff159dd1",
+      "size": 14299,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/research_combos.py",
+      "sha256": "b239b230127a45ee112e18bddb3c4dc124389e38993efa057773d6a5cb0c5e8d",
+      "size": 1547,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/research_grid.py",
+      "sha256": "e610013d7f2cda6b948d4fb151c74f9fd236ae92115f395778b15c069cc928e9",
+      "size": 1091,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/research_long.py",
+      "sha256": "c84af52ec8aa4fc802b404f64ba7a9842330280f081abdcf6827499d688552ff",
+      "size": 8839,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/research_long2.py",
+      "sha256": "a7e869b98fbb66391aa403cd416111d73fb597606f7053003429668325faeeaf",
+      "size": 5218,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/research_refresh.py",
+      "sha256": "412eb0bf81b58dca1fb459a6f431b02ed0789489ca83390bd6d1a29daa8bfd3d",
+      "size": 9889,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/risk_fill.py",
+      "sha256": "e67c31414ca37d7b3f10166e6de5a990bd91da809c057b9c1070bbd26b54cd82",
+      "size": 4352,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/run_checks.bat",
+      "sha256": "1b7db63e05ffc496f177bf22cd12942558a47d7dc7b2902b501af7290dacb04b",
+      "size": 162,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/run_pack.py",
+      "sha256": "b971161b6f9d639892b82002df66d8e78b20320723c5269416d557e3e417f416",
+      "size": 9297,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/run_ui_baseline.bat",
+      "sha256": "e1c09161f97890d9bbe9a47a97bffedd7e528482d56a67f84a775f79a063d903",
+      "size": 2764,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/shadow_analyst.py",
+      "sha256": "2098906f02742097dd63c727a83d3314d57429845cba5b0977b9ab2eca665685",
+      "size": 47900,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/shadow_funding.py",
+      "sha256": "455877cb18c200ec20e08f4a2780c1736db4e7e057dd8003d011aa08a7e97576",
+      "size": 8083,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/strategies.py",
+      "sha256": "edd475c8c3bc6ac1d93abca4cc1dd5fc91b0d32ddb69223bb6fa4596906ee68e",
+      "size": 51876,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 0,
+        "removed": 823
+      }
+    },
+    {
+      "account": "acct1",
+      "path": "source/strategy_shadow.py",
+      "sha256": "340e62237aa5d8ce19d792e51f16702dbdd74f80b2b0a3daee73fcc0cfb46a90",
+      "size": 38722,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 1,
+        "removed": 1
+      }
+    },
+    {
+      "account": "acct1",
+      "path": "source/test_app_ui.py",
+      "sha256": "73924166bd580e9e2a6e988cbb570511cdaf2a16d98e75d56a08ab076f88d043",
+      "size": 40510,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/test_engine_sim.py",
+      "sha256": "86b710f38b56fc9ba596d20b1e9cf27676708e8b0e1a6e5b6f02a91ba5b50ec6",
+      "size": 2856,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/trade_audit.py",
+      "sha256": "7a9880cf5d83be4e52c2516f7f3ceeef7bc132a87f5342f098a533a62907e359",
+      "size": 112191,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/tradfi_session.py",
+      "sha256": "e69a97bdb75505981e75d0c3f948f64800bbd47bf7d4b86d49617d46797a10f3",
+      "size": 4242,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/tradfi_universe.py",
+      "sha256": "43519a484b93517d939f53491f44d4e1736428971f2851e3e5eeac5dda6a32bc",
+      "size": 1259,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/true_books.py",
+      "sha256": "35a42c16b5e8cca63c4ea1be0201863107cea1189733d0ac7af54a39f996e0db",
+      "size": 27735,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/verify.bat",
+      "sha256": "6eccb2f3dc883d243a306a28b48f664630b222d3d88dabaef004aeece0ed3fef",
+      "size": 1331,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/verify_ci.py",
+      "sha256": "f30f5d29d7247c4dbf87e52908168039179352c6c5d41fd7c60e74d05e29d9e0",
+      "size": 15159,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct1",
+      "path": "source/verify_release.bat",
+      "sha256": "c5b9bfecf5f95d72697683768ec24664ab1b5e9b1a794f13be862aa74986d91d",
+      "size": 152,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/actual_costs.py",
+      "sha256": "4197fe824cf3ef6bf24eda686412f992f1f3b17cc9daefe81a766bc656397884",
+      "size": 28392,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/ai_filter.py",
+      "sha256": "2aa0b0e4cd0771a4ea0ae62193af51c72b310a44b8e22316709128fce383b96d",
+      "size": 13651,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/ai_scan.py",
+      "sha256": "8b6c4bc96fdf55b62d71c5c3d2d905f1ba2cae8f111eaf80cc80b059efab1c7d",
+      "size": 40097,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/ai_scan_dataplane.py",
+      "sha256": "5008158b3c2fee1c2727e0ad17657407e936d984a2f261abba961be9e69e07a7",
+      "size": 44599,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/ai_scan_ledger.py",
+      "sha256": "6904b9e25ef51a3cc9107a7ae2c51f80a2a6a13bb0a8310e8892b1bf659e17b4",
+      "size": 25689,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/app.py",
+      "sha256": "8c12064078dacca69e92d4ea9eba2c4609a9c6f8a5e768cb33c46e3b1bdc5328",
+      "size": 127912,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 0,
+        "removed": 4
+      }
+    },
+    {
+      "account": "acct2",
+      "path": "source/backtest.py",
+      "sha256": "d9d4856429c62a0a78a6141f5e8897ad4123812190a64f99ed7be002782a3025",
+      "size": 45411,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 2,
+        "removed": 9
+      }
+    },
+    {
+      "account": "acct2",
+      "path": "source/binance_client.py",
+      "sha256": "e5f2822647c8966449d5a26c6bae6701d7f08555be97a70b710732deab0c1837",
+      "size": 47141,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 19,
+        "removed": 107
+      }
+    },
+    {
+      "account": "acct2",
+      "path": "source/book_ledger.py",
+      "sha256": "f0e1054ded09c3901c8c66db00f82b6fe9e018f5b4bec8457164f8db54b980b5",
+      "size": 7434,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/ca_bundle.py",
+      "sha256": "46970be6b11771f55e2cf077c4ccd5ca0e9af40b3d7a826ae93ddcdcaed9e2cc",
+      "size": 5366,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/cand_evict_ack.py",
+      "sha256": "5f58146f69aaead7b97c2fa47bcff30172d6f344d46c96c1ab3a730852ab73b7",
+      "size": 7458,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/candidate_activation.py",
+      "sha256": "3dc528117e5fbe3d232db672098f528047e3e4aca5f398297bd902a31ced01ee",
+      "size": 26369,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/candidates.py",
+      "sha256": "eec936153a7e544bf60d5e14567e81844cc4f3fcc8b6a0cf6bc3d0f30c88ab31",
+      "size": 2005,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/engine.py",
+      "sha256": "d6be690ce81703a7f28a2cd77d5f9784a3bb6519d92ae218272add9efbb13a3c",
+      "size": 569066,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 4,
+        "removed": 57
+      }
+    },
+    {
+      "account": "acct2",
+      "path": "source/exchange_rules.py",
+      "sha256": "796ad0dcd7b38e104cf059925a43ce8ba1564089ad7c782e44d403ee8960d39c",
+      "size": 6853,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/exec_calibration.py",
+      "sha256": "4d55fed823a40f75991173a1b867dfb3cfcd46408b1ea4ed44a8fb7a2c48195f",
+      "size": 31726,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/f01_canary.py",
+      "sha256": "4353355f1a26c69e0360599453c2eb2018c951b3c9afdc4856be1891f7af2fe1",
+      "size": 34082,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/feasibility.py",
+      "sha256": "b689ecc494f83fc8e9000159f667dbad0ae15b575a8eaa409bb50ce725570d0f",
+      "size": 28848,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/grid.py",
+      "sha256": "d80be0bfb4cea9aa8cf422673604fe1b51ce712ea18224b104907f22260013f4",
+      "size": 65739,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/instance.py",
+      "sha256": "b1d1c48c2359199732d168e5db44630641438621ad10e45664df43734df0e256",
+      "size": 8526,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/lab.py",
+      "sha256": "373f6d5f58590ab4eb496348ffff495b9a0f33b7a5f8596c78b440d34d41f25b",
+      "size": 51877,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/load_data.py",
+      "sha256": "6235e59c7509e92ac048b1a88969deb300dddbe9a5a7ac36e5e2dc03434e5619",
+      "size": 333,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/market_collector.py",
+      "sha256": "e183aeef5f9f0ad1f70323a852fff3ba23538780b3770699d49b0ad7b3ac1ad9",
+      "size": 10363,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/market_data.py",
+      "sha256": "aa16e76fdadfd1d39d3cb4cd4e8d144044aea750e8ba44ae1348c644e6440148",
+      "size": 31846,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/ml_shadow/__init__.py",
+      "sha256": "1124c76652c58844e1f0593b62d331db8a40177cae467619ec0097d7a9c7a1a9",
+      "size": 1248,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/ml_shadow/common.py",
+      "sha256": "61c226fb2bd679c1ec409824f6051cf22969eb19d7bf1c782f2bb10e0756edef",
+      "size": 3492,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/ml_shadow/context.py",
+      "sha256": "0f4a1c5e0a7a4d39e203b0090bf13a037edf37952d9c83cb301813470d2af255",
+      "size": 6190,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/ml_shadow/features.py",
+      "sha256": "f51351687bcf05dfdae387eb34285d625d650f487f12288af796b7727a1e93a7",
+      "size": 6293,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/ml_shadow/labels.py",
+      "sha256": "a45234078e441e9daecb13a3049360c463ea153f2ffd04ff05c46be6c6a8d19f",
+      "size": 2025,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/ml_shadow/ledger.py",
+      "sha256": "9e5f9d51b48604a9f5d29827059bc67ddf5205437a9dc36e68333c45d5d026e8",
+      "size": 8786,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/ml_shadow/pairs.py",
+      "sha256": "b2ee517de898bbbfd20898584f430b113aa8f9f33918b97e570c1ac334b8af27",
+      "size": 22873,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/ml_shadow/sanitize.py",
+      "sha256": "d36892dcc3612ab87796fce2c921f6f033c5f152aca0a95b1857058778324370",
+      "size": 8846,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/ml_shadow/scoring.py",
+      "sha256": "8fb8d49ae0d6c6267736a035ed920edc0fec37499893ee040f472cde8cd818fb",
+      "size": 1667,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/ml_shadow/trainer.py",
+      "sha256": "b96b438b6a2a77e8f83a719c64e71c3e17f3728194eb3b2beda48477b8c40f0e",
+      "size": 11357,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/ml_shadow/writer.py",
+      "sha256": "96308e81519ce5851ab72978d6e378b1114f04d7cfbc65fd7fa461f144ce6af0",
+      "size": 10247,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/__init__.py",
+      "sha256": "aff92522ef19010a9c549ca29a9f400bbb3b4b8e2f1bf319d10847370b7c6c54",
+      "size": 368,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/account_context.py",
+      "sha256": "1291a22477d0a8e5368402bbd6827be3f72f3c4e71cfd6c16dfac50643e631c3",
+      "size": 37208,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/base_clean.py",
+      "sha256": "6449a0c6119273428ec7f5af694dd1de2f4aa8f41282eec04104b9c2996fe68b",
+      "size": 28253,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/__init__.py",
+      "sha256": "7765b461f3617340290a90cc5bf0995ce880b09a3b73207f176da9eea5ef8e76",
+      "size": 3658,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/account.py",
+      "sha256": "cb72f40ec1afbbe52d6fb9fbbb8774e25b423339a09e80b587d6b7277802184f",
+      "size": 8386,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/base.py",
+      "sha256": "8fab649b66b708ce4d1ac971580fea2b0b8a0b0a3c3b2ede3591d583974698cc",
+      "size": 10452,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/codec.py",
+      "sha256": "dcf23a685972d25e0d9afbff2ec0f31206cb728e69334cc9b5886f2be3fefa85",
+      "size": 12720,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/decision.py",
+      "sha256": "41456594cf8d35d2d2dc1a965c2abaa1e1c891c87c3ec8171a259cb6b11f1b6c",
+      "size": 9084,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/errors.py",
+      "sha256": "b2338d8e277b8f61be69489e2d308f9da62990239b4792bcee19aaf9155adaa9",
+      "size": 2172,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/events.py",
+      "sha256": "54f6ca3ed61572eec973a6505bf8bdb58d82f94a3eb2cc1784bc56e060e4d52e",
+      "size": 14709,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/facts.py",
+      "sha256": "b1a32861f0e412d8fade370cde1e52ee8ea06cbc2610fa439dee734995931ddd",
+      "size": 6789,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/incident.py",
+      "sha256": "849fe4a7fb8c79c8ffb8af4819682889c5de1a3881233d682187461e03e4b4ce",
+      "size": 4573,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/instrument.py",
+      "sha256": "4633f43ec3419441a2c0bd7764788951ede7b66ac04fb36a8e85c0cdd75a6516",
+      "size": 6220,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/ledger.py",
+      "sha256": "cc6356d22bc9ef116ece0e9f280916a0742bbb7803f93e22f5acc97f398c2d4f",
+      "size": 3431,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/modes.py",
+      "sha256": "e3c5a2b4ea6bc86f83cd1bc68d98d4a3316ac9423b508924b6cd8b7bde183ecb",
+      "size": 5412,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/orders.py",
+      "sha256": "f9fc023ed9a3a3f482e5a4cb3d0f6d50674b2940402b68170e0df67e09b83c8b",
+      "size": 31138,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/portfolio.py",
+      "sha256": "8a6a0485c75678814bcb64c681a9312d93093de2d267342dd9822c5c4f456ea9",
+      "size": 25639,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/protection.py",
+      "sha256": "a74d62ed0d192d3c03b9ad05afe85e9da588a8f8d35cc1e381ff48e48f2e86d6",
+      "size": 10293,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/reasons.py",
+      "sha256": "84e968456b8c9bde99e613fbf1f8bde7d4907c784ed0bacd85ebd25932ac567d",
+      "size": 20982,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/domain/snapshot.py",
+      "sha256": "2e3935a3246e9f65bd9cabe3da1757c375364d08ab9cae7bd74db290ffc89138",
+      "size": 2931,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/loss_state.py",
+      "sha256": "b62626a56019898a626c4689eb8428d5b4fa2ea53b2eed83dd59eb14c22c099d",
+      "size": 10541,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/management.py",
+      "sha256": "2c0173e338ce926b4db26c2c81f235ee3b8d45575de455f59b6fce64a8523a21",
+      "size": 38054,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/observability.py",
+      "sha256": "76b077ca6c3db5dda225e8208a77504613e6ec8c9833db5d28b1e39d19e346f4",
+      "size": 50662,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/ports/__init__.py",
+      "sha256": "b7dd21d4ec348202902a76e69916c960cc2f2943192cc682b4289c872188fec6",
+      "size": 1449,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/ports/bars.py",
+      "sha256": "1e7b6a4e73bdff0d5536ec03dcd02572b991d5b4e34ac9a404b6a779aa9cf75f",
+      "size": 3020,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/ports/journal.py",
+      "sha256": "75acfaeaab3bbb629c4e0e1ddb921367b42d642f749e17d6db7b69c0f6666280",
+      "size": 30706,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/ports/rate_blocks.py",
+      "sha256": "a6e4a57169a38d9dbc503d47b1681b8e8f8830c2cbb30c3834fd150d7bac5640",
+      "size": 2504,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/ports/values.py",
+      "sha256": "4a448a891916dd76fe8dc101322d127d706c5ff00d157a79f8b88cc167a183a5",
+      "size": 1401,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/ports/venue.py",
+      "sha256": "b0df5492442ae381608d176bf1d3eccd3756167a88da9df3c4840a7c1499c8b6",
+      "size": 11010,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/reconciliation.py",
+      "sha256": "122ac8960ff49095face670d7538dc77d5e66b13067d5ac5902a4d61138ba34d",
+      "size": 42465,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/risk.py",
+      "sha256": "15056b5f3d772ec8aa2f5dea5cc2fa9299dfc2207a9edee1837ad2d5d29189b0",
+      "size": 46681,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/scheduler.py",
+      "sha256": "411864c98e1ccf7ab32ac01fec179b0b8a8f48570da1f41515802115e388ea16",
+      "size": 29016,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/store/__init__.py",
+      "sha256": "91f9da866287ef21018e398557f1062411f2dc1446a65ad270caa0debc7dacc1",
+      "size": 2034,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/store/errors.py",
+      "sha256": "2921eae7ce66bd9e1424cd5bf0f445679a1912a1c26945c7a6875949534e442d",
+      "size": 2256,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/store/evidence.py",
+      "sha256": "771c26c9bec295c410321532d2a211337493af0b8d3a19b4ec2c0f6102e4f325",
+      "size": 3949,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/store/fold.py",
+      "sha256": "479478dbcef363e322dccefc2aa71a5168c21f4a1816eb39112b513ca36fabdf",
+      "size": 9169,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/store/frame.py",
+      "sha256": "6d1f2a04f49493c083723a9cf3c2891165e910d4f067502bb2c19bdac691ea3d",
+      "size": 8193,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/store/fs.py",
+      "sha256": "911fd9fa5089f6272897e3e991e55c85e05db7c9adeed1acc063dbe75fe7b270",
+      "size": 8964,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/store/header.py",
+      "sha256": "2bbf449d7c3663ef267dd62690911dc9173a6d3efda60f4a626290d89be73493",
+      "size": 6893,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/store/hold.py",
+      "sha256": "58f9294d4f228e04665ce416b1020d61670d326d3338d76da1c09cc00f0dfb50",
+      "size": 5364,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/store/journal.py",
+      "sha256": "01c455f354990df5944296984636938bfcfd90f4ff5f13e2cd225fcd20db2418",
+      "size": 16518,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/store/recovery.py",
+      "sha256": "be1cd9c7f27c270b722fb96390e67df5fc6fecc787d246484dfb9c11f6131419",
+      "size": 18741,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/testnet_harness.py",
+      "sha256": "e5850895f6613f4cd5c38bbbeef1d0877f7840296c01614fac6344aee457a9da",
+      "size": 40706,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/venue/__init__.py",
+      "sha256": "39dc61a0e35aa2233570bc5086a013d5b241d804ed20b53188b5991a3af4fcb9",
+      "size": 449,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/venue/binance_usdm_testnet.py",
+      "sha256": "49fb71f9d5bed09d190f4cbe32f00d6b08cde279e676d38731bb22ebdc9f8dbb",
+      "size": 24024,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/venue/http_sender.py",
+      "sha256": "edce928f181a068e610a0a734382c8910759d9081ee4f4aadf2cc4389c63d08d",
+      "size": 10627,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/panel.before-account-confirm.html",
+      "sha256": "706872d6b76ea696755624ad6167e4a900ec17f36d029de7d70556768040bdf2",
+      "size": 355056,
+      "master_relation": "runtime-only",
+      "line_delta": {
+        "added": 2097,
+        "removed": 0
+      }
+    },
+    {
+      "account": "acct2",
+      "path": "source/panel.html",
+      "sha256": "c51f5bef7a4de5f04d9787238d1e3102896b97089042f4ba0090e50847647096",
+      "size": 356090,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 28,
+        "removed": 1
+      }
+    },
+    {
+      "account": "acct2",
+      "path": "source/paper_books.py",
+      "sha256": "8088fcfeab9881a8a626227e7b1699d3c62f177f1bf22d8e0ba07bc00a123ec6",
+      "size": 2697,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/paper_cohort_cli.py",
+      "sha256": "93779f5dee93a668626cf31c4dc4377a73be3e48c40fd917768a678417dc6bef",
+      "size": 3065,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/replay.py",
+      "sha256": "261264b2b4fdc7bee0a57878b2027e0968f4d6eb93fb75e7c72b9fe5ff159dd1",
+      "size": 14299,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/research_combos.py",
+      "sha256": "b239b230127a45ee112e18bddb3c4dc124389e38993efa057773d6a5cb0c5e8d",
+      "size": 1547,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/research_grid.py",
+      "sha256": "e610013d7f2cda6b948d4fb151c74f9fd236ae92115f395778b15c069cc928e9",
+      "size": 1091,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/research_long.py",
+      "sha256": "c84af52ec8aa4fc802b404f64ba7a9842330280f081abdcf6827499d688552ff",
+      "size": 8839,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/research_long2.py",
+      "sha256": "a7e869b98fbb66391aa403cd416111d73fb597606f7053003429668325faeeaf",
+      "size": 5218,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/research_refresh.py",
+      "sha256": "412eb0bf81b58dca1fb459a6f431b02ed0789489ca83390bd6d1a29daa8bfd3d",
+      "size": 9889,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/risk_fill.py",
+      "sha256": "e67c31414ca37d7b3f10166e6de5a990bd91da809c057b9c1070bbd26b54cd82",
+      "size": 4352,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/run_pack.py",
+      "sha256": "b971161b6f9d639892b82002df66d8e78b20320723c5269416d557e3e417f416",
+      "size": 9297,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/shadow_analyst.py",
+      "sha256": "2098906f02742097dd63c727a83d3314d57429845cba5b0977b9ab2eca665685",
+      "size": 47900,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/shadow_funding.py",
+      "sha256": "455877cb18c200ec20e08f4a2780c1736db4e7e057dd8003d011aa08a7e97576",
+      "size": 8083,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/strategies.py",
+      "sha256": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+      "size": 94023,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/strategy_shadow.py",
+      "sha256": "340e62237aa5d8ce19d792e51f16702dbdd74f80b2b0a3daee73fcc0cfb46a90",
+      "size": 38722,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 1,
+        "removed": 1
+      }
+    },
+    {
+      "account": "acct2",
+      "path": "source/test_app_ui.py",
+      "sha256": "73924166bd580e9e2a6e988cbb570511cdaf2a16d98e75d56a08ab076f88d043",
+      "size": 40510,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/test_engine_sim.py",
+      "sha256": "86b710f38b56fc9ba596d20b1e9cf27676708e8b0e1a6e5b6f02a91ba5b50ec6",
+      "size": 2856,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/trade_audit.py",
+      "sha256": "7a9880cf5d83be4e52c2516f7f3ceeef7bc132a87f5342f098a533a62907e359",
+      "size": 112191,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/tradfi_session.py",
+      "sha256": "e69a97bdb75505981e75d0c3f948f64800bbd47bf7d4b86d49617d46797a10f3",
+      "size": 4242,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/tradfi_universe.py",
+      "sha256": "43519a484b93517d939f53491f44d4e1736428971f2851e3e5eeac5dda6a32bc",
+      "size": 1259,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/true_books.py",
+      "sha256": "35a42c16b5e8cca63c4ea1be0201863107cea1189733d0ac7af54a39f996e0db",
+      "size": 27735,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "source/verify_ci.py",
+      "sha256": "f30f5d29d7247c4dbf87e52908168039179352c6c5d41fd7c60e74d05e29d9e0",
+      "size": 15159,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct2",
+      "path": "launcher/start_old3.py",
+      "sha256": "909efb1e6e62b1d55aab8c7c2a15f8e8c2eaec28db00e8dc17b1d0a58c34a647",
+      "size": 2295,
+      "master_relation": "runtime-only",
+      "line_delta": {
+        "added": 54,
+        "removed": 0
+      }
+    },
+    {
+      "account": "acct3",
+      "path": "source/actual_costs.py",
+      "sha256": "4197fe824cf3ef6bf24eda686412f992f1f3b17cc9daefe81a766bc656397884",
+      "size": 28392,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/ai_filter.py",
+      "sha256": "2aa0b0e4cd0771a4ea0ae62193af51c72b310a44b8e22316709128fce383b96d",
+      "size": 13651,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/ai_scan.py",
+      "sha256": "8b6c4bc96fdf55b62d71c5c3d2d905f1ba2cae8f111eaf80cc80b059efab1c7d",
+      "size": 40097,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/ai_scan_dataplane.py",
+      "sha256": "5008158b3c2fee1c2727e0ad17657407e936d984a2f261abba961be9e69e07a7",
+      "size": 44599,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/ai_scan_ledger.py",
+      "sha256": "6904b9e25ef51a3cc9107a7ae2c51f80a2a6a13bb0a8310e8892b1bf659e17b4",
+      "size": 25689,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/app.py",
+      "sha256": "7003cc1e51995fc528181a7b0bba1ccc019e2f96a1beba79b5e099dcc3711ee0",
+      "size": 128287,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/backtest.py",
+      "sha256": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+      "size": 46021,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/binance_client.py",
+      "sha256": "e5f2822647c8966449d5a26c6bae6701d7f08555be97a70b710732deab0c1837",
+      "size": 47141,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 19,
+        "removed": 107
+      }
+    },
+    {
+      "account": "acct3",
+      "path": "source/book_ledger.py",
+      "sha256": "f0e1054ded09c3901c8c66db00f82b6fe9e018f5b4bec8457164f8db54b980b5",
+      "size": 7434,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/ca_bundle.py",
+      "sha256": "46970be6b11771f55e2cf077c4ccd5ca0e9af40b3d7a826ae93ddcdcaed9e2cc",
+      "size": 5366,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/cand_evict_ack.py",
+      "sha256": "5f58146f69aaead7b97c2fa47bcff30172d6f344d46c96c1ab3a730852ab73b7",
+      "size": 7458,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/candidate_activation.py",
+      "sha256": "3dc528117e5fbe3d232db672098f528047e3e4aca5f398297bd902a31ced01ee",
+      "size": 26369,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/candidates.py",
+      "sha256": "eec936153a7e544bf60d5e14567e81844cc4f3fcc8b6a0cf6bc3d0f30c88ab31",
+      "size": 2005,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/engine.py",
+      "sha256": "e8631b5e8352d7e687e0564bf9c3d54a4a276e3b3f97ea5258af2395285d04a8",
+      "size": 569842,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 3,
+        "removed": 47
+      }
+    },
+    {
+      "account": "acct3",
+      "path": "source/exchange_rules.py",
+      "sha256": "796ad0dcd7b38e104cf059925a43ce8ba1564089ad7c782e44d403ee8960d39c",
+      "size": 6853,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/exec_calibration.py",
+      "sha256": "4d55fed823a40f75991173a1b867dfb3cfcd46408b1ea4ed44a8fb7a2c48195f",
+      "size": 31726,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/f01_canary.py",
+      "sha256": "4353355f1a26c69e0360599453c2eb2018c951b3c9afdc4856be1891f7af2fe1",
+      "size": 34082,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/feasibility.py",
+      "sha256": "b689ecc494f83fc8e9000159f667dbad0ae15b575a8eaa409bb50ce725570d0f",
+      "size": 28848,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/grid.py",
+      "sha256": "d80be0bfb4cea9aa8cf422673604fe1b51ce712ea18224b104907f22260013f4",
+      "size": 65739,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/instance.py",
+      "sha256": "b1d1c48c2359199732d168e5db44630641438621ad10e45664df43734df0e256",
+      "size": 8526,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/lab.py",
+      "sha256": "373f6d5f58590ab4eb496348ffff495b9a0f33b7a5f8596c78b440d34d41f25b",
+      "size": 51877,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/load_data.py",
+      "sha256": "6235e59c7509e92ac048b1a88969deb300dddbe9a5a7ac36e5e2dc03434e5619",
+      "size": 333,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/market_collector.py",
+      "sha256": "e183aeef5f9f0ad1f70323a852fff3ba23538780b3770699d49b0ad7b3ac1ad9",
+      "size": 10363,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/market_data.py",
+      "sha256": "aa16e76fdadfd1d39d3cb4cd4e8d144044aea750e8ba44ae1348c644e6440148",
+      "size": 31846,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/ml_shadow/__init__.py",
+      "sha256": "1124c76652c58844e1f0593b62d331db8a40177cae467619ec0097d7a9c7a1a9",
+      "size": 1248,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/ml_shadow/common.py",
+      "sha256": "61c226fb2bd679c1ec409824f6051cf22969eb19d7bf1c782f2bb10e0756edef",
+      "size": 3492,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/ml_shadow/context.py",
+      "sha256": "0f4a1c5e0a7a4d39e203b0090bf13a037edf37952d9c83cb301813470d2af255",
+      "size": 6190,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/ml_shadow/features.py",
+      "sha256": "f51351687bcf05dfdae387eb34285d625d650f487f12288af796b7727a1e93a7",
+      "size": 6293,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/ml_shadow/labels.py",
+      "sha256": "a45234078e441e9daecb13a3049360c463ea153f2ffd04ff05c46be6c6a8d19f",
+      "size": 2025,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/ml_shadow/ledger.py",
+      "sha256": "9e5f9d51b48604a9f5d29827059bc67ddf5205437a9dc36e68333c45d5d026e8",
+      "size": 8786,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/ml_shadow/pairs.py",
+      "sha256": "b2ee517de898bbbfd20898584f430b113aa8f9f33918b97e570c1ac334b8af27",
+      "size": 22873,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/ml_shadow/sanitize.py",
+      "sha256": "d36892dcc3612ab87796fce2c921f6f033c5f152aca0a95b1857058778324370",
+      "size": 8846,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/ml_shadow/scoring.py",
+      "sha256": "8fb8d49ae0d6c6267736a035ed920edc0fec37499893ee040f472cde8cd818fb",
+      "size": 1667,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/ml_shadow/trainer.py",
+      "sha256": "b96b438b6a2a77e8f83a719c64e71c3e17f3728194eb3b2beda48477b8c40f0e",
+      "size": 11357,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/ml_shadow/writer.py",
+      "sha256": "96308e81519ce5851ab72978d6e378b1114f04d7cfbc65fd7fa461f144ce6af0",
+      "size": 10247,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/__init__.py",
+      "sha256": "aff92522ef19010a9c549ca29a9f400bbb3b4b8e2f1bf319d10847370b7c6c54",
+      "size": 368,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/account_context.py",
+      "sha256": "1291a22477d0a8e5368402bbd6827be3f72f3c4e71cfd6c16dfac50643e631c3",
+      "size": 37208,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/base_clean.py",
+      "sha256": "6449a0c6119273428ec7f5af694dd1de2f4aa8f41282eec04104b9c2996fe68b",
+      "size": 28253,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/__init__.py",
+      "sha256": "7765b461f3617340290a90cc5bf0995ce880b09a3b73207f176da9eea5ef8e76",
+      "size": 3658,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/account.py",
+      "sha256": "cb72f40ec1afbbe52d6fb9fbbb8774e25b423339a09e80b587d6b7277802184f",
+      "size": 8386,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/base.py",
+      "sha256": "8fab649b66b708ce4d1ac971580fea2b0b8a0b0a3c3b2ede3591d583974698cc",
+      "size": 10452,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/codec.py",
+      "sha256": "dcf23a685972d25e0d9afbff2ec0f31206cb728e69334cc9b5886f2be3fefa85",
+      "size": 12720,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/decision.py",
+      "sha256": "41456594cf8d35d2d2dc1a965c2abaa1e1c891c87c3ec8171a259cb6b11f1b6c",
+      "size": 9084,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/errors.py",
+      "sha256": "b2338d8e277b8f61be69489e2d308f9da62990239b4792bcee19aaf9155adaa9",
+      "size": 2172,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/events.py",
+      "sha256": "54f6ca3ed61572eec973a6505bf8bdb58d82f94a3eb2cc1784bc56e060e4d52e",
+      "size": 14709,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/facts.py",
+      "sha256": "b1a32861f0e412d8fade370cde1e52ee8ea06cbc2610fa439dee734995931ddd",
+      "size": 6789,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/incident.py",
+      "sha256": "849fe4a7fb8c79c8ffb8af4819682889c5de1a3881233d682187461e03e4b4ce",
+      "size": 4573,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/instrument.py",
+      "sha256": "4633f43ec3419441a2c0bd7764788951ede7b66ac04fb36a8e85c0cdd75a6516",
+      "size": 6220,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/ledger.py",
+      "sha256": "cc6356d22bc9ef116ece0e9f280916a0742bbb7803f93e22f5acc97f398c2d4f",
+      "size": 3431,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/modes.py",
+      "sha256": "e3c5a2b4ea6bc86f83cd1bc68d98d4a3316ac9423b508924b6cd8b7bde183ecb",
+      "size": 5412,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/orders.py",
+      "sha256": "f9fc023ed9a3a3f482e5a4cb3d0f6d50674b2940402b68170e0df67e09b83c8b",
+      "size": 31138,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/portfolio.py",
+      "sha256": "8a6a0485c75678814bcb64c681a9312d93093de2d267342dd9822c5c4f456ea9",
+      "size": 25639,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/protection.py",
+      "sha256": "a74d62ed0d192d3c03b9ad05afe85e9da588a8f8d35cc1e381ff48e48f2e86d6",
+      "size": 10293,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/reasons.py",
+      "sha256": "84e968456b8c9bde99e613fbf1f8bde7d4907c784ed0bacd85ebd25932ac567d",
+      "size": 20982,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/domain/snapshot.py",
+      "sha256": "2e3935a3246e9f65bd9cabe3da1757c375364d08ab9cae7bd74db290ffc89138",
+      "size": 2931,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/loss_state.py",
+      "sha256": "b62626a56019898a626c4689eb8428d5b4fa2ea53b2eed83dd59eb14c22c099d",
+      "size": 10541,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/management.py",
+      "sha256": "2c0173e338ce926b4db26c2c81f235ee3b8d45575de455f59b6fce64a8523a21",
+      "size": 38054,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/observability.py",
+      "sha256": "76b077ca6c3db5dda225e8208a77504613e6ec8c9833db5d28b1e39d19e346f4",
+      "size": 50662,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/ports/__init__.py",
+      "sha256": "b7dd21d4ec348202902a76e69916c960cc2f2943192cc682b4289c872188fec6",
+      "size": 1449,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/ports/bars.py",
+      "sha256": "1e7b6a4e73bdff0d5536ec03dcd02572b991d5b4e34ac9a404b6a779aa9cf75f",
+      "size": 3020,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/ports/journal.py",
+      "sha256": "75acfaeaab3bbb629c4e0e1ddb921367b42d642f749e17d6db7b69c0f6666280",
+      "size": 30706,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/ports/rate_blocks.py",
+      "sha256": "a6e4a57169a38d9dbc503d47b1681b8e8f8830c2cbb30c3834fd150d7bac5640",
+      "size": 2504,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/ports/values.py",
+      "sha256": "4a448a891916dd76fe8dc101322d127d706c5ff00d157a79f8b88cc167a183a5",
+      "size": 1401,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/ports/venue.py",
+      "sha256": "b0df5492442ae381608d176bf1d3eccd3756167a88da9df3c4840a7c1499c8b6",
+      "size": 11010,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/reconciliation.py",
+      "sha256": "122ac8960ff49095face670d7538dc77d5e66b13067d5ac5902a4d61138ba34d",
+      "size": 42465,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/risk.py",
+      "sha256": "15056b5f3d772ec8aa2f5dea5cc2fa9299dfc2207a9edee1837ad2d5d29189b0",
+      "size": 46681,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/scheduler.py",
+      "sha256": "411864c98e1ccf7ab32ac01fec179b0b8a8f48570da1f41515802115e388ea16",
+      "size": 29016,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/store/__init__.py",
+      "sha256": "91f9da866287ef21018e398557f1062411f2dc1446a65ad270caa0debc7dacc1",
+      "size": 2034,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/store/errors.py",
+      "sha256": "2921eae7ce66bd9e1424cd5bf0f445679a1912a1c26945c7a6875949534e442d",
+      "size": 2256,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/store/evidence.py",
+      "sha256": "771c26c9bec295c410321532d2a211337493af0b8d3a19b4ec2c0f6102e4f325",
+      "size": 3949,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/store/fold.py",
+      "sha256": "479478dbcef363e322dccefc2aa71a5168c21f4a1816eb39112b513ca36fabdf",
+      "size": 9169,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/store/frame.py",
+      "sha256": "6d1f2a04f49493c083723a9cf3c2891165e910d4f067502bb2c19bdac691ea3d",
+      "size": 8193,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/store/fs.py",
+      "sha256": "911fd9fa5089f6272897e3e991e55c85e05db7c9adeed1acc063dbe75fe7b270",
+      "size": 8964,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/store/header.py",
+      "sha256": "2bbf449d7c3663ef267dd62690911dc9173a6d3efda60f4a626290d89be73493",
+      "size": 6893,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/store/hold.py",
+      "sha256": "58f9294d4f228e04665ce416b1020d61670d326d3338d76da1c09cc00f0dfb50",
+      "size": 5364,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/store/journal.py",
+      "sha256": "01c455f354990df5944296984636938bfcfd90f4ff5f13e2cd225fcd20db2418",
+      "size": 16518,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/store/recovery.py",
+      "sha256": "be1cd9c7f27c270b722fb96390e67df5fc6fecc787d246484dfb9c11f6131419",
+      "size": 18741,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/testnet_harness.py",
+      "sha256": "e5850895f6613f4cd5c38bbbeef1d0877f7840296c01614fac6344aee457a9da",
+      "size": 40706,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/venue/__init__.py",
+      "sha256": "39dc61a0e35aa2233570bc5086a013d5b241d804ed20b53188b5991a3af4fcb9",
+      "size": 449,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/venue/binance_usdm_testnet.py",
+      "sha256": "49fb71f9d5bed09d190f4cbe32f00d6b08cde279e676d38731bb22ebdc9f8dbb",
+      "size": 24024,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/venue/http_sender.py",
+      "sha256": "edce928f181a068e610a0a734382c8910759d9081ee4f4aadf2cc4389c63d08d",
+      "size": 10627,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/panel.html",
+      "sha256": "706872d6b76ea696755624ad6167e4a900ec17f36d029de7d70556768040bdf2",
+      "size": 355056,
+      "master_relation": "modified",
+      "line_delta": {
+        "added": 0,
+        "removed": 0
+      }
+    },
+    {
+      "account": "acct3",
+      "path": "source/paper_books.py",
+      "sha256": "8088fcfeab9881a8a626227e7b1699d3c62f177f1bf22d8e0ba07bc00a123ec6",
+      "size": 2697,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/paper_cohort_cli.py",
+      "sha256": "93779f5dee93a668626cf31c4dc4377a73be3e48c40fd917768a678417dc6bef",
+      "size": 3065,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/prot.py",
+      "sha256": "02955ce46efb06b55590193525fd87cf0b8d84b8880765db0b5659775e357042",
+      "size": 3882,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/replay.py",
+      "sha256": "261264b2b4fdc7bee0a57878b2027e0968f4d6eb93fb75e7c72b9fe5ff159dd1",
+      "size": 14299,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/research_combos.py",
+      "sha256": "b239b230127a45ee112e18bddb3c4dc124389e38993efa057773d6a5cb0c5e8d",
+      "size": 1547,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/research_grid.py",
+      "sha256": "e610013d7f2cda6b948d4fb151c74f9fd236ae92115f395778b15c069cc928e9",
+      "size": 1091,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/research_long.py",
+      "sha256": "c84af52ec8aa4fc802b404f64ba7a9842330280f081abdcf6827499d688552ff",
+      "size": 8839,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/research_long2.py",
+      "sha256": "a7e869b98fbb66391aa403cd416111d73fb597606f7053003429668325faeeaf",
+      "size": 5218,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/research_refresh.py",
+      "sha256": "412eb0bf81b58dca1fb459a6f431b02ed0789489ca83390bd6d1a29daa8bfd3d",
+      "size": 9889,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/risk_fill.py",
+      "sha256": "e67c31414ca37d7b3f10166e6de5a990bd91da809c057b9c1070bbd26b54cd82",
+      "size": 4352,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/run_pack.py",
+      "sha256": "b971161b6f9d639892b82002df66d8e78b20320723c5269416d557e3e417f416",
+      "size": 9297,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/shadow_analyst.py",
+      "sha256": "2098906f02742097dd63c727a83d3314d57429845cba5b0977b9ab2eca665685",
+      "size": 47900,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/shadow_funding.py",
+      "sha256": "455877cb18c200ec20e08f4a2780c1736db4e7e057dd8003d011aa08a7e97576",
+      "size": 8083,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/strategies.py",
+      "sha256": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+      "size": 94023,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/strategy_shadow.py",
+      "sha256": "dc59354a191f4d2fbca54e45f0c0d0db059152a7da1b8981d43120f426e62115",
+      "size": 38730,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/test_app_ui.py",
+      "sha256": "73924166bd580e9e2a6e988cbb570511cdaf2a16d98e75d56a08ab076f88d043",
+      "size": 40510,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/test_engine_sim.py",
+      "sha256": "86b710f38b56fc9ba596d20b1e9cf27676708e8b0e1a6e5b6f02a91ba5b50ec6",
+      "size": 2856,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/trade_audit.py",
+      "sha256": "7a9880cf5d83be4e52c2516f7f3ceeef7bc132a87f5342f098a533a62907e359",
+      "size": 112191,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/tradfi_session.py",
+      "sha256": "e69a97bdb75505981e75d0c3f948f64800bbd47bf7d4b86d49617d46797a10f3",
+      "size": 4242,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/tradfi_universe.py",
+      "sha256": "43519a484b93517d939f53491f44d4e1736428971f2851e3e5eeac5dda6a32bc",
+      "size": 1259,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/true_books.py",
+      "sha256": "35a42c16b5e8cca63c4ea1be0201863107cea1189733d0ac7af54a39f996e0db",
+      "size": 27735,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "source/verify_ci.py",
+      "sha256": "f30f5d29d7247c4dbf87e52908168039179352c6c5d41fd7c60e74d05e29d9e0",
+      "size": 15159,
+      "master_relation": "identical"
+    },
+    {
+      "account": "acct3",
+      "path": "launcher/start_account3.py",
+      "sha256": "b17920668644bc06df1b8b42f844b310072e32759efbabfad60e79a0cc8fac68",
+      "size": 2962,
+      "master_relation": "runtime-only",
+      "line_delta": {
+        "added": 58,
+        "removed": 0
+      }
+    }
+  ],
+  "excluded": [
+    {
+      "account": "acct1",
+      "path": "source/f01_activation.py",
+      "reason": "conservative credential screen; bytes and hash withheld"
+    },
+    {
+      "account": "acct1",
+      "path": "source/newcore/ports/keys.py",
+      "reason": "conservative credential screen; bytes and hash withheld"
+    },
+    {
+      "account": "acct1",
+      "path": "source/telegram_ctl.py",
+      "reason": "conservative credential screen; bytes and hash withheld"
+    },
+    {
+      "account": "acct1",
+      "path": "source/verify.py",
+      "reason": "conservative credential screen; bytes and hash withheld"
+    },
+    {
+      "account": "acct2",
+      "path": "source/f01_activation.py",
+      "reason": "conservative credential screen; bytes and hash withheld"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/ports/keys.py",
+      "reason": "conservative credential screen; bytes and hash withheld"
+    },
+    {
+      "account": "acct2",
+      "path": "source/newcore/simulator.py",
+      "reason": "conservative credential screen; bytes and hash withheld"
+    },
+    {
+      "account": "acct2",
+      "path": "source/telegram_ctl.py",
+      "reason": "conservative credential screen; bytes and hash withheld"
+    },
+    {
+      "account": "acct2",
+      "path": "source/verify.py",
+      "reason": "conservative credential screen; bytes and hash withheld"
+    },
+    {
+      "account": "acct3",
+      "path": "source/f01_activation.py",
+      "reason": "conservative credential screen; bytes and hash withheld"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/ports/keys.py",
+      "reason": "conservative credential screen; bytes and hash withheld"
+    },
+    {
+      "account": "acct3",
+      "path": "source/newcore/simulator.py",
+      "reason": "conservative credential screen; bytes and hash withheld"
+    },
+    {
+      "account": "acct3",
+      "path": "source/telegram_ctl.py",
+      "reason": "conservative credential screen; bytes and hash withheld"
+    },
+    {
+      "account": "acct3",
+      "path": "source/verify.py",
+      "reason": "conservative credential screen; bytes and hash withheld"
+    }
+  ],
+  "config_schemas": [
+    {
+      "account": "acct1",
+      "file": "settings.json",
+      "values": "all omitted; no source hash"
+    },
+    {
+      "account": "acct1",
+      "file": "cohort.json",
+      "values": "all omitted; no source hash"
+    },
+    {
+      "account": "acct1",
+      "file": "install.json",
+      "values": "all omitted; no source hash"
+    },
+    {
+      "account": "acct2",
+      "file": "settings.json",
+      "values": "all omitted; no source hash"
+    },
+    {
+      "account": "acct2",
+      "file": "cohort.json",
+      "values": "all omitted; no source hash"
+    },
+    {
+      "account": "acct2",
+      "file": "install.json",
+      "values": "all omitted; no source hash"
+    },
+    {
+      "account": "acct3",
+      "file": "settings.json",
+      "values": "all omitted; no source hash"
+    },
+    {
+      "account": "acct3",
+      "file": "cohort.json",
+      "values": "all omitted; no source hash"
+    },
+    {
+      "account": "acct3",
+      "file": "install.json",
+      "values": "all omitted; no source hash"
+    }
+  ],
+  "excluded_accounts": [
+    "acct4: active R6 canary explicitly protected by lane limits"
+  ],
+  "master_only": [
+    {
+      "account": "acct1",
+      "path": "build_app.bat"
+    },
+    {
+      "account": "acct1",
+      "path": "candidate_activation.py"
+    },
+    {
+      "account": "acct1",
+      "path": "h5_hourly_long.py"
+    },
+    {
+      "account": "acct1",
+      "path": "installer.ps1"
+    },
+    {
+      "account": "acct1",
+      "path": "newcore/account_context.py"
+    },
+    {
+      "account": "acct1",
+      "path": "newcore/base_clean.py"
+    },
+    {
+      "account": "acct1",
+      "path": "newcore/loss_state.py"
+    },
+    {
+      "account": "acct1",
+      "path": "newcore/management.py"
+    },
+    {
+      "account": "acct1",
+      "path": "newcore/observability.py"
+    },
+    {
+      "account": "acct1",
+      "path": "newcore/ports/rate_blocks.py"
+    },
+    {
+      "account": "acct1",
+      "path": "newcore/reconciliation.py"
+    },
+    {
+      "account": "acct1",
+      "path": "newcore/risk.py"
+    },
+    {
+      "account": "acct1",
+      "path": "newcore/scheduler.py"
+    },
+    {
+      "account": "acct1",
+      "path": "newcore/simulator.py"
+    },
+    {
+      "account": "acct1",
+      "path": "newcore/testnet_harness.py"
+    },
+    {
+      "account": "acct1",
+      "path": "newcore/venue/__init__.py"
+    },
+    {
+      "account": "acct1",
+      "path": "newcore/venue/binance_usdm_testnet.py"
+    },
+    {
+      "account": "acct1",
+      "path": "newcore/venue/http_sender.py"
+    },
+    {
+      "account": "acct1",
+      "path": "paper_cohort_cli.py"
+    },
+    {
+      "account": "acct1",
+      "path": "prot.py"
+    },
+    {
+      "account": "acct1",
+      "path": "rollback_drill.bat"
+    },
+    {
+      "account": "acct1",
+      "path": "setup_git.bat"
+    },
+    {
+      "account": "acct2",
+      "path": "build_app.bat"
+    },
+    {
+      "account": "acct2",
+      "path": "h5_hourly_long.py"
+    },
+    {
+      "account": "acct2",
+      "path": "installer.ps1"
+    },
+    {
+      "account": "acct2",
+      "path": "installer_check.ps1"
+    },
+    {
+      "account": "acct2",
+      "path": "prot.py"
+    },
+    {
+      "account": "acct2",
+      "path": "rollback_drill.bat"
+    },
+    {
+      "account": "acct2",
+      "path": "run_checks.bat"
+    },
+    {
+      "account": "acct2",
+      "path": "run_ui_baseline.bat"
+    },
+    {
+      "account": "acct2",
+      "path": "setup_git.bat"
+    },
+    {
+      "account": "acct2",
+      "path": "verify.bat"
+    },
+    {
+      "account": "acct2",
+      "path": "verify_release.bat"
+    },
+    {
+      "account": "acct3",
+      "path": "build_app.bat"
+    },
+    {
+      "account": "acct3",
+      "path": "h5_hourly_long.py"
+    },
+    {
+      "account": "acct3",
+      "path": "installer.ps1"
+    },
+    {
+      "account": "acct3",
+      "path": "installer_check.ps1"
+    },
+    {
+      "account": "acct3",
+      "path": "rollback_drill.bat"
+    },
+    {
+      "account": "acct3",
+      "path": "run_checks.bat"
+    },
+    {
+      "account": "acct3",
+      "path": "run_ui_baseline.bat"
+    },
+    {
+      "account": "acct3",
+      "path": "setup_git.bat"
+    },
+    {
+      "account": "acct3",
+      "path": "verify.bat"
+    },
+    {
+      "account": "acct3",
+      "path": "verify_release.bat"
+    }
+  ],
+  "acct1_executable": {
+    "sha256": "f373eba5c39a60a1b18e71fbcb3991051da6c21aea610dee0775c16501b5cc26",
+    "claim": "on-disk executable only; loose source provenance and loaded memory not proven"
+  },
+  "verification": {
+    "source_and_copy_equal": 304,
+    "python_ast_parse_pass": 295,
+    "runtime_code_executed": 0
+  }
+}

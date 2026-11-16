@@ -1,0 +1,9 @@
+{
+  "account": {
+    "base": "str",
+    "key": "str",
+    "mode": "str"
+  },
+  "created": "str",
+  "schema_version": "int"
+}

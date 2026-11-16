@@ -1,0 +1,13 @@
+{
+  "started_utc": "str",
+  "seq": "int",
+  "mode": "str",
+  "venue": "str",
+  "code_sha": "str",
+  "settings_sha": "str",
+  "book_version": "str",
+  "fee_model_sha": "str",
+  "book_cap": "float",
+  "ended_utc": "NoneType",
+  "id": "str"
+}
