@@ -895,7 +895,7 @@ def rotation_at(ts=None, tradfi=False):
                 since=iso(epoch * ROTATION_PERIOD_S), next_switch=iso((epoch + 1) * ROTATION_PERIOD_S),
                 period_h=ROTATION_PERIOD_S // 3600)
 
-GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], TELEGRAM_ON=False, TELEGRAM_CHAT='', MAX_LEVERAGE=10, DAILY_LOSS_HALT=0.08, PEAK_DD_FLATTEN=0.0, CAPITAL_CAP=500.0,
+GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], TELEGRAM_ON=False, TELEGRAM_CHAT='', MAX_LEVERAGE=10, DAILY_LOSS_HALT=0.03, PEAK_DD_FLATTEN=0.10, CAPITAL_CAP=500.0,   # CAPS-01: policy defaults
                        ENTRIES_PAUSED=False, AI_FILTER=False, PRESET='original', ROTATION_MGMT_OVERLAY={},
                        UNIVERSE=list(TOP40), SYMBOLS_ON={}, RUN_IN_BACKGROUND=True,
                        MARKET_COLLECTOR=True,         # observe-only public market-data collector (market_collector.py); owner: collect now
@@ -918,11 +918,17 @@ GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], 
 # Portfolio risk rules: mode 'off' | 'warn' (log + 'WARNING:' entry on the missed list, still trades) | 'enforce' (entry refused)
 RISK_RULE_DEFAULTS = dict(
     coin_cap=dict(mode='warn', x=3.0),                 # total notional on one coin (all slots) <= x * bot capital
-    open_risk_cap=dict(mode='warn', pct=15.0),         # open risk to stops incl. the new trade <= pct % of bot capital
+    open_risk_cap=dict(mode='enforce', pct=2.5),       # open risk to stops incl. the new trade <= pct % of bot capital (CAPS-01)
     correlated_cap=dict(mode='warn', n=3, rho=0.8),    # < n open same-direction trades on coins correlated > rho with the new coin
     btc_breaker=dict(mode='warn', pct=5.0, hours=4.0, tighten=False, dca='pause'),   # BTC moved > pct % in the last hour -> pause `hours`;
     #   while it is active (enforce): no pyramid adds; DCA safety orders follow the lot's policy pause / half_size / continue_plan
     funding_filter=dict(mode='warn', rate=0.001))      # no longs when funding > rate, no shorts when < -rate
+# CAPS-01 (owner policy, moe 16 Nov 2026): the loosest risk caps any trading account may run with. A setting that is
+# missing takes the defaults above (which equal this policy); a setting that is LOOSER - or an open-risk cap that only
+# warns - refuses every new entry and add with a named reason (Engine.risk_caps_block). Exits, stops and the management
+# of open positions are never blocked by it.
+RISK_CAP_POLICY = dict(open_risk_pct=2.5, daily_loss_halt=0.03, peak_dd_flatten=0.10)
+_REAL_FUTURES = Futures                                 # CAPS-01: the real Binance client, captured before any test/replay swap
 GOV_COOLDOWN_S = 24 * 3600                             # minimum time between two automatic profile switches
 GOV_MULT_MAX = 2.0                                     # martingale-style recovery (risk_mult > 1) is capped here
 
@@ -2555,6 +2561,9 @@ class Engine:
                 log.warning(f'hedge mode check failed: {e}')
             self.equity()
         self.connected = True
+        caps = self.risk_caps_block()                   # CAPS-01: say it at start, not first at the next signal
+        if caps:
+            log.error(caps); self.notify(f'⛔ {caps}. Open trades, stops and exits keep running.')
         if on: self.sync_tradfi_slots()
         self.sync_scalp_slots()                         # SCALP-4: PAPER rotation only; appends missing slots, idempotent
         self.sync_candidate_slots()                     # FACTORY-CAND-01: the same, for the factory candidate slots (off)
@@ -6023,6 +6032,8 @@ class Engine:
         if pb: return pb
         rb = self._risk_fill_block(lot)                           # RISK-FILL-01: no new risk on an unmeasured / over-budget lot
         if rb: return rb
+        caps = self.risk_caps_block()                             # CAPS-01: an add is new exposure
+        if caps: return caps
         if st.get('halted'): return 'daily loss halt is active'
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if self.exchange_state().get('state') == 'outage': return OUTAGE_ADD     # T05b final: an add is new exposure
@@ -7811,7 +7822,45 @@ class Engine:
             except Exception as e: log.info(f'funding filter: data unavailable ({e})')
         return out
 
+    def risk_caps_problems(self):
+        """CAPS-01: every way the effective risk caps are looser than RISK_CAP_POLICY (empty list = compliant).
+        One exemption: replay.run_replay - the offline engine-vs-backtest parity harness - sets offline_replay in code on an
+        engine whose exchange is its own in-memory fake. Both must hold; an engine holding the real Binance client is always
+        checked, and no setting, file or app path can set the flag."""
+        if getattr(self, 'offline_replay', False) is True and not isinstance(self.trade, _REAL_FUTURES):
+            return []
+        P, S, out = RISK_CAP_POLICY, self.S, []
+        def num(k):
+            v = S.get(k, GLOBAL_DEFAULTS.get(k))
+            try: v = float(v)
+            except (TypeError, ValueError): return None
+            return v if math.isfinite(v) else None
+        dh, dd = num('DAILY_LOSS_HALT'), num('PEAK_DD_FLATTEN')
+        if dh is None or not 0 < dh <= P['daily_loss_halt']:
+            out.append(f"daily loss halt {S.get('DAILY_LOSS_HALT')!r} (policy: on, at most {P['daily_loss_halt'] * 100:g}%)")
+        if dd is None or not 0 < dd <= P['peak_dd_flatten']:
+            out.append(f"drawdown stop {S.get('PEAK_DD_FLATTEN')!r} (policy: on, at most {P['peak_dd_flatten'] * 100:g}%)")
+        r = self.risk_rules_cfg()['open_risk_cap']
+        try: pct = float(r.get('pct'))
+        except (TypeError, ValueError): pct = None
+        if r.get('mode') != 'enforce' or pct is None or not math.isfinite(pct) or not 0 < pct <= P['open_risk_pct']:
+            out.append(f"open-risk cap {r.get('mode')} {r.get('pct')!r}% (policy: enforce, at most {P['open_risk_pct']:g}%)")
+        return out
+
+    def risk_caps_block(self):
+        """CAPS-01: the entry refusal while the caps are looser than policy (None = compliant). Alerted once per change."""
+        bad = self.risk_caps_problems()
+        if not bad:
+            self.resolve('risk-caps', 'risk caps meet the policy again'); return None
+        msg = 'risk caps looser than policy - no new entries: ' + '; '.join(bad)
+        self.err(msg, key='risk-caps')
+        return msg
+
     def _rules_block(self, sl, sym, side, size=None, manual=False):
+        caps = self.risk_caps_block()                   # CAPS-01: first, for every entry and add (manual too)
+        if caps:
+            self._rule_warns = []
+            return caps
         cb = None if manual else CA.runtime_block(self, sl, testnet=TESTNET)
         cb = cb or (None if manual else self.f01_canary_block(sl))  # legacy C-F01 bound during migration
         if cb:

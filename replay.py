@@ -128,6 +128,11 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         eng = E.Engine(dict(MODE='paper', API_KEY='x', API_SECRET='y'), tmp)
         eng.S['SLEEVES'] = sleeves; eng.S['UNIVERSE'] = syms; eng.S['SYMBOLS_ON'] = {s: True for s in syms}
         eng.S['CAPITAL_CAP'] = 0; eng.S['MAX_LEVERAGE'] = 10
+        # CAPS-01: the backtester models none of the account risk caps, so parity runs with them as the pre-policy code
+        # defaults. Exempt from the policy check only because this engine trades the in-memory fake above (engine.py).
+        eng.offline_replay = True
+        eng.S['DAILY_LOSS_HALT'] = 0.08; eng.S['PEAK_DD_FLATTEN'] = 0.0
+        eng.S['RISK_RULES'] = dict(eng.S.get('RISK_RULES') or {}, open_risk_cap=dict(mode='warn', pct=15.0))
         eng.equity_hist = []; eng.record_equity = lambda e: None
         eng.connect()
         tf = next((k for k, v in E.TF_SEC.items() if v == tf_sec), '4h')

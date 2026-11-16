@@ -232,7 +232,7 @@ def test_manual_trade_limits(monkeypatch):
     e.state['halted'] = True
     with pytest.raises(ValueError, match='halt'): e.manual_trade('BTCUSDT', 'LONG', 0.01, 2.5)
     e.state['halted'] = False
-    assert e.manual_trade('BTCUSDT', 'LONG', 0.05, 0.5)
+    assert e.manual_trade('BTCUSDT', 'LONG', 0.02, 0.5)                       # CAPS-01: inside the 2.5 % open-risk cap
     lot = next(iter(e.state['lots'].values()))
     assert lot['qty'] * lot['avg'] <= e.S['MAX_LEVERAGE'] * e.last_eq + 1    # leverage cap applies to manual trades
 
@@ -337,7 +337,7 @@ def test_withdrawal_is_not_a_loss_and_deposit_not_a_gain():
 
 
 def test_lowering_start_amount_does_not_trigger_flatten():
-    e, _ = mk_engine(PEAK_DD_FLATTEN=0.2); opened(e); e.equity(); e.check_guards()
+    e, _ = mk_engine(PEAK_DD_FLATTEN=0.1); opened(e); e.equity(); e.check_guards()      # CAPS-01: policy maximum
     e.set_capital_base(300); e.equity(); e.check_guards()
     assert e.state['lots'] and not e.S['ENTRIES_PAUSED']
 
@@ -584,7 +584,7 @@ def test_pyramid_add_respects_enforced_open_risk_cap():
 
 def test_warn_mode_rules_never_block_adds():
     e, _ = mk_engine(); sl, lot = _pyr(e)
-    e.S['RISK_RULES'] = {'coin_cap': {'mode': 'warn', 'x': 0.0001}, 'open_risk_cap': {'mode': 'warn', 'pct': 0.0001}}
+    e.S['RISK_RULES'] = {'coin_cap': {'mode': 'warn', 'x': 0.0001}}   # CAPS-01: the open-risk cap may no longer be warn-only
     e.trade.mark['BTCUSDT'] = 106.0; e.manage(e.trade.marks())
     assert lot['adds'] == 1
 
