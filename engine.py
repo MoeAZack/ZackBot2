@@ -7547,7 +7547,7 @@ class Engine:
             out[(u['symbol'], u['side'])] = out.get((u['symbol'], u['side']), 0.0) + u['qty']
         return out
 
-    def _prov_set(self, uk, u, qty):
+    def _prov_set(self, uk, u, qty, wal=True):
         """AUD-03 r1: keep an unconfirmed entry's provisional stop EXACTLY at the unresolved size on Binance: placed or resized
         replace-first (new stop, then cancel the old), cancelled when nothing unresolved remains. If a SHRINK cannot be placed,
         the oversized old stop is removed at once (cancelled, or parked for retry with its ownership cleared) and the gap is
@@ -7572,10 +7572,16 @@ class Engine:
         try:
             self._save_wal()
         except Exception as ex:
-            u.pop('prov_pending', None)
-            self.err(f"{sym} {side} unconfirmed entry: provisional stop NOT sent - its write-ahead record could not be saved "
-                     f"({type(ex).__name__}); retried next pass", key=f'prov|{uk}')
-            return
+            if wal:
+                u.pop('prov_pending', None)
+                self.err(f"{sym} {side} unconfirmed entry: provisional stop NOT sent - its write-ahead record could not be saved "
+                         f"({type(ex).__name__}); retried next pass", key=f'prov|{uk}')
+                return
+            # CAPS-01 r8 (Codex #365): exposure OBSERVED on Binance whose order is held mid-handover (wal=False) is protected
+            # even while storage fails - the pending record stays owned in memory (a lost answer is still settled by its
+            # status); an unprotected position is worse than a stop the disk does not know yet
+            self.err(f"{sym} {side} unconfirmed entry: provisional stop for {qty} sent WITHOUT a durable write-ahead record "
+                     f"({type(ex).__name__}) - observed exposure is never left unprotected", key=f'prov|{uk}')
         try:
             tag = self._send(self.trade.stop, sym, side, self._fmt(qty, r['step']), self._fmt(stop, r['tick']), cid=cid, acid=acid)
         except AmbiguousOrder as ex:                          # AUD-04 r2 (Codex): it may be LIVE on Binance - keep owning it
@@ -7657,14 +7663,18 @@ class Engine:
         # its old record) until the transfer is durable - so no client id can ever be booked twice
         held = {r_.get('cid') for r_ in (self.state.get('resting_entries') or {}).values() if r_.get('cid')}
         for uk, u in list(ue.items()):
-            if u.get('cid') and u['cid'] in held: continue
+            # CAPS-01 r8 (Codex #365): a held order is still PROTECTED here (step 2: this entry is the one owner of its
+            # provisional stop - the resting record never places one) but never booked, adopted or forgotten until its handover
+            # is durable; its exposure is not netted against its own resting record (the same order), and the stop is sent
+            # even while storage fails
+            hold = bool(u.get('cid')) and u['cid'] in held
             sym, side = u['symbol'], u['side']
             r = self.rules.get(sym)
             if r is None: continue
             age = time.time() - u.get('t', 0)
             plan = u['plan']
-            fr = self._order_result(sym, u.get('cid'), u['qty'])
-            if fr['state'] == 'final':                                     # 1. the order's final record decides
+            fr = None if hold else self._order_result(sym, u.get('cid'), u['qty'])
+            if fr and fr['state'] == 'final':                              # 1. the order's final record decides
                 got = fr['qty']
                 ue.pop(uk, None)
                 if got > 0:
@@ -7678,14 +7688,17 @@ class Engine:
                 self.save_state(); continue
             lots_q = sum(l['qty'] for l in self.state['lots'].values() if l['symbol'] == sym and l['side'] == side)
             rest_q = sum(x['qty'] for x in (self.state.get('resting_entries') or {}).values()
-                         if x['symbol'] == sym and x['side'] == side)
+                         if x['symbol'] == sym and x['side'] == side and not (hold and x.get('cid') == u['cid']))
+            cap = max([u['qty']] + [x['qty'] for x in (self.state.get('resting_entries') or {}).values()
+                                    if hold and x.get('cid') == u['cid']])   # r8: all a held order can have produced
             # Cowork #28 F1: a sibling lot's own unconfirmed ADD may already be on Binance before its lot grows - that size is
             # the add's, never this entry's (else it would get this entry's stop and, after 5 min, be adopted twice)
             add_q = sum((l.get('pending') or {}).get('qty', 0.0) for l in self.state['lots'].values()
                         if l['symbol'] == sym and l['side'] == side and (l.get('pending') or {}).get('kind') == 'add')
-            extra = self._rd(min(u['qty'], max(0.0, live.get((sym, side), 0.0) - lots_q - rest_q - add_q)), r['step'])
+            extra = self._rd(min(cap, max(0.0, live.get((sym, side), 0.0) - lots_q - rest_q - add_q)), r['step'])
             u['seen_qty'] = extra                                          # AUD-04: size this entry owns NOW (stop verifier)
-            self._prov_set(uk, u, extra)                                   # 2. protect exactly what is unresolved
+            self._prov_set(uk, u, extra, wal=not hold)                     # 2. protect exactly what is unresolved
+            if hold: continue                                              # r7: settled only after a durable handover
             if extra > 0:
                 if age > UNCONF_ADOPT_S:                                   # 3b. no record in 5 min: adopt the position
                     ue.pop(uk, None)
