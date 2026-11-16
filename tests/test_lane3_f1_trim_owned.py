@@ -207,3 +207,117 @@ def test_r2_the_write_ahead_records_the_booking_mark():
     e._market_close = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError('stop after write-ahead'))
     with pytest.raises(RuntimeError): e._risk_fill_run(k, lot, e.marks['BTCUSDT'])
     assert d['state'] == 'sent' and d['fills_n'] == len(lot.get('fills') or [])
+
+
+# ---- r4: the fence is re-checked at the final risk-adding send (Codex #368 c6929058519 point 3, also for trim_owned) ----
+def _orphan_trim(e, sym='BTCUSDT'):
+    e.state['trim_owned'] = {'zbrfgone': dict(cid='zbrfgone', symbol=sym, side='LONG', lot='gone|lot', sleeve='T', send_qty=0.01,
+                                              sent_t=time.time() - 3600)}
+    assert e.trim_orphan_block(sym)
+
+
+def test_r4_a_staged_grid_open_is_not_sent_once_a_trim_quarantine_exists():
+    import test_grid as TG
+    e, gm, _ = TG.mk()
+    with e.lock: gm.start('G1', 'BTCUSDT')
+    g = TG.grid_of(e)
+    cells = [j for j, c in enumerate(g['cells']) if c['k'] == 'L'][:1]
+    m = e.trade.marks()['BTCUSDT']
+    op = gm._op(g, 'LONG', 'open', cells, sum(g['cells'][j]['q'] for j in cells), m)    # staged (write-ahead done)
+    _orphan_trim(e)                                                                      # the fence appears after staging
+    n_open = e.trade.calls.count('open')
+    gm._open(g, op)
+    assert e.trade.calls.count('open') == n_open and TG.lot_of(e, 'LONG') is None and not g.get('op')
+
+
+def test_r4_grid_add_send_gate_refuses_under_the_fence():
+    import test_grid as TG
+    e, gm, _ = TG.mk()
+    with e.lock: gm.start('G1', 'BTCUSDT')
+    g = TG.grid_of(e); _orphan_trim(e)
+    with pytest.raises(ValueError, match='zbrfgone'): gm._order_ok(g, 0.001, e.trade.marks()['BTCUSDT'])
+
+
+def test_r4_an_add_send_refuses_under_the_fence_and_exits_still_close():
+    e = eng(); k, lot = opened(e); q = lot['qty']
+    _orphan_trim(e)
+    n_open = e.trade.calls.count('open')
+    with pytest.raises(RuntimeError, match='zbrfgone'): e._add_qty(lot, q / 2, e.marks['BTCUSDT'], 'pyramid_add')
+    assert e.trade.calls.count('open') == n_open and lot['qty'] == q and 'pending' not in lot
+    e.close_lot(k, 'exit_signal', e.marks['BTCUSDT'])                       # reducing orders / exits stay available
+    assert k not in e.state['lots']
+
+
+def test_r4_a_maker_resting_order_is_not_placed_under_the_fence():
+    import test_v31_engine as TV
+    e, bk = TV.maker_engine()
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
+    rec = next(iter(e.state['resting_entries'].values()))
+    _orphan_trim(e)
+    with pytest.raises(RuntimeError, match='zbrfgone'): e._maker_place(rec)
+    assert len(bk.orders) == 1
+
+
+# ---- r5 (Codex #367 c6929101714 points 1 and 2) ----
+def test_r5_no_trim_is_sent_without_a_durable_write_ahead():
+    e = eng(); k, lot = opened(e)
+    d = measure(e, lot, adverse(lot, 0.5)); before = dict(d)
+    sends = []; e._market_close = lambda *a, **kw: sends.append(a)
+    real = e._save_safe
+    def disk_full(name, obj, strict=False):
+        if strict: raise OSError(28, 'No space left on device')
+        return False
+    e._save_safe = disk_full
+    assert e._risk_fill_run(k, lot, e.marks['BTCUSDT']) is False
+    assert sends == [], 'a trim was sent without a durable write-ahead'
+    assert d == before and d['state'] == 'due'                             # rolled back: no cid, attempts unchanged
+    assert not (e.state.get('trim_owned') or {})
+    assert (e.health['incidents'].get(f'risk-trim-wal|{k}') or {}).get('open')
+    e.close_lot(k, 'exit_signal', e.marks['BTCUSDT'])                       # exits stay available
+    assert k not in e.state['lots']
+
+
+def test_r5_after_the_disk_recovers_the_trim_is_sent_once():
+    e = eng(); k, lot = opened(e)
+    d = measure(e, lot, adverse(lot, 0.5))
+    real = e._save_safe; fail = [True]
+    e._save_safe = lambda name, obj, strict=False: ((_ for _ in ()).throw(OSError(28, 'full')) if strict and fail[0]
+                                                     else real(name, obj, strict=strict))
+    assert e._risk_fill_run(k, lot, e.marks['BTCUSDT']) is False
+    fail[0] = False
+    e.manage(e.marks)
+    assert d['state'] == 'done' and d['attempts'] == 1 and not e.health['incidents'][f'risk-trim-wal|{k}']['open']
+
+
+@pytest.mark.parametrize('rec', [
+    dict(symbol='BTCUSDT', side='LONG'),                                                     # Codex's probe: no qty, no t
+    dict(cid='zbrfx', symbol='BTCUSDT', side='LONG', send_qty=None, sent_t=1.0),
+    dict(cid='zbrfx', symbol='BTCUSDT', side='LONG', send_qty=0, sent_t=1.0),
+    dict(cid='zbrfx', symbol='BTCUSDT', side='LONG', send_qty=float('nan'), sent_t=1.0),
+    dict(cid='zbrfx', symbol='BTCUSDT', side='LONG', send_qty=0.01),
+    dict(cid='other', symbol='BTCUSDT', side='LONG', send_qty=0.01, sent_t=1.0)])
+def test_r5_incomplete_owner_records_fail_the_state_check(rec):
+    E_ = sys.modules['engine']
+    e = eng()
+    with pytest.raises(E_.SchemaError):
+        E_.validate_state(dict(e.state, schema_version=E_.STATE_SCHEMA, trim_owned={'zbrfx': rec}))
+
+
+def test_r5_a_complete_owner_record_passes_the_state_check():
+    E_ = sys.modules['engine']
+    e = eng()
+    E_.validate_state(dict(e.state, schema_version=E_.STATE_SCHEMA, trim_owned={'zbrfx': dict(
+        cid='zbrfx', symbol='BTCUSDT', side='LONG', lot='x', send_qty=0.01, sent_t=1.0)}))
+
+
+@pytest.mark.parametrize('rec, other_blocked', [(dict(symbol='BTCUSDT', side='LONG'), False), (dict(side='LONG'), True), ('junk', True)])
+def test_r5_an_incomplete_owner_in_memory_never_crashes_management_and_stays_a_fence(rec, other_blocked):
+    e = eng()
+    e.state['trim_owned'] = {'zbrfx': rec}
+    e.trade.get_order = lambda s, c: dict(status='FILLED', executedQty='0.01', avgPrice='100')   # a final fill
+    pushed = []; e.notify = lambda m: pushed.append(m)
+    for _ in range(3): e.manage(e.marks)                                    # no TypeError
+    assert 'zbrfx' in e.state['trim_owned'], 'an incomplete owner was settled'
+    assert e.entry_block(SL, 'BTCUSDT', 'LONG', manual=True)
+    assert bool(e.trim_orphan_block('ETHUSDT')) is other_blocked
+    assert len([m for m in pushed if 'incomplete' in m]) == 1

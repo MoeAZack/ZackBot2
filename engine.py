@@ -1392,6 +1392,17 @@ def validate_install(doc):
     return doc
 
 
+def _validate_trim_owned(k, o):
+    """LANE3-F1-trim r5 (Codex #367 c6929101714 point 2): an owned trim id needs its cid, coin, side, a finite positive
+    quantity and a numeric send time - anything less cannot be reconciled and is refused at load."""
+    w = f'trim_owned[{str(k)[:40]}]'
+    _dict(o, w)
+    _str(o.get('cid'), f'{w}.cid')
+    if o.get('cid') != k: _bad(f'{w}.cid', 'does not match its key')
+    _str(o.get('symbol'), f'{w}.symbol'); _str(o.get('side'), f'{w}.side', choices=('LONG', 'SHORT'))
+    _num(o.get('send_qty'), f'{w}.send_qty', gt=0); _num(o.get('sent_t'), f'{w}.sent_t')
+
+
 def validate_state(doc):
     """AUD-05 r2: every AUD-00..04 ownership record of state.json, before it is used. Raises SchemaError."""
     if _version(doc, STATE_SCHEMA, 'state') != STATE_SCHEMA: _bad('state.schema_version', 'not migrated')
@@ -1399,9 +1410,7 @@ def validate_state(doc):
     for k, u in _dict(doc.get('unconfirmed_entries'), 'unconfirmed_entries', opt=True).items(): _validate_ue(k, u)
     for k, r_ in _dict(doc.get('resting_entries'), 'resting_entries', opt=True).items(): _validate_resting(k, r_)
     for k, p_ in _dict(doc.get('pending_entries'), 'pending_entries', opt=True).items(): _validate_trail(k, p_)
-    for k, o_ in _dict(doc.get('trim_owned'), 'trim_owned', opt=True).items():     # LANE3-F1-trim r3: owned trim ids
-        _dict(o_, f'trim_owned[{k[:40]}]'); _str(o_.get('symbol'), f'trim_owned[{k[:40]}].symbol')
-        _str(o_.get('side'), f'trim_owned[{k[:40]}].side', choices=('LONG', 'SHORT'))
+    for k, o_ in _dict(doc.get('trim_owned'), 'trim_owned', opt=True).items(): _validate_trim_owned(k, o_)   # LANE3-F1-trim
     orph = doc.get('orphans') or []
     if not isinstance(orph, list): _bad('orphans', 'not a list')
     for i, o in enumerate(orph):
@@ -4734,11 +4743,22 @@ class Engine:
             if d['attempts'] >= 1 + self.RISK_FILL_RETRIES: return self._risk_fill_run(key, lot, m)
         qty = self._rd(min(d['trim_qty'] - d.get('trimmed', 0.0), lot['qty']), r['step'])
         if qty <= 0: d['state'] = 'done'; self.save_state(); return True
+        prev = copy.deepcopy(d)
         d['attempts'] += 1
         cid = f"zbrf{zlib.crc32(f'{key}|{i}|{d['attempts']}'.encode()):08x}"
         d.update(state='sent', cid=cid, send_qty=qty, qty_before=lot['qty'], sent_t=time.time(),
                  fills_n=len(lot.get('fills') or []))
-        self._trim_own(key, lot, d); self.save_state()   # write-ahead (LANE3-F1-trim r3: + lot-independent ownership)
+        had = cid in (self.state.get(self.TRIM_OWNED_KEY) or {})
+        self._trim_own(key, lot, d)                      # LANE3-F1-trim r3: + lot-independent ownership
+        try:
+            self._save_wal()                             # LANE3-F1-trim r5 (Codex #367 c6929101714 point 1): DURABLE write-ahead
+        except Exception as ex:                          # or no send - rolled back in memory, the trim stays due
+            d.clear(); d.update(prev)
+            if not had: (self.state.get(self.TRIM_OWNED_KEY) or {}).pop(cid, None)
+            self.err(f"{sym} [{lot['sleeve']}] post-fill risk trim not sent - its write-ahead record could not be saved "
+                     f"({type(ex).__name__}); retried next pass, the stop stays", key=f'risk-trim-wal|{key}')
+            return False
+        self.resolve(f'risk-trim-wal|{key}', f'{sym}: risk trim write-ahead saved')
         try:
             self._market_close(lot, qty, 'risk_trim', m, cid=cid)
         except AmbiguousOrder:
@@ -5383,6 +5403,8 @@ class Engine:
             if self._tier_block(lot['symbol'], q * px, px): return False     # MAXQTY-01: Binance -2027, nothing sent
             pb = self.persist_block()
             if pb: raise RuntimeError(f"{lot['symbol']} {why} not sent: {pb}")
+            sb = self.stop_missing_block(lot['symbol'])          # LANE3-F1-trim r4: re-checked at the send (adds only - exits
+            if sb: raise RuntimeError(f"{lot['symbol']} {why} not sent: {sb}")   # never pass here)
             # AUD-05 r2 write-ahead: the add is recorded durably as this lot's pending order (with its client id) BEFORE it
             # is sent; a crash / lost answer after the send is settled from its order record (_resolve_pending)
             cid = cid or new_cid()
@@ -5443,8 +5465,14 @@ class Engine:
         cid = d.get('cid')
         if not cid: return
         self.state.setdefault(self.TRIM_OWNED_KEY, {}).setdefault(cid, dict(
-            symbol=lot['symbol'], side=lot['side'], lot=key, sleeve=lot.get('sleeve'), send_qty=d.get('send_qty'),
+            cid=cid, symbol=lot['symbol'], side=lot['side'], lot=key, sleeve=lot.get('sleeve'), send_qty=d.get('send_qty'),
             sent_t=d.get('sent_t') or time.time()))
+
+    @staticmethod
+    def _trim_owner_ok(cid, o):
+        """LANE3-F1-trim r5: a complete ownership record (the same rule validate_state applies at load)."""
+        try: _validate_trim_owned(cid, o); return True
+        except SchemaError: return False
 
     def _trim_owned_sweep(self):
         """LANE3-F1-trim r3: every manage pass. A trim still 'sent' on a live lot is registered (older records included); one
@@ -5459,6 +5487,15 @@ class Engine:
         if not own: return
         changed = False
         for cid, o in list(own.items()):
+            if not self._trim_owner_ok(cid, o):
+                # LANE3-F1-trim r5 (point 2): an incomplete owner (e.g. no quantity) is unknown, never settled and never
+                # allowed to crash management - it stays a fence (trim_orphan_block) and is alerted once
+                bk = f'risk-trim-bad|{cid}'
+                if not (self.health.get('incidents', {}).get(bk) or {}).get('open'):
+                    msg = (f'risk trim ownership record {str(cid)[:40]} is incomplete - kept as unresolved (no new entry or add '
+                           'on its coin, or on any coin if the coin is unreadable); check the order history on Binance')
+                    self.err(msg, key=bk); self.notify(f'⚠️ {msg}.')
+                continue
             lot = lots.get(o.get('lot'))
             if lot is not None:
                 if not any((d or {}).get('state') == 'sent' and d.get('cid') == cid for d in (lot.get('risk_fill') or {}).values()):
@@ -5492,6 +5529,11 @@ class Engine:
         grid; exits never consult it); per coin like the stop gate, so both sides wait."""
         lots = self.state.get('lots') or {}
         for cid, o in (self.state.get(self.TRIM_OWNED_KEY) or {}).items():
+            if not self._trim_owner_ok(cid, o):                     # LANE3-F1-trim r5: incomplete -> fence (its coin, or
+                o_sym = o.get('symbol') if isinstance(o, dict) else None    # every coin when the coin is unreadable)
+                if not isinstance(o_sym, str) or o_sym == sym:
+                    return f'a risk trim ownership record ({str(cid)[:40]}) is incomplete - not resolved'
+                continue
             if o.get('symbol') == sym and o.get('lot') not in lots:
                 return f'a risk trim ({cid}) of a closed {sym} trade is not resolved on Binance yet'
         return None
@@ -8120,6 +8162,8 @@ class Engine:
         sym, r = rec['symbol'], self.rules[rec['symbol']]
         pb = self.persist_block()                                    # AUD-05 r2: no new resting order while state is untrusted
         if pb: raise RuntimeError(f'maker entry {sym} not sent: {pb}')
+        sb = self.stop_missing_block(sym)                            # LANE3-F1-trim r4: the fence holds at the send too
+        if sb: raise RuntimeError(f'maker entry {sym} not sent: {sb}')
         rem = self._rd(rec['qty'] - rec['filled'], r['step'])
         bt = self.trade._req('GET', '/fapi/v1/ticker/bookTicker', dict(symbol=sym))
         px = float(bt['bidPrice'] if rec['side'] == 'LONG' else bt['askPrice'])
