@@ -59,17 +59,50 @@ def test_held_entry_blocks_entries_adds_and_grid_on_that_coin_side_only():
     assert e.grids._can_add(g, 'LONG') is False
 
 
-def test_a_late_fill_is_protected_and_adopted_and_the_alert_closes():
+def test_a_late_position_is_protected_but_never_adopted_until_the_final_record():
+    """LANE3-F1-entry r2 (Codex #366 ruling c6927825830): a position on the coin/side is not proof of THIS order's fill."""
     e, _ = mk_engine(); uk, u = _lost_entry(e)
     e.trade.get_order = LOOKUPS['notfound']
     _age(e, uk, 3600); e.manage(e.trade.marks())
     assert (e.health['incidents'].get(f'entry-unknown|{uk}') or {}).get('open')
-    q = u['qty']; e.trade.pos[('BTCUSDT', 'LONG')] = q                      # the delayed request executed after all
-    e.manage(e.trade.marks())                                                 # past 5 min with a position: adopted
+    q = u['qty']; e.trade.pos[('BTCUSDT', 'LONG')] = q                      # a position appears (its origin is unknown)
+    for _ in range(3): e.manage(e.trade.marks())
+    assert e.state['lots'] == {} and uk in e.state['unconfirmed_entries'], 'adopted on a timer + aggregate match'
+    assert u.get('prov') in e.trade.stops                                     # protection kept on the unidentified size
+    assert 'BTCUSDT|LONG' in e.untracked                                      # reported, no new risk there
+    assert 'unknown origin' in e.health['incidents'][f'entry-unknown|{uk}']['msg']
+    cid = u['cid']                                                            # its final record arrives: that decides
+    e.trade.get_order = lambda s, c: {'status': 'FILLED', 'executedQty': str(q), 'avgPrice': '100', 'clientOrderId': cid}
+    for _ in range(3): e.manage(e.trade.marks())
     (k, lot), = e.state['lots'].items()
     assert lot['qty'] == pytest.approx(q) and e.state['unconfirmed_entries'] == {}
     assert lot['stop_id'] in e.trade.stops and len(e.trade.stops) == 1        # protected, exactly one stop
-    assert not e.health['incidents'][f'entry-unknown|{uk}']['open']
+    assert not e.health['incidents'][f'entry-unknown|{uk}']['open'] and 'BTCUSDT|LONG' not in e.untracked
+
+
+def test_codex_probe_new_record_with_an_unrelated_half_position_is_never_released():
+    e, _ = mk_engine(); uk, u = _lost_entry(e)
+    cid = u['cid']
+    e.trade.get_order = lambda s, c: {'status': 'NEW', 'executedQty': '0', 'avgPrice': '0', 'clientOrderId': cid}
+    e.trade.pos[('BTCUSDT', 'LONG')] = round(u['qty'] / 2, 3)               # unrelated half-position
+    for age in (301, 3600, 86400):
+        _age(e, uk, age); e.manage(e.trade.marks())
+        assert uk in e.state['unconfirmed_entries'] and e.state['unconfirmed_entries'][uk]['cid'] == cid and e.state['lots'] == {}
+    assert e.entry_block(SL, 'BTCUSDT', 'LONG', manual=True)                  # manual entry stays blocked
+    assert e.grids._can_add(dict(sym='BTCUSDT'), 'LONG') is False             # grid admission stays blocked
+    assert 'BTCUSDT|LONG' in e.untracked
+
+
+def test_the_unknown_origin_mark_clears_when_that_position_goes_away():
+    e, _ = mk_engine(); uk, u = _lost_entry(e)
+    e.trade.get_order = LOOKUPS['notfound']
+    e.trade.pos[('BTCUSDT', 'LONG')] = u['qty']
+    _age(e, uk, 3600)
+    for _ in range(2): e.manage(e.trade.marks())
+    assert u.get('unknown_origin') and 'BTCUSDT|LONG' in e.untracked
+    e.trade.pos.pop(('BTCUSDT', 'LONG'))
+    for _ in range(2): e.manage(e.trade.marks())
+    assert not u.get('unknown_origin') and uk in e.state['unconfirmed_entries'] and 'BTCUSDT|LONG' not in e.untracked
 
 
 def test_nosource_simulation_path_is_unchanged():
