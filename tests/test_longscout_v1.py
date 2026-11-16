@@ -4847,3 +4847,126 @@ def test_v80_regime_gate_and_hour_zero(monkeypatch):
             g = _sig(key, coin, btc)
             assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
             monkeypatch.undo()
+
+
+import longscout_v81 as L81
+L81.register()
+
+_V81_COIN = {'r81_variance_ratio_4h': lambda: _ms(_mk(2600, '4h', 44)),
+             's81_unconfirmed_rally_4h': lambda: _ms(_mk(2600, '4h', 45))}
+_V81_P = {k: v['params'] for k, v in L81.CANDIDATES.items()}
+
+
+@pytest.mark.parametrize('key', sorted(L81.CANDIDATES))
+def test_v81_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V81_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'r81': le.sum() and se.sum(), 's81': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent - 1) | set(ent) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v81_vr_ref(D, n=60, k=5, lvl=1.3):
+    days = list(D.index); C = list(D.c); m = len(C)
+    vr = [None] * m
+    for j in range(n, m):
+        if days[j] - days[j - n] != pd.Timedelta(days=n):
+            continue
+        r = [np.log(C[t] / C[t - 1]) for t in range(j - n + 1, j + 1)]
+        mu = sum(r) / n; v1 = sum((x - mu) ** 2 for x in r) / n
+        s = [sum(r[t:t + k]) for t in range(n - k + 1)]
+        ms = sum(s) / len(s); vk = sum((x - ms) ** 2 for x in s) / len(s)
+        vr[j] = vk / (k * v1)
+    return np.array([j > 0 and vr[j] is not None and vr[j - 1] is not None and vr[j] >= lvl and vr[j - 1] < lvl
+                     for j in range(m)])
+
+
+def _v81_rally_ref(D, n=20, up=0.15, q=0.7):
+    days = list(D.index); C, V = list(D.c), list(D.v); m = len(C)
+    raw = np.zeros(m, bool)
+    for j in range(n, m):
+        if days[j] - days[j - n] != pd.Timedelta(days=n):
+            continue
+        raw[j] = C[j] >= (1 + up) * C[j - n] and np.mean(V[j - 9:j + 1]) <= q * np.mean(V[j - 19:j - 9])
+    return raw & ~np.r_[False, raw[:-1]]
+
+
+def test_v81_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (43, 44, 45, 47, 50):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for key, fn, ref in (('r81_variance_ratio_4h', L81._vr_v, _v81_vr_ref), ('s81_unconfirmed_rally_4h', L81._rally_v, _v81_rally_ref)):
+            v = fn(D, _V81_P[key]).values
+            r = ref(D)
+            np.testing.assert_array_equal(v, r, err_msg=str((seed, key)))
+            hits[key] = hits.get(key, 0) + int(v.sum())
+            if seed == 44:
+                for cut in range(65, len(D), 37):
+                    np.testing.assert_array_equal(fn(D.iloc[:cut], _V81_P[key]).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(fn(gap, _V81_P[key]).values, ref(gap), err_msg=str(('gap', key)))
+    assert all(hits.values()), hits
+
+
+def test_v81_synthetic_edges():
+    def days(c, v=None):
+        v = [1.0] * len(c) if v is None else v
+        return pd.DataFrame(dict(h=c, l=c, c=c, v=v), index=pd.date_range('2022-01-01', periods=len(c), freq='D'))
+    p = _V81_P['s81_unconfirmed_rally_4h']
+    c = [100.0] * 21 + [115.0]; v = [10.0] * 12 + [7.0] * 10                  # j = 21: +15% vs day 1; vol 7 vs 10
+    assert L81._rally_v(days(c, v), p).values[-1]
+    assert not L81._rally_v(days(c[:-1] + [114.99], v), p).values[-1]        # rise just under 15%
+    assert not L81._rally_v(days(c, v[:-1] + [7.01]), p).values[-1]          # volume ratio just above 0.7
+    c2 = [100.0] * 21 + [115.0, 116.0]; v2 = v + [7.0]
+    assert L81._rally_v(days(c2, v2), p).values.tolist()[-2:] == [True, False]   # first day only
+    runs = list(100.0 * np.exp(np.r_[0.0, np.cumsum(np.tile([0.01] * 10 + [-0.01] * 10, 4))]))
+    vr = L81._vr_series(days(runs), _V81_P['r81_variance_ratio_4h']).values
+    assert np.isfinite(vr[60:]).all() and (vr[60:] > 1.3).all()             # 10-day runs give a high variance ratio
+    alt = list(100.0 * np.exp(np.r_[0.0, np.cumsum(np.tile([0.01, -0.01], 40))]))
+    vr2 = L81._vr_series(days(alt), _V81_P['r81_variance_ratio_4h']).values
+    assert (vr2[60:] < 0.5).all()                                            # alternating returns mean-revert
+    flat = L81._vr_series(days([100.0] * 70), _V81_P['r81_variance_ratio_4h']).values
+    assert np.isnan(flat).all()                                              # zero variance gives no value
+    D = days(runs)
+    assert np.isnan(L81._vr_series(D.drop(D.index[len(D) - 41]), _V81_P['r81_variance_ratio_4h']).values[-1])   # gap 40 days back
+    c3 = [100.0] * 21 + [(1 + 0.15) * 100.0]
+    assert L81._rally_v(days(c3, v), p).values[-1]                            # exactly +15% counts
+    assert not L81._rally_v(days(c3, v).drop(pd.Timestamp('2022-01-06')), p).values[-1]   # a missing day inside j-20..j
+
+
+def test_v81_variance_ratio_threshold_is_inclusive_first_cross(monkeypatch):
+    D = pd.DataFrame(dict(h=1.0, l=1.0, c=1.0, v=1.0), index=pd.date_range('2022-01-01', periods=5, freq='D'))
+    monkeypatch.setattr(L81, '_vr_series', lambda D, p: pd.Series([np.nan, 1.0, 1.3, 1.4, 1.2], index=D.index))
+    assert L81._vr_v(D, _V81_P['r81_variance_ratio_4h']).tolist() == [False, False, True, False, False]
+
+
+def test_v81_regime_gate_and_hour_zero(monkeypatch):
+    btc = _ms(_mk(2600, '4h', 52))
+    for key, ok in (('r81_variance_ratio_4h', None), ('s81_unconfirmed_rally_4h', (0, -1))):
+        coin = _V81_COIN[key](); d = S.indicators(coin); cr = L.coin_regime(d)
+        f = np.asarray((L81._vr if ok is None else L81._rally)(d, _V81_P[key]))
+        full = _sig(key, coin, btc); le, se = np.asarray(full['le']), np.asarray(full['se'])
+        if ok is None:
+            np.testing.assert_array_equal(le, f & (cr == 1)); np.testing.assert_array_equal(se, f & (cr == -1))
+        else:
+            np.testing.assert_array_equal(se, f & np.isin(cr, ok)); assert not le.any()
+        t = pd.to_datetime(coin.t).dt.normalize()
+        for i in np.flatnonzero(le | se)[:15]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=15)].reset_index(drop=True)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            g = _sig(key, cut, btc)
+            assert not (np.asarray(g['le'])[k0] or np.asarray(g['se'])[k0]), key
+        for forced in (1.0, 0.0, -1.0):
+            monkeypatch.setattr(L81.L1, 'coin_regime', lambda d, v=forced: np.full(len(d), v))
+            g = _sig(key, coin, btc); gl, gs = np.asarray(g['le']).any(), np.asarray(g['se']).any()
+            if ok is None:
+                assert (gl, gs) == (forced == 1.0, forced == -1.0), (key, forced)
+            else:
+                assert gs == (forced in ok) and not gl, (key, forced)
+            monkeypatch.undo()
