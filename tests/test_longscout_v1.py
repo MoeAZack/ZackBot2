@@ -5960,3 +5960,115 @@ def test_v89_regime_gate_and_hour_zero(monkeypatch):
             g = _sig(key, coin, btc)
             assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
             monkeypatch.undo()
+
+
+import longscout_v90 as L90
+L90.register()
+
+
+def _v90_shocked(seed, sign):
+    df = _mk(2600, '4h', seed)
+    for day in range(90, 430, 37):                                            # a +-25% jump on 30x volume every 37 days
+        k = day * 6 + 5
+        f = math.exp(sign * (0.25 if (day // 37) % 2 else -0.25) * (1 if sign else 1))
+        for col in ('o', 'h', 'l', 'c'):
+            df.loc[k:, col] = df.loc[k:, col] * f
+        df.loc[day * 6:day * 6 + 5, 'v'] = df.loc[day * 6:day * 6 + 5, 'v'] * 30
+    df['h'] = df[['o', 'h', 'c']].max(axis=1); df['l'] = df[['o', 'l', 'c']].min(axis=1)
+    return _ms(df)
+
+
+_V90_COIN = {'l90_up_shock_drift_4h': lambda: _v90_shocked(43, 1), 's90_down_shock_drift_4h': lambda: _v90_shocked(43, 1)}
+
+
+@pytest.mark.parametrize('key', sorted(L90.CANDIDATES))
+def test_v90_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V90_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l90': le.sum() and not se.any(), 's90': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent - 1) | set(ent) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v90_ref(D, up, n=60):
+    days = list(D.index); c = [float(x) for x in D.c]; v = [float(x) for x in D.v]; L_ = len(c)
+    res = np.zeros(L_, bool)
+    for j in range(n + 1, L_):
+        if days[j] - days[j - n - 1] != pd.Timedelta(days=n + 1):
+            continue
+        r = [math.log(c[t] / c[t - 1]) for t in range(j - n, j)]
+        mu = sum(r) / n; sd = math.sqrt(sum((x - mu) ** 2 for x in r) / (n - 1))
+        z = math.log(c[j] / c[j - 1]) / sd
+        w = sorted(v[j - n:j]); med = (w[n // 2 - 1] + w[n // 2]) / 2
+        res[j] = (z >= 3 if up else z <= -3) and v[j] >= 3 * med
+    return res
+
+
+def test_v90_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (43, 40, 47):
+        D = L27._days_v(S.indicators(_v90_shocked(seed, 1)))
+        for up in (True, False):
+            v = L90._shock_v(D, L90.IP, up).values
+            np.testing.assert_array_equal(v, _v90_ref(D, up), err_msg=str((seed, up)))
+            hits[up] = hits.get(up, 0) + int(v.sum())
+            if seed == 43:
+                for cut in range(70, len(D), 23):
+                    np.testing.assert_array_equal(L90._shock_v(D.iloc[:cut], L90.IP, up).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(L90._shock_v(gap, L90.IP, up).values, _v90_ref(gap, up))
+    assert all(hits.values()), hits
+
+
+def test_v90_boundaries():
+    rng = np.random.default_rng(3)
+    r0 = rng.normal(0, 0.02, 61); r0 -= r0[:60].mean()                       # rows 1..60 -> r over days 1..60
+    sd = np.std(r0[:60], ddof=1)
+    idx = pd.date_range('2022-01-01', periods=62, freq='D')
+    def run(zv, vmult, up):
+        r = r0.copy(); r[60] = zv * sd
+        c = np.exp(np.r_[0.0, np.cumsum(r)]); v = np.r_[np.ones(61), vmult]
+        D = pd.DataFrame(dict(h=c, l=c, c=c, v=v), index=idx)
+        return bool(L90._shock_v(D, L90.IP, up).values[61])
+    assert run(3.0001, 3.0, True) and run(-3.0001, 3.0, False)                # volume exactly 3x the median counts
+    assert not run(2.9999, 3.0, True) and not run(-2.9999, 3.0, False)
+    assert not run(3.5, 2.999, True) and not run(-3.5, 2.999, False)
+    assert not run(-3.5, 5.0, True) and not run(3.5, 5.0, False)
+    c = np.exp(np.r_[0.0, np.cumsum(np.r_[r0[:60], 4 * sd])]); v = np.r_[np.ones(61), 5.0]
+    gap = pd.date_range('2022-01-01', periods=63, freq='D').delete(1)          # day 1 missing: j-61 = day 1 for j = day 62
+    assert not L90._shock_v(pd.DataFrame(dict(h=c, l=c, c=c, v=v), index=gap), L90.IP, True).values[61]
+    v2 = np.r_[np.ones(31), np.full(30, 10.0), 5.0]                            # median of the prior 60 days is (1 + 10) / 2
+    assert not L90._shock_v(pd.DataFrame(dict(h=c, l=c, c=c, v=v2), index=idx), L90.IP, True).values[61]
+    v3 = np.r_[np.ones(31), np.full(30, 10.0), 16.5]
+    assert L90._shock_v(pd.DataFrame(dict(h=c, l=c, c=c, v=v3), index=idx), L90.IP, True).values[61]
+    v4 = v3.copy(); v4[61] = 16.4
+    v5 = np.r_[np.ones(41), np.full(20, 10.0), 3.5]                            # median 1 (mean 4): the median is the base
+    assert L90._shock_v(pd.DataFrame(dict(h=c, l=c, c=c, v=v5), index=idx), L90.IP, True).values[61]
+    assert not L90._shock_v(pd.DataFrame(dict(h=c, l=c, c=c, v=v4), index=idx), L90.IP, True).values[61]
+
+
+def test_v90_regime_gate_and_hour_zero(monkeypatch):
+    btc = _ms(_mk(2600, '4h', 52))
+    for key, up, ok in (('l90_up_shock_drift_4h', True, (0, 1)), ('s90_down_shock_drift_4h', False, (0, -1))):
+        coin = _V90_COIN[key](); d = S.indicators(coin); cr = L.coin_regime(d)
+        f = np.asarray(L90._shock(d, L90.IP, up))
+        full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+        assert got.any(), key
+        np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+        t = pd.to_datetime(coin.t).dt.normalize()
+        for i in np.flatnonzero(got)[:15]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=20)].reset_index(drop=True)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            g = _sig(key, cut, btc)
+            assert not (np.asarray(g['le'])[k0] or np.asarray(g['se'])[k0]), key
+        for forced in (1.0, 0.0, -1.0):
+            monkeypatch.setattr(L90.L1, 'coin_regime', lambda d, v=forced: np.full(len(d), v))
+            g = _sig(key, coin, btc)
+            assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
+            monkeypatch.undo()
