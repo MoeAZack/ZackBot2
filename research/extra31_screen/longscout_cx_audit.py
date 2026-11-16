@@ -10,13 +10,23 @@ import numpy as np
 import pandas as pd
 
 
-def audit(root, selected):
+def audit(root, selected, cases=None):
     fresh=set(json.loads(Path(selected).read_text())['selected'])
+    extra=set(json.loads((Path(__file__).parent/'contract.json').read_text())['universe']['extra31'])
+    assert len(fresh)==134 and len(extra)==31 and not fresh.intersection(extra)
+    if cases is None:
+        cases=sorted(p.name for p in Path(root).glob('cx*') if (p/(p.name+'_result.json')).is_file())
+    assert cases, 'no completed cases'
     rows=[]
-    for case in ('cx001_entropy_collapse_long_4h','cx002_entropy_collapse_short_4h'):
+    for case in cases:
         p=Path(root)/case
         result=json.loads((p/(case+'_result.json')).read_text())
-        tape=pd.read_csv(p/(case+'_all_orders_trades.csv.gz'))
+        try:
+            tape=pd.read_csv(p/(case+'_all_orders_trades.csv.gz'))
+        except pd.errors.EmptyDataError:
+            tape=pd.DataFrame(columns=['sym','order','scen','t_in','pnl7','pnl15','pnl23'])
+        assert set(tape.sym).issubset(fresh|extra)
+        assert set(tape.order).issubset(range(40)) and set(tape.scen).issubset({'path','worst'})
         medians={}; stats=[]
         for order in range(40):
             t=tape[(tape.order==order)&(tape.scen=='path')].copy()
@@ -39,12 +49,13 @@ def audit(root, selected):
             order0_30_per_half=stats[0]['n_early']>=30 and stats[0]['n_late']>=30)
         assert gates==result['gates'],(case,gates,result['gates'])
         subsets={}; counts={}
-        for label,mask in [('fresh134',tape.sym.isin(fresh)),('extra31',~tape.sym.isin(fresh))]:
+        for label,mask in [('fresh134',tape.sym.isin(fresh)),('extra31',tape.sym.isin(extra))]:
             sub=tape[mask&(tape.scen=='path')]
             values=sub.groupby('order').pnl15.mean().reindex(range(40))/8
             subsets[label]=None if values.isna().any() else float(values.median())
             counts[label]=float(sub.groupby('order').size().reindex(range(40),fill_value=0).median())
-            saved=result['wide165']['subset_gate'][label]['median_meanR15']
+            saved_subset=result['wide165']['subset_gate'][label]
+            saved=saved_subset['median_meanR15'] if isinstance(saved_subset,dict) else None
             assert saved is None if subsets[label] is None else np.isclose(subsets[label],saved,rtol=1e-10,atol=1e-12)
         passed=all(gates.values()) and all(v is not None and v>0 for v in subsets.values())
         status='WIDE165_PASS' if passed else 'FAIL'
