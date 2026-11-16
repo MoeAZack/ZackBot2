@@ -4846,7 +4846,6 @@ class Engine:
         lot = self.state['lots'].pop(key, None)
         if not lot: return
         self.resolve(f'stop-missing|{key}', f"{lot['symbol']} {lot['side']} [{lot['sleeve']}]: trade closed ({why}) - stop check ended")
-        self.resolve(f'risk-trim-unknown|{key}', f"{lot['symbol']} {lot['side']} [{lot['sleeve']}]: trade closed ({why}) - risk trim check ended")
         if why != 'stop': self._cancel_or_park(lot['symbol'], lot.get('stop_id'))   # no stale stop may survive its lot
         if lot.get('tp_id') and why != TP_EXIT:            # resting TP: cancelled on every other close (a failed cancel is
             self._cancel_or_park(lot['symbol'], lot['tp_id'])   # parked and retried - it never blocks the close)
@@ -5430,10 +5429,19 @@ class Engine:
         log.info(f"{why.upper()} {lot['symbol']} {lot['side']} [{lot['sleeve']}] +{q} @ {px} (avg {lot['avg']:.6g})")
 
     # ------------------------------------------------------------ fast loop: soft management on mark price
+    def _close_gone_trim_alerts(self):
+        """LANE3-F1 r2: an open 'risk-trim-unknown' alert whose lot is gone (closed by any path) is resolved - kept out of the pinned
+        _finish so the F01 cohort pins are untouched."""
+        lots = self.state.get('lots') or {}
+        for k, inc in list((self.health.get('incidents') or {}).items()):
+            if k.startswith('risk-trim-unknown|') and (inc or {}).get('open') and k.split('|', 1)[1] not in lots:
+                self.resolve(k, f"risk trim: trade closed - risk trim check ended")
+
     def manage(self, marks):
         with self.lock:
             self.marks, self.marks_t = dict(marks), time.time()
             self._shadow_flush()                               # TRUE-BOOK-02: queued candidates take this post-close mark
+            self._close_gone_trim_alerts()                     # LANE3-F1 r2: a held-risk trim alert ends with its lot
             changed = False
             if self.state.get('orphans') and not self.dry:          # stale stops whose cancel failed earlier
                 keep = []

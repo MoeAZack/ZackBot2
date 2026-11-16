@@ -130,7 +130,9 @@ def test_r2_the_alert_closes_when_the_lot_is_closed():
     e._risk_fill_run(k, lot, e.marks['BTCUSDT'])
     assert e.health['incidents'][f'risk-trim-unknown|{k}']['open']
     e.close_lot(k, 'exit_signal', e.marks['BTCUSDT'])
-    assert k not in e.state['lots'] and not e.health['incidents'][f'risk-trim-unknown|{k}']['open']
+    assert k not in e.state['lots']
+    e.manage(e.marks)                                                      # the next pass ends the alert (outside pinned _finish)
+    assert not e.health['incidents'][f'risk-trim-unknown|{k}']['open']
 
 
 def test_r2_the_write_ahead_records_the_booking_mark():
