@@ -7672,12 +7672,24 @@ class Engine:
                 log.info(f"ENTRY {sym} {side} unconfirmed -> nothing on Binance after {int(age)} s ({fr['state']}), forgotten")
                 self.save_state()
 
+    def _new_lot_key(self, base):
+        """LANE3-F5: a lot key that no live lot holds. The key is sleeve|symbol|side|whole seconds, so two fills of one
+        sleeve/coin/side in the same second (manual entries, which skip the one-lot-per-coin check) or after a clock step
+        back produced the SAME key and the second lot silently replaced the first (its quantity and stop ownership lost).
+        Each _create_lot call is one distinct confirmed fill, so it always gets its own key: base, else base-2, base-3 ...
+        (the symbol stays field [1], the format other code splits on)."""
+        lots = self.state.get('lots') or {}
+        if base not in lots: return base
+        n = 2
+        while f'{base}-{n}' in lots: n += 1
+        return f'{base}-{n}'
+
     def _create_lot(self, plan, qty, fill, maker_qty=0.0, adopt_stop=None, cost_ref=None):
         """Record a filled entry as a lot and protect it with its exchange stop (recorded BEFORE the stop is sent)."""
         sym, side, sl, manual, g, atr = plan['sym'], plan['side'], plan['sl'], plan['manual'], plan['g'], plan['atr']
         r, sd, eq, risk_usd, reason, px = self.rules[sym], (1 if side == 'LONG' else -1), plan['eq'], plan['risk_usd'], plan['reason'], plan['px']
         stop = self._rd(fill - sd * plan['stop_dist'], r['tick'])
-        key = f"{'MAN' if manual else sl['id']}|{sym}|{side}|{int(time.time())}"
+        key = self._new_lot_key(f"{'MAN' if manual else sl['id']}|{sym}|{side}|{int(time.time())}")
         fee = maker_qty * fill * float(self.S.get('FEE_MAKER', 0.0002)) + (qty - maker_qty) * fill * FEE_EST
         lot = dict(symbol=sym, side=side, sleeve='MAN' if manual else sl['id'], key_strategy=None if manual else sl['key'],
                    book=plan.get('book'),
