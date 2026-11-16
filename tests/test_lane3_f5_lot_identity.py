@@ -50,7 +50,7 @@ def test_three_fills_same_second_get_distinct_keys_and_keep_the_symbol_field(mon
     for q in (1., 2., 3.):
         assert e._create_lot(dict(PLAN), q, 100.); keys.append(e._last_lot_key)
     assert len(set(keys)) == 3 and keys[0] == 'MAN|BTCUSDT|LONG|1799000000'
-    assert keys[1:] == ['MAN|BTCUSDT|LONG|1799000000-2', 'MAN|BTCUSDT|LONG|1799000000-3']
+    assert keys[1:] == ['MAN|BTCUSDT|LONG|1799000000-1', 'MAN|BTCUSDT|LONG|1799000000-2']
     assert all(k.split('|')[1] == 'BTCUSDT' for k in keys)                   # app / Telegram read the symbol from [1]
     assert [e.state['lots'][k]['qty'] for k in keys] == [1., 2., 3.]
     assert all(e.saves[-1][k]['qty'] == q for k, q in zip(keys, (1., 2., 3.)))   # each one saved, none replaced
@@ -65,13 +65,41 @@ def test_clock_step_back_never_reuses_a_live_lot_key(monkeypatch):
     assert sum(l['qty'] for l in e.state['lots'].values()) == 7.
 
 
-def test_a_closed_lot_key_may_be_used_again(monkeypatch):
-    """Only LIVE lots are protected from replacement: after the first lot is gone, the plain key is free."""
-    e, _ = bare(monkeypatch)
+def test_a_closed_trade_id_is_never_issued_again(monkeypatch):
+    """Codex #363 review: removal from the live lot map is not identity release - the closed trade's history row and its
+    measured-cost wait still answer to that id."""
+    e, clock = bare(monkeypatch)
     e._create_lot(dict(PLAN), 1., 100.); k = e._last_lot_key
+    e.history = [dict(id=k, symbol='BTCUSDT')]                               # closed: its history row ...
+    e.state['measured_wait'] = {k: dict(symbol='BTCUSDT')}                   # ... and its outstanding cost evidence
     del e.state['lots'][k]
-    e._create_lot(dict(PLAN), 2., 100.)
-    assert e._last_lot_key == k and e.state['lots'][k]['qty'] == 2.
+    e._create_lot(dict(PLAN), 2., 100.)                                      # same second
+    assert e._last_lot_key != k
+    clock['t'] -= 3600; e._create_lot(dict(PLAN), 3., 100.)                  # clock rollback to an issued second
+    clock['t'] += 3600; e._create_lot(dict(PLAN), 4., 100.)
+    ks = [k2 for k2 in e.state['lots']]
+    assert len(set(ks + [k])) == 4 and k not in ks
+
+
+def test_identity_high_water_survives_a_restart_and_a_stale_state_copy(monkeypatch):
+    e, clock = bare(monkeypatch)
+    e._create_lot(dict(PLAN), 1., 100.); k = e._last_lot_key
+    saved = {kk: (dict(v) if isinstance(v, dict) else v) for kk, v in e.state.items()}
+    saved['lot_key_seq'] = {p: dict(v) for p, v in e.state['lot_key_seq'].items()}
+    del saved['lots'][k]                                                     # closed before the restart
+    e2, _ = bare(monkeypatch, t=1_799_000_000.9); e2.state = saved           # same second after the restart
+    e2._create_lot(dict(PLAN), 2., 100.)
+    assert e2._last_lot_key != k
+    e3, _ = bare(monkeypatch); e3.history = [dict(id=k)]                     # an older state copy without the mark:
+    e3._create_lot(dict(PLAN), 2., 100.)                                     # the history row still blocks the id
+    assert e3._last_lot_key != k
+
+
+def test_other_coins_in_the_same_second_keep_plain_keys(monkeypatch):
+    e, _ = bare(monkeypatch); e.rules['ETHUSDT'] = {'tick': .01, 'step': .001}
+    e._create_lot(dict(PLAN), 1., 100.); a = e._last_lot_key
+    e._create_lot(dict(PLAN, sym='ETHUSDT'), 1., 100.); b = e._last_lot_key
+    assert a == 'MAN|BTCUSDT|LONG|1799000000' and b == 'MAN|ETHUSDT|LONG|1799000000'
 
 
 def test_sleeve_lots_unchanged_when_no_collision(monkeypatch):
@@ -79,3 +107,45 @@ def test_sleeve_lots_unchanged_when_no_collision(monkeypatch):
     sl = dict(id='T', key='trend', tf='4h')
     e._create_lot(dict(PLAN, manual=False, sl=sl), 1., 100.)
     assert e._last_lot_key == 'T|BTCUSDT|LONG|1799000000'
+
+
+def _close_and_forget(e):
+    """Close every lot and drop every reference (history pruned, cost evidence settled): only the durable high-water
+    mark can stop a reused id now."""
+    e.state['lots'].clear(); e.state['measured_wait'] = {}; e.history = []
+
+
+def test_high_water_survives_a_clock_rollback_even_after_references_are_gone(monkeypatch):
+    e, clock = bare(monkeypatch)
+    e._create_lot(dict(PLAN), 1., 100.); k95 = e._last_lot_key                 # second T
+    clock['t'] += 5; e._create_lot(dict(PLAN), 1., 100.)                        # second T+5
+    _close_and_forget(e)
+    clock['t'] -= 10; e._create_lot(dict(PLAN), 1., 100.)                       # clock stepped back below T
+    _close_and_forget(e)
+    clock['t'] += 5; e._create_lot(dict(PLAN), 1., 100.)                        # back at second T: issued before
+    assert e._last_lot_key != k95 and e._last_lot_key.startswith(k95 + '-')
+
+
+def test_suffix_counter_never_goes_back_when_nothing_references_the_old_ids(monkeypatch):
+    e, _ = bare(monkeypatch)
+    seen = []
+    for _i in range(4):
+        e._create_lot(dict(PLAN), 1., 100.); seen.append(e._last_lot_key); _close_and_forget(e)
+    assert len(set(seen)) == 4, seen
+
+
+def test_a_referenced_suffix_is_skipped_too(monkeypatch):
+    """A state restored from an older copy: fresh high-water mark, but the history still holds base and base-1."""
+    e, _ = bare(monkeypatch)
+    base = 'MAN|BTCUSDT|LONG|1799000000'
+    e.history = [dict(id=base), dict(id=base + '-1')]
+    e._create_lot(dict(PLAN), 1., 100.)
+    assert e._last_lot_key == base + '-2'
+
+
+def test_an_outstanding_measured_cost_wait_alone_blocks_the_id(monkeypatch):
+    e, _ = bare(monkeypatch)
+    base = 'MAN|BTCUSDT|LONG|1799000000'
+    e.state['measured_wait'] = {base: dict(symbol='BTCUSDT')}
+    e._create_lot(dict(PLAN), 1., 100.)
+    assert e._last_lot_key == base + '-1'

@@ -7673,16 +7673,30 @@ class Engine:
                 self.save_state()
 
     def _new_lot_key(self, base):
-        """LANE3-F5: a lot key that no live lot holds. The key is sleeve|symbol|side|whole seconds, so two fills of one
-        sleeve/coin/side in the same second (manual entries, which skip the one-lot-per-coin check) or after a clock step
-        back produced the SAME key and the second lot silently replaced the first (its quantity and stop ownership lost).
-        Each _create_lot call is one distinct confirmed fill, so it always gets its own key: base, else base-2, base-3 ...
-        (the symbol stays field [1], the format other code splits on)."""
-        lots = self.state.get('lots') or {}
-        if base not in lots: return base
-        n = 2
-        while f'{base}-{n}' in lots: n += 1
-        return f'{base}-{n}'
+        """LANE3-F5: a trade identity that was never issued before and is not referenced anywhere. The key is
+        sleeve|symbol|side|whole seconds, so two fills of one sleeve/coin/side in the same second (manual entries skip the
+        one-lot-per-coin check) or after a clock step back produced the SAME id: the second lot replaced the first, or
+        (Codex #363) reused the id of a CLOSED trade whose history row / measured-cost wait still answers to it.
+        Rule (durable, saved with the lot in the same state write): a persisted high-water mark per sleeve|symbol|side,
+        state['lot_key_seq'][prefix] = {t: latest second issued, n: suffix counter that never goes back}. A second later
+        than t gets the plain key;
+        any second <= t (same second, clock rollback) gets base-<n+1>. On top, any id still referenced (live lots,
+        measured_wait, the history and cohort rows) is skipped - covering a state restored from an older copy.
+        The symbol stays field [1], the format other code splits on."""
+        st = self.state
+        prefix, ts = base.rsplit('|', 1); ts = int(ts)
+        allseq = st['lot_key_seq'] = st.get('lot_key_seq') if isinstance(st.get('lot_key_seq'), dict) else {}
+        seq = allseq.get(prefix) if isinstance(allseq.get(prefix), dict) else {}
+        last_t, n = int(seq.get('t', -1)), int(seq.get('n', 0))
+        taken = set(st.get('lots') or {}) | set(st.get('measured_wait') or {})
+        taken |= {h.get('id') for h in list(getattr(self, 'history', None) or []) + list(getattr(self, 'cohort_rows', None) or ())
+                  if isinstance(h, dict)}
+        key = base
+        if ts <= last_t or key in taken:
+            n += 1; key = f'{base}-{n}'
+            while key in taken: n += 1; key = f'{base}-{n}'
+        allseq[prefix] = dict(t=max(ts, last_t), n=n)
+        return key
 
     def _create_lot(self, plan, qty, fill, maker_qty=0.0, adopt_stop=None, cost_ref=None):
         """Record a filled entry as a lot and protect it with its exchange stop (recorded BEFORE the stop is sent)."""
