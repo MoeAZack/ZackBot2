@@ -5587,3 +5587,116 @@ def test_v86_regime_gate_and_hour_zero(monkeypatch):
             g = _sig(key, coin, btc)
             assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
             monkeypatch.undo()
+
+
+import longscout_v87 as L87
+L87.register()
+
+_V87_COIN = {'l87_thin_tail_uptrend_4h': lambda: _ms(_mk(2600, '4h', 41)),
+             's87_thin_tail_downtrend_4h': lambda: _ms(_mk(2600, '4h', 41))}
+
+
+@pytest.mark.parametrize('key', sorted(L87.CANDIDATES))
+def test_v87_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V87_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l87': le.sum() and not se.any(), 's87': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent - 1) | set(ent) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v87_kurt(x):
+    n = len(x); mu = sum(x) / n
+    m2 = sum((a - mu) ** 2 for a in x); m4 = sum((a - mu) ** 4 for a in x)
+    return n * (n + 1) * (n - 1) * m4 / ((n - 2) * (n - 3) * m2 ** 2) - 3 * (n - 1) ** 2 / ((n - 2) * (n - 3))
+
+
+def _v87_ref(D, up, m=60, n=120):
+    days = list(D.index); c = [float(x) for x in D.c]; L = len(c)
+    r = [None] + [math.log(c[t] / c[t - 1]) for t in range(1, L)]
+    K = [None] * L
+    for t in range(m, L):
+        K[t] = _v87_kurt(r[t - m + 1:t + 1])
+
+    def low(t):
+        return K[t] < min(K[t - n:t])
+
+    res = np.zeros(L, bool)
+    for j in range(m + n + 1, L):
+        if days[j] - days[j - (m + n + 1)] != pd.Timedelta(days=m + n + 1):
+            continue
+        R = math.log(c[j] / c[j - m])
+        res[j] = low(j) and not low(j - 1) and (R > 0 if up else R < 0)
+    return res
+
+
+def test_v87_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (41, 40, 44, 51):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for up in (True, False):
+            v = L87._thin_v(D, L87.IP, up).values
+            np.testing.assert_array_equal(v, _v87_ref(D, up), err_msg=str((seed, up)))
+            hits[up] = hits.get(up, 0) + int(v.sum())
+            if seed == 41:
+                for cut in range(190, len(D), 37):
+                    np.testing.assert_array_equal(L87._thin_v(D.iloc[:cut], L87.IP, up).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(L87._thin_v(gap, L87.IP, up).values, _v87_ref(gap, up))
+    assert all(hits.values()), hits
+
+
+def test_v87_boundaries(monkeypatch):
+    L = 190
+    def run(Kv, c, up):
+        D = pd.DataFrame(dict(h=c, l=c, c=c, v=1.0), index=pd.date_range('2022-01-01', periods=L, freq='D'))
+        monkeypatch.setattr(L87, '_kurt', lambda D, m: pd.Series(Kv, index=D.index))
+        out = L87._thin_v(D, L87.IP, up).values[182:].tolist()
+        monkeypatch.undo()
+        return out
+    K = np.r_[np.full(60, np.nan), np.full(122, 1.0), [0.9, 0.8, 0.8, 1.0, 1.0, 0.7, 2.0, 2.0]]   # rows 182..189
+    rise = np.exp(np.linspace(0, 1, L)); fall = 1 / rise
+    assert run(K, rise, True) == [True, False, False, False, False, True, False, False]
+    assert run(K, fall, False) == [True, False, False, False, False, True, False, False]
+    assert not any(run(K, rise, False)) and not any(run(K, fall, True))
+    K2 = K.copy(); K2[182] = 1.0                                               # equal to the 120-day low is not lower
+    assert run(K2, rise, True)[:2] == [False, True]
+    eq = rise.copy(); eq[182] = eq[122]                                         # R exactly 0
+    assert run(K, eq, True)[0] is False and run(K, eq, False)[0] is False
+    base = rise.copy(); base[123] = 5.0                                         # only day j-60 is the base of R
+    assert run(K, base, True)[0] is True
+    fb = fall.copy(); fb[123] = 0.01
+    assert run(K, fb, False)[0] is True
+    gap = pd.date_range('2022-01-01', periods=L + 1, freq='D').delete(1)       # day 1 missing: row 182 = day 183, j-181 = 2
+    D = pd.DataFrame(dict(h=rise, l=rise, c=rise, v=1.0), index=gap)
+    monkeypatch.setattr(L87, '_kurt', lambda D, m: pd.Series(np.r_[np.full(60, np.nan), np.full(121, 1.0), [0.9, 1.0, 0.8],
+                                                                    np.full(6, 1.0)], index=D.index))
+    # row 181 is day 182: j-181 = day 1 missing -> no signal; row 183 (day 184) is complete
+    assert L87._thin_v(D, L87.IP, True).values[181:184].tolist() == [False, False, True]
+
+
+def test_v87_regime_gate_and_hour_zero(monkeypatch):
+    btc = _ms(_mk(2600, '4h', 52))
+    for key, up, ok in (('l87_thin_tail_uptrend_4h', True, (1,)), ('s87_thin_tail_downtrend_4h', False, (-1,))):
+        coin = _V87_COIN[key](); d = S.indicators(coin); cr = L.coin_regime(d)
+        f = np.asarray(L87._thin(d, L87.IP, up))
+        full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+        assert got.any(), key
+        np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+        t = pd.to_datetime(coin.t).dt.normalize()
+        for i in np.flatnonzero(got)[:15]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=150)].reset_index(drop=True)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            g = _sig(key, cut, btc)
+            assert not (np.asarray(g['le'])[k0] or np.asarray(g['se'])[k0]), key
+        for forced in (1.0, 0.0, -1.0):
+            monkeypatch.setattr(L87.L1, 'coin_regime', lambda d, v=forced: np.full(len(d), v))
+            g = _sig(key, coin, btc)
+            assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
+            monkeypatch.undo()
