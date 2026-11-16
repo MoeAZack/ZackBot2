@@ -2580,8 +2580,7 @@ class Engine:
 
     @staticmethod
     def _fmt(x, step):
-        dec = max(0, -int(math.floor(math.log10(step)))) if step < 1 else 0
-        return f'{x:.{dec}f}'
+        return f'{x:.{F.step_decimals(step)}f}'          # LANE3-F6: 0.75 on a 0.25 grid is sent as '0.75', never '0.8'
 
     def bot_unrealized(self):
         """Open P&L of the engine's own lots on the latest mark prices (falls back to the account figure)."""
