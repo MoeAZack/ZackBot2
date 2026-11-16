@@ -212,7 +212,7 @@ def run(windows=WINDOWS, funding_dir=FUNDING, cache=CACHE, delay=1.0, jobs=4):
                   "stopped_rate_limit": stopped, "incomplete": incomplete,
                   "records": records, "gaps": gaps}
         tmp = dest.with_suffix(".json.part")
-        tmp.write_text(json.dumps(output, indent=2), encoding="utf-8")
+        tmp.write_bytes((json.dumps(output, separators=(",", ":")) + "\n").encode("utf-8"))
         tmp.replace(dest)
         return output
 
@@ -221,12 +221,15 @@ def run(windows=WINDOWS, funding_dir=FUNDING, cache=CACHE, delay=1.0, jobs=4):
 
     def work(key, events):
         symbol, month = key
+        name = f"{symbol}-1m-{month}.zip"
+        cached = (cache / symbol / name).exists() and (cache / symbol / (name + ".CHECKSUM")).exists()
         previous = getattr(local, "last", None)
-        if previous is not None and delay:
+        if not cached and previous is not None and delay:
             time.sleep(max(0, delay - (time.monotonic() - previous)))
         if stop_event.is_set():
             return None
-        local.last = time.monotonic()
+        if not cached:
+            local.last = time.monotonic()
         try:
             archive, meta = acquire(symbol, month, cache)
             rows, missing = extract(archive, symbol, events, meta)
@@ -243,6 +246,8 @@ def run(windows=WINDOWS, funding_dir=FUNDING, cache=CACHE, delay=1.0, jobs=4):
     save(True)
     pending_groups = iter(sorted(groups.items()))
     pending = {}
+    completed_since_save = 0
+    last_save = time.monotonic()
     with ThreadPoolExecutor(max_workers=jobs) as pool:
         def submit_next():
             if stop_event.is_set():
@@ -284,7 +289,11 @@ def run(windows=WINDOWS, funding_dir=FUNDING, cache=CACHE, delay=1.0, jobs=4):
                         gaps.append({"symbol": symbol, "month": month, "reason": f"REST_HTTP_{exc.code}"})
                     except Exception as exc:
                         gaps.append({"symbol": symbol, "month": month, "reason": f"REST_ERROR_{type(exc).__name__}: {exc}"})
-                save(True)
+                completed_since_save += 1
+                if error or stop_event.is_set() or completed_since_save >= 16 or time.monotonic() - last_save >= 15:
+                    save(True)
+                    completed_since_save = 0
+                    last_save = time.monotonic()
                 submit_next()
             if stop_event.is_set():
                 for future in pending:

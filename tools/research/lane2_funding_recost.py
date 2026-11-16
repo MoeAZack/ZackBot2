@@ -6,8 +6,8 @@ at last millisecond; other intrabar fills at open. 'late' moves uncertain fills 
 last millisecond. Exact exchange fills are not claimed by this candle replay.
 """
 import argparse
+from array import array
 from bisect import bisect_left, bisect_right
-from collections import OrderedDict
 import gzip
 import hashlib
 import json
@@ -18,10 +18,10 @@ ORIGINAL_LUNC = {1673136000015, 1673164800000, 1673193600010, 1673222400003}
 
 
 class History:
-    """Bound memory while reading long public histories across the 174-symbol book."""
-    def __init__(self, folder, limit=8):
+    """Compact numeric columns avoid both high RAM and per-trade disk/cache thrashing."""
+    def __init__(self, folder):
         self.paths = {p.stem: p for p in Path(folder).glob('*.json')}
-        self.cache, self.stamps, self.limit = OrderedDict(), {}, limit
+        self.cache, self.stamps = {}, {}
 
     def __contains__(self, symbol):
         return symbol in self.paths
@@ -31,17 +31,32 @@ class History:
             data = json.loads(self.paths[symbol].read_text())
             if data['status'] != 'PAGINATED_REST_RANGE_COMPLETE':
                 raise ValueError('funding pagination incomplete: ' + symbol)
-            stamps = [r['fundingTime'] for r in data['events']]
-            if stamps != sorted(set(stamps)):
+            stamps = array('q', (r['fundingTime'] for r in data['events']))
+            if list(stamps) != sorted(set(stamps)):
                 raise ValueError('duplicate/unordered funding history: ' + symbol)
             data['cadence_gaps'] = [(a, b) for a, b in zip(stamps, stamps[1:])
                                     if b - a > 8 * 3600000 + 120000]
+            data['events'] = CompactEvents(stamps, data['events'])
             self.cache[symbol], self.stamps[symbol] = data, stamps
-            if len(self.cache) > self.limit:
-                old, _ = self.cache.popitem(last=False)
-                del self.stamps[old]
-        self.cache.move_to_end(symbol)
         return self.cache[symbol]
+
+
+class CompactEvents:
+    def __init__(self, stamps, rows):
+        self.stamps = stamps
+        self.rates = array('d', (float(r['fundingRate']) for r in rows))
+        self.marks = array('d', (float(r['markPrice']) if r.get('markPrice') not in ('', None)
+                                else float('nan') for r in rows))
+
+    def __len__(self):
+        return len(self.stamps)
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return [self[i] for i in range(*index.indices(len(self)))]
+        mark = self.marks[index]
+        return dict(fundingTime=self.stamps[index], fundingRate=self.rates[index],
+                    markPrice='' if math.isnan(mark) else mark)
 
 
 def rate_coverage_gaps(coverage, start, end):
@@ -77,11 +92,14 @@ def expand_job(job):
     for cost in (7, 15, 23):
         trades = []
         job_id = job['job_id'] + '|cost' + str(cost)
+        reporting_risk = float(job.get('reporting_risk_usd', 8.0))
         for trade in job['trades']:
             pnl = float(trade['pnl_by_cost'][str(cost)])
             trades.append(dict(trade, trade_id=job_id + '|' + trade['trade_id'],
-                               baseline_pnl=pnl, baseline_R=pnl / float(trade['risk'])))
-        yield dict(job, job_id=job_id, cost_bp=cost, trades=trades)
+                               execution_risk=trade['risk'], risk=reporting_risk,
+                               baseline_pnl=pnl, baseline_R=pnl / reporting_risk))
+        yield dict(job, job_id=job_id, cost_bp=cost, trades=trades,
+                   risk_reporting_convention='published fixed USD8 R; execution risk retained separately')
 
 
 def fill_time(fill, bar_ms, timing):
@@ -94,6 +112,36 @@ def fill_time(fill, bar_ms, timing):
     if kind == 'exit' and why in ('time', 'signal'):
         return t + bar_ms - 1
     return t + (bar_ms - 1 if timing == 'late' else 0)
+
+
+def validate_trade_fills(trade):
+    fills = trade['fills']
+    if len(fills) < 2 or fills[0]['kind'] != 'entry' or fills[-1]['kind'] != 'exit':
+        raise ValueError('trade is missing a complete entry/exit fill tape')
+    side = int(trade['side'])
+    maximum = max(abs(float(f['qty'])) for f in fills)
+    tolerance = max(1e-8, math.ulp(maximum) * len(fills) * 32)
+    q, previous = 0.0, -1
+    for index, fill in enumerate(fills):
+        kind, qty, stamp = fill['kind'], float(fill['qty']), int(fill['time_ms'])
+        if kind not in ('entry', 'add', 'dca', 'exit') or not math.isfinite(qty) or qty <= 0:
+            raise ValueError('invalid fill kind/quantity')
+        if stamp < previous or (kind == 'entry' and index != 0):
+            raise ValueError('invalid fill order/duplicate entry')
+        increase = kind in ('entry', 'add', 'dca')
+        expected = 'buy' if (side == 1) == increase else 'sell'
+        if fill.get('action') != expected:
+            raise ValueError('fill action disagrees with position side/kind')
+        if 'sym' in fill and fill['sym'] != trade['sym']:
+            raise ValueError('fill symbol differs from trade')
+        q += qty if increase else -qty
+        if q < -tolerance or (index < len(fills)-1 and abs(q) <= tolerance):
+            raise ValueError('fill tape closes too early or over-closes position')
+        previous = stamp
+    if abs(q) > tolerance:
+        raise ValueError('fill tape does not close to zero')
+    if trade.get('t_in_ms', fills[0]['time_ms']) != fills[0]['time_ms'] or trade.get('t_out_ms', fills[-1]['time_ms']) != fills[-1]['time_ms']:
+        raise ValueError('trade timestamps disagree with entry/exit fills')
 
 
 def quantities(trade, events, bar_ms, timing='early', before_equal=False):
@@ -119,6 +167,7 @@ def quantities(trade, events, bar_ms, timing='early', before_equal=False):
 
 
 def recost_trade(trade, events, bar_ms, proxies, allow_all=False):
+    validate_trade_fills(trade)
     risk = float(trade['risk'])
     if not math.isfinite(risk) or risk <= 0:
         raise ValueError('invalid trade risk')
@@ -127,7 +176,11 @@ def recost_trade(trade, events, bar_ms, proxies, allow_all=False):
         raise ValueError('invalid side')
     primary = quantities(trade, events, bar_ms, 'early')
     late = quantities(trade, events, bar_ms, 'late')
-    boundary = quantities(trade, events, bar_ms, 'early', True)
+    # Alternative convention: funding settles on the scheduled minute boundary
+    # before candle-open fills; the REST response's few-ms jitter is not proof of
+    # exchange execution eligibility. Primary cash always retains actual timestamps.
+    scheduled = [dict(e, fundingTime=e['fundingTime'] // 60000 * 60000) for e in events]
+    boundary = quantities(trade, scheduled, bar_ms, 'early', True)
     cash, low, high, late_cash, boundary_cash = [], [], [], [], []
     used, missing = [], []
     for event, qty, late_qty, boundary_qty in zip(events, primary, late, boundary):
@@ -204,13 +257,14 @@ def main():
     (out / 'job_deltas.json').write_bytes((json.dumps(summaries, indent=2, allow_nan=False) + '\n').encode())
     manifest = dict(tapes=[dict(path=str(Path(p)), sha256=sha_file(p)) for p in a.tapes],
                     allow_all_labelled_proxies=a.allow_all_labelled_proxies,
+                    recost_engine_sha256=sha_file(__file__),
                     proxy_sha256=hashlib.sha256(Path(a.proxies).read_bytes()).hexdigest() if Path(a.proxies).exists() else None)
     (out / 'recost_manifest.json').write_bytes((json.dumps(manifest, indent=2) + '\n').encode())
 
 
 def process_job(job, seen, funding, stamps, proxies, a, details, summaries):
     if job['job_id'] in seen:
-        return
+        raise ValueError('duplicate funding job: ' + job['job_id'])
     seen.add(job['job_id'])
     if not job['parity']['matches']:
         raise ValueError('baseline parity did not pass: ' + job['job_id'])

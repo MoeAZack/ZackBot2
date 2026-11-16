@@ -3,7 +3,6 @@ import argparse
 import csv
 import gzip
 import json
-import math
 from pathlib import Path
 from statistics import median
 
@@ -63,9 +62,10 @@ def main():
                 selected = [v for v in jobs.values() if v['strategy'] == strategy and
                             v['cost_bp'] == cost and v.get('scenario') == scenario]
                 if not selected: continue
-                if any(v['status'] != 'COMPLETE_MODELLED_CLOCK' for v in selected):
+                if (len(selected) != 40 or {v['order'] for v in selected} != set(range(40)) or
+                    any(v['status'] != 'COMPLETE_MODELLED_CLOCK' or v['n'] <= 0 for v in selected)):
                     lead_rows.append(dict(strategy=strategy, cost_bp=cost, scenario=scenario,
-                                          orders=len(selected), status='INCOMPLETE'))
+                                          orders=len(selected), status='PARTIAL_DIAGNOSTIC'))
                     continue
                 old = median(v['baseline_sumR'] / v['n'] for v in selected)
                 fee = median(v['fee_slippage_only_sumR'] / v['n'] for v in selected)

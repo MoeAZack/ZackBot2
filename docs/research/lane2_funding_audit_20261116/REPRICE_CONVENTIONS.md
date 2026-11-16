@@ -22,6 +22,9 @@ No strategy rules, thresholds, universe orders, trade paths or historical sizing
    `4189908d08c559421bdfd270c02de3f8dd6d97e9`; each case retains its frozen source.
    PROT uses `ecaff93d272deca7fa80eb9decc1620c23286ed0`, whose executable source/results
    match the earlier `53753968` snapshot. Historical quantities and per-trade risk stay fixed.
+   Lead reporting retains the published fixed $8 denominator, while preserving the
+   slightly compounding execution risk separately. PROT retains its original per-trade
+   risk denominator. These unit conventions do not alter any historical quantity.
 2. Re-cost signed native funding cash `-side * quantity * mark * rate`. First undo
    the old proxy funding: `new_net = baseline_net + old_proxy_paid + native_cash`.
    Report both the delta against the published proxy-funded baseline and the native
@@ -35,6 +38,11 @@ No strategy rules, thresholds, universe orders, trade paths or historical sizing
    separately evaluate funding before equal-timestamp fills. Known-open entries/gap fills
    and known-close signal/time exits keep their primary time. The alternative scenarios
    quantify specified clock conventions; they are not a proof of every possible path.
+   Disclosed clarification before full-book economics: the before-fill boundary stress
+   floors returned event timestamps to their scheduled minute, then settles funding
+   before equal-timestamp fills. This explicitly tests the alternative interpretation
+   of the API's observed few-millisecond jitter; the primary calculation never rounds
+   event timestamps. Neither scenario proves actual exchange order eligibility.
 5. For an approved missing mark, use the nearest public minute candle's open (for these
    boundary events this is their containing-minute open). Record symbol/event timestamp,
    candle timestamp, signed gap in milliseconds, value, full OHLC, source URL, archive or

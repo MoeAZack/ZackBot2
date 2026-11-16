@@ -1,5 +1,6 @@
 import unittest
-from tools.research.lane2_funding_recost import recost_trade, quantities, ORIGINAL_LUNC, expand_job, rate_coverage_gaps
+from array import array
+from tools.research.lane2_funding_recost import recost_trade, quantities, ORIGINAL_LUNC, expand_job, rate_coverage_gaps, process_job, CompactEvents
 from tools.research.lane2_funding_history import validate_page
 
 
@@ -7,8 +8,8 @@ class ReCostTests(unittest.TestCase):
     def trade(self, side=1, sym='BTCUSDT'):
         return dict(trade_id='test', sym=sym, side=side, risk=10, baseline_pnl=20,
                     baseline_R=2, proxy_cash_paid=3,
-                    fills=[dict(kind='entry', time_ms=0, qty=2),
-                           dict(kind='exit', time_ms=20000, qty=2, why='time')])
+                    fills=[dict(kind='entry', time_ms=0, qty=2, action='buy' if side == 1 else 'sell'),
+                           dict(kind='exit', time_ms=20000, qty=2, why='time', action='sell' if side == 1 else 'buy')])
 
     def event(self, stamp=10000, rate='0.01', mark='100'):
         return dict(fundingTime=stamp, fundingRate=rate, markPrice=mark)
@@ -61,6 +62,11 @@ class ReCostTests(unittest.TestCase):
         self.assertEqual(quantities(t, [self.event(0)], 10000), [2])
         self.assertEqual(quantities(t, [self.event(0)], 10000, before_equal=True), [0])
 
+    def test_boundary_stress_does_not_treat_ms_jitter_as_execution_proof(self):
+        r = recost_trade(self.trade(), [self.event(15)], 10000, {})
+        self.assertEqual(r['funding_cash'], -2)
+        self.assertEqual(r['boundary_before_fill_delta_R'], .3)
+
     def test_unknown_intrabar_timing_sensitivity(self):
         t = self.trade(); t['fills'][-1].pop('why')
         e = self.event(20001)
@@ -78,11 +84,19 @@ class ReCostTests(unittest.TestCase):
 
     def test_cost_expansion_uses_matching_baseline(self):
         t = self.trade(); t['pnl_by_cost'] = {'7': '22', '15': '20', '23': '18'}
-        j = dict(job_id='lead', parity={'pass': True}, trades=[t])
+        j = dict(job_id='lead', parity={'pass': True}, trades=[t], reporting_risk_usd=10)
         rows = list(expand_job(j))
         self.assertEqual([r['cost_bp'] for r in rows], [7, 15, 23])
         self.assertEqual([r['trades'][0]['baseline_R'] for r in rows], [2.2, 2, 1.8])
         self.assertTrue(all(r['parity']['matches'] for r in rows))
+
+    def test_lead_reporting_uses_published_fixed_8_not_compounding_risk(self):
+        t = self.trade(); t['risk'] = 8.0006
+        t['pnl_by_cost'] = {'7': 24, '15': 16, '23': 8}
+        jobs = list(expand_job(dict(job_id='lead', parity={'pass': True}, trades=[t])))
+        self.assertEqual(jobs[1]['trades'][0]['baseline_R'], 2)
+        self.assertEqual(jobs[1]['trades'][0]['risk'], 8)
+        self.assertEqual(jobs[1]['trades'][0]['execution_risk'], 8.0006)
 
     def test_empty_rate_history_is_a_gap(self):
         self.assertTrue(rate_coverage_gaps({'events': []}, 0, 1000))
@@ -100,6 +114,28 @@ class ReCostTests(unittest.TestCase):
     def test_nonfinite_proxy_rejected(self):
         p = {('BTCUSDT', 10000): dict(value='NaN', low='90', high='110')}
         with self.assertRaises(ValueError): recost_trade(self.trade(), [self.event(mark='')], 10000, p, True)
+
+    def test_truncated_tape_rejected_even_without_funding_events(self):
+        t = self.trade(); t['fills'].pop()
+        with self.assertRaises(ValueError): recost_trade(t, [], 10000, {})
+
+    def test_terminal_quantity_checked_after_final_event(self):
+        t = self.trade(); t['fills'][-1]['qty'] = 1
+        with self.assertRaises(ValueError): recost_trade(t, [self.event()], 10000, {})
+
+    def test_wrong_fill_action_rejected(self):
+        t = self.trade(); t['fills'][-1]['action'] = 'buy'
+        with self.assertRaises(ValueError): recost_trade(t, [], 10000, {})
+
+    def test_conflicting_duplicate_job_cannot_be_hidden(self):
+        with self.assertRaises(ValueError): process_job({'job_id': 'dup'}, {'dup'}, {}, {}, {}, None, None, [])
+
+    def test_compact_history_preserves_missing_mark_without_zero(self):
+        rows=[self.event(0, mark=''),self.event(10000, mark='100')]
+        compact=CompactEvents(array('q',[0,10000]),rows)
+        self.assertEqual(compact[0]['markPrice'],'')
+        self.assertEqual(compact[1:][0]['markPrice'],100)
+        self.assertEqual(compact[-1]['fundingTime'],10000)
 
 
 if __name__ == '__main__': unittest.main()
