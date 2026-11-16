@@ -8207,7 +8207,7 @@ class Engine:
         if not legacy:                                               # CAPS-01 r2: caps looser than policy -> the resting
             cb = self.risk_caps_block()                              # order is cancelled, never re-priced, no market fallback
             if cb: legacy = f'{cb} - maker entry not re-priced, no market fallback'
-        if rec.get('status') == 'handed' or self._ue_by_cid(rec.get('cid')):   # CAPS-01 r5: finish an interrupted handover
+        if self._ue_by_cid(rec.get('cid')):                       # CAPS-01 r5: finish an interrupted handover
             self._normalize_order_owners(); return True
         if rec['status'] in ('open', 'cancelling'):
             o = self.trade.get_order(sym, rec['cid'])
@@ -8241,54 +8241,48 @@ class Engine:
         produced with a provisional stop and settles it from its order record. Fills already known from earlier final
         records still become a lot through the normal finalize path (no market fallback)."""
         sym, r = rec['symbol'], self.rules[rec['symbol']]
-        if rec.get('status') != 'handed':
-            try: self.trade.cancel(sym, f"c:{rec['cid']}")
-            except Exception as ex: log.info(f"maker entry {sym}: cancel of unknown order {rec['cid']} failed ({type(ex).__name__})")
-            unk = self._rd(rec['qty'] - rec['filled'], r['step'])
-            # CAPS-01 r5 (Codex): ONE durable write moves the unknown order to its unconfirmed entry AND reduces the resting
-            # record to the fills it already knows (status 'handed') - a restart from any snapshot sees either the old
-            # resting order or the finished handover, never two owners of one order; idempotent by client id as well
-            prev = {f: rec.get(f) for f in ('status', 'qty')}
-            uk = None
-            if unk > 0 and not self._ue_by_cid(rec['cid']):
-                uk = self._remember_unconfirmed(dict(rec['plan'], qty=unk), rec['cid'], save=False)
-            rec.update(status='handed', qty=rec['filled'])
+        try: self.trade.cancel(sym, f"c:{rec['cid']}")
+        except Exception as ex: log.info(f"maker entry {sym}: cancel of unknown order {rec['cid']} failed ({type(ex).__name__})")
+        unk = self._rd(rec['qty'] - rec['filled'], r['step'])
+        # CAPS-01 r5/r6 (Codex): no transitional record. The unconfirmed entry is inserted in memory only, then the resting
+        # record leaves memory in the SAME step that books its known fills: the FIRST durable write after this point
+        # (the lot's own write-ahead in _create_lot, or the strict save below when nothing was filled) already holds the
+        # finished handover - a state with the resting record gone, its known fills as a lot and the unconfirmed entry
+        # owning the order. Every snapshot is a state the loader accepts (no new status); idempotent by client id.
+        uk = None
+        if unk > 0 and not self._ue_by_cid(rec['cid']):
+            uk = self._remember_unconfirmed(dict(rec['plan'], qty=unk), rec['cid'], save=False)
+        if rec['filled'] <= 0:
+            self.state['resting_entries'].pop(k, None)
             try:
                 self._save_wal()
             except Exception:
-                rec.update(prev)
+                self.state['resting_entries'][k] = rec                 # not durable: nothing handed over (polled again)
                 if uk: self.state['unconfirmed_entries'].pop(uk, None)
-                raise                                                # not durable: nothing handed over (polled again)
-            self.err(f"maker entry {sym} {rec['side']}: maker order record not found on Binance - handed to unconfirmed-entry "
-                     f"reconciliation, no market fallback (client id {rec['cid']}, {unk:g})")
-        return self._maker_handed_finish(k, rec)
+                raise
+            self._mk_refs.pop(self._mk_key(rec), None)
+        else:
+            self._maker_finalize(k, 0.0, True, (self.marks or {}).get(sym) or rec.get('price') or rec['plan']['px'],
+                                 no_fallback='maker order record not found - its remainder is settled as an unconfirmed entry')
+            self._save_wal()                                           # strict: the finished handover is durable
+        self.err(f"maker entry {sym} {rec['side']}: maker order record not found on Binance - handed to unconfirmed-entry "
+                 f"reconciliation, no market fallback (client id {rec['cid']}, {unk:g})")
+        return True
 
     def _ue_by_cid(self, cid):
         return [uk for uk, u in (self.state.get('unconfirmed_entries') or {}).items() if cid and u.get('cid') == cid]
 
-    def _maker_handed_finish(self, k, rec):
-        """CAPS-01 r5: a handed-over maker record keeps only the fills already known from final records: they become a lot
-        through the normal finalize path (no market fallback); nothing left -> the record goes."""
-        sym = rec['symbol']
-        if rec['filled'] > 0:
-            self._maker_finalize(k, 0.0, True, (self.marks or {}).get(sym) or rec.get('price') or rec['plan']['px'],
-                                 no_fallback='maker order record not found - its remainder is settled as an unconfirmed entry')
-        else:
-            self.state['resting_entries'].pop(k, None); self._mk_refs.pop(self._mk_key(rec), None)
-        self.save_state()
-        return True
-
     def _normalize_order_owners(self):
         """CAPS-01 r5 (Codex #365): one exchange order has ONE owner before fills or protection are reconciled. A resting
         maker record whose client id an unconfirmed entry already owns (a state saved mid-handover by older code) finishes
-        the handover - the record keeps only its known fills, the unconfirmed entry owns the order; two unconfirmed entries
+        the handover - its known fills become a lot (no market fallback), the unconfirmed entry owns the order; until that
+        succeeds the record is left exactly as it is (valid, over-reserved, never polled again); two unconfirmed entries
         with one client id merge into the oldest (its provisional stop kept; a second provisional stop is cancelled)."""
         changed = False
         ue = self.state.get('unconfirmed_entries') or {}
         for k, rec in list((self.state.get('resting_entries') or {}).items()):
-            if rec.get('status') == 'handed' or self._ue_by_cid(rec.get('cid')):
-                if rec.get('status') != 'handed': rec.update(status='handed', qty=rec.get('filled') or 0.0)
-                try: self._maker_handed_finish(k, rec)
+            if self._ue_by_cid(rec.get('cid')):
+                try: self._maker_unknown(k, rec)
                 except Exception as e: self.err(f'maker entry {k}: handover not finished ({e}) - retried next pass')
                 changed = True
         seen = {}

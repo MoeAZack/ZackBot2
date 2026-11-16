@@ -72,15 +72,16 @@ def _to_handover(e, bk):
     bk.fill(0.4)
     TV.age(e, 30); e.manage(e.trade.marks())
     assert rec['status'] == 'cancelling'
-    snaps, real = [], e._save_wal
-    def spy():                                    # the process dies right after the durable handover write (crash point)
-        real(); snaps.append(copy.deepcopy(e.state))
-        if any(u.get('cid') == cid for u in (e.state.get('unconfirmed_entries') or {}).values()): raise _Crash()
-    e._save_wal = spy
+    snaps, real = [], e._save_safe
+    def spy(name, doc, strict=False):             # the process dies right after the first durable write holding the handover
+        out = real(name, doc, strict=strict); snaps.append(copy.deepcopy(e.state))
+        if name == 'state' and any(u.get('cid') == cid for u in (e.state.get('unconfirmed_entries') or {}).values()): raise _Crash()
+        return out
+    e._save_safe = spy
     e.trade.get_order = lambda s, c: None
     TV.age(e, 30)
     with pytest.raises(_Crash): e.manage(e.trade.marks())
-    e._save_wal = real
+    e._save_safe = real
     snaps = [s for s in snaps if any(u.get('cid') == cid for u in (s.get('unconfirmed_entries') or {}).values())]
     assert snaps, 'no write-ahead snapshot holds the handed-over order'
     return cid, q, snaps[0]
@@ -107,8 +108,9 @@ def _one_lot_one_stop(e, q):
 def test_r5_codex_restart_from_the_real_handover_write_ahead_books_once():
     e, bk = TV.maker_engine()
     cid, q, snap = _to_handover(e, bk)
-    owners = [r for r in snap['resting_entries'].values() if r.get('cid') == cid and r.get('status') != 'handed']
+    owners = [r for r in snap['resting_entries'].values() if r.get('cid') == cid]
     assert not owners, 'the write-ahead holds the order under two owners'
+    E.validate_state(E.migrate_state(copy.deepcopy(snap)))                                     # and the real loader accepts it
     _one_lot_one_stop(_restart(e, bk, snap), q)
 
 
@@ -150,12 +152,12 @@ def test_r5_the_handover_keeps_the_reservation_and_the_partial_protection():
 def test_r5_a_failed_handover_write_changes_nothing():
     e, bk = TV.maker_engine()
     assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
-    rec = next(iter(e.state['resting_entries'].values())); q = rec['qty']
+    (k, rec), = e.state['resting_entries'].items(); q = rec['qty']
     e.trade.get_order = lambda s, c: None
     def boom(): raise OSError('disk full')
     e._save_wal = boom
     TV.age(e, 25); e.manage(e.trade.marks())
-    assert rec['status'] != 'handed' and rec['qty'] == q and not e.state['unconfirmed_entries']
+    assert rec['qty'] == q and k in e.state['resting_entries'] and not e.state['unconfirmed_entries']
 
 
 def test_r5_the_handover_itself_is_idempotent_by_client_id():
@@ -183,7 +185,7 @@ def test_r5_reconcile_alone_normalizes_before_it_settles_fills():
     _one_lot_one_stop(e2, q)
 
 
-def test_r5_a_failed_finish_still_leaves_one_owner_with_only_its_known_fills():
+def test_r5_a_failed_finish_leaves_the_record_valid_and_the_order_never_polled_again():
     e, bk = TV.maker_engine()
     assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
     (k, rec), = e.state['resting_entries'].items()
@@ -192,4 +194,8 @@ def test_r5_a_failed_finish_still_leaves_one_owner_with_only_its_known_fills():
     def boom(*a, **kw): raise RuntimeError('finalize failed')
     e._maker_finalize = boom
     e._normalize_order_owners()
-    assert rec['status'] == 'handed' and rec['qty'] == pytest.approx(0.1)          # never re-polled / double-reserved
+    assert k in e.state['resting_entries'] and rec['status'] == 'cancelling'          # left as it is: loadable
+    E.validate_state(E.migrate_state(copy.deepcopy(e.state)))
+    reads = []; e.trade.get_order = lambda s, c: reads.append(c)
+    e._maker_poll(k, e.trade.marks())
+    assert reads == [], 'an order already owned by an unconfirmed entry was polled by its old record'
