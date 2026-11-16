@@ -112,14 +112,53 @@ def test_larger_or_close_position_row_is_protection(tmp_path):
     e._verify_symbol('BTCUSDT', 'x'); assert e.stop_view(lot)['protected'] and not lot.get('stop_dirty')
 
 
-def test_detail_less_row_still_confirms_its_id(tmp_path, monkeypatch):
-    """Unchanged: a listing without details (None) cannot judge coverage - the id confirms as before."""
+@pytest.mark.parametrize('drop', [dict(qty=None), dict(stop_price=None), dict(side=None), dict(type=None),
+                                  dict(qty=None, stop_price=None, side=None, type=None)])
+def test_incomplete_detailed_row_is_unknown_never_protection(tmp_path, monkeypatch, drop):
+    """Codex #361 r1: a detailed listing that lacks a detail the proof needs (the REST parser maps a malformed number to
+    None) stays UNKNOWN - never confirmed, not even by a later tag-only read; alerted; nothing re-placed on it alone."""
     e, clk, k, lot = setup(tmp_path)
     real = e.trade.open_stop_orders
-    monkeypatch.setattr(e.trade, 'open_stop_orders', lambda *a, **kw: [dict(r, qty=None, stop_price=None, side=None, type=None)
-                                                                        for r in real(*a, **kw)])
+    monkeypatch.setattr(e.trade, 'open_stop_orders', lambda *a, **kw: [dict(r, **drop) for r in real(*a, **kw)])
     e._verify_symbol('BTCUSDT', 'x')
-    assert e.stop_view(lot)['protected'] and not lot.get('stop_dirty')
+    assert not e.stop_view(lot)['protected'] and not lot.get('stop_dirty') and 'lacks' in lot['stop_short']
+    assert (e.health.get('incidents', {}).get(f'stop-short|{k}') or {}).get('open')
+    clk[0] += 1; e._stops_reconfirmed()
+    assert not e.stop_view(lot)['protected']
+    monkeypatch.setattr(e.trade, 'open_stop_orders', real)                    # a complete listing proves it again
+    clk[0] += 1; e._verify_symbol('BTCUSDT', 'x')
+    assert e.stop_view(lot)['protected'] and 'stop_short' not in lot
+
+
+def test_position_side_is_judged_even_without_order_side(tmp_path, monkeypatch):
+    """Codex #361 r1: side=None plus positionSide SHORT for a LONG lot is never protection."""
+    e, clk, k, lot = setup(tmp_path)
+    real = e.trade.open_stop_orders
+    monkeypatch.setattr(e.trade, 'open_stop_orders', lambda *a, **kw: [dict(r, side=None, position_side='SHORT') for r in real(*a, **kw)])
+    e._verify_symbol('BTCUSDT', 'x')
+    assert not e.stop_view(lot)['protected'] and lot['stop_dirty']
+
+
+def test_tag_only_listing_of_an_older_client_still_confirms_ids(tmp_path, monkeypatch):
+    """Unchanged: a client without detailed rows (open_stop_tags only, strict=False) confirms by id as before."""
+    e, clk, k, lot = setup(tmp_path)
+    monkeypatch.delattr(type(e.trade), 'open_stop_orders')
+    e._verify_symbol('BTCUSDT', 'x')
+    assert e.stop_view(lot)['protected']
+
+
+def test_repairing_one_lot_never_cancels_a_stop_a_sibling_records(tmp_path):
+    """Codex #361 r1: a shared carrier stays while any sibling lot still records it."""
+    e, clk, k, lot = setup(tmp_path)
+    old = lot['stop_id']
+    k2 = k + '|twin'; twin = dict(lot); e.state['lots'][k2] = twin
+    e._verify_symbol('BTCUSDT', 'x')
+    dirty = next(l for l in (lot, twin) if l.get('stop_dirty')); clean = lot if dirty is twin else twin
+    tick(e, clk, n=3)
+    assert dirty['stop_id'] != old and dirty['stop_id'] in e.trade.stops       # its own full stop now
+    assert clean['stop_id'] == old and old in e.trade.stops, "the sibling's only stop was cancelled"
+    e._finish(k2 if dirty is twin else k, 'test_close')                       # closing the repaired lot keeps the carrier
+    assert old in e.trade.stops
 
 
 def test_one_row_shared_by_two_lots_is_counted_once(tmp_path):
@@ -166,3 +205,12 @@ def test_short_verdict_is_cleared_by_the_new_stop_and_saved_state_validates(tmp_
     assert 'stop_short' not in lot and not lot.get('stop_dirty')
     clk[0] += 1; e._stops_reconfirmed()
     assert e.stop_view(lot)['protected']
+
+
+def test_closing_one_lot_never_cancels_a_stop_a_sibling_records(tmp_path):
+    e, clk, k, lot = setup(tmp_path)
+    old = lot['stop_id']; k2 = k + '|twin'; e.state['lots'][k2] = dict(lot)
+    e._finish(k, 'test_close')
+    assert old in e.trade.stops and e.state['lots'][k2]['stop_id'] == old
+    e._finish(k2, 'test_close')                                               # the last owner: cancelled as before
+    assert old not in e.trade.stops

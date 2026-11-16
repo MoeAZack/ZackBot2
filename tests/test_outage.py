@@ -549,7 +549,9 @@ def _real_client_engine(monkeypatch, resting=False, orphan=False):
         tag = lot['stop_id']
         if p == '/v2/positionRisk':
             return Resp(200, [{'symbol': 'BTCUSDT', 'positionSide': 'LONG', 'positionAmt': str(lot['qty'])}])
-        if p == '/v1/openOrders': return Resp(200, [{'orderId': int(tag[2:])}] if tag.startswith('o:') else [])
+        if p == '/v1/openOrders':                    # LANE3-F2: a full row, as Binance lists it (an incomplete row proves nothing)
+            return Resp(200, [{'orderId': int(tag[2:]), 'type': 'STOP_MARKET', 'side': 'SELL', 'positionSide': 'LONG',
+                               'origQty': str(lot['qty']), 'stopPrice': str(lot['stop']), 'status': 'NEW'}] if tag.startswith('o:') else [])
         if p == '/v1/openAlgoOrders': return Resp(200, {'orders': []})
         if p == '/v1/premiumIndex': return Resp(200, [{'symbol': 'BTCUSDT', 'markPrice': '100'}, {'symbol': 'ETHUSDT', 'markPrice': '50'}])
         if p == '/v1/order' and m == 'GET': return Resp(200, {'status': 'NEW', 'orderId': 9, 'executedQty': '0'})

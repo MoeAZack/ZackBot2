@@ -4110,6 +4110,10 @@ class Engine:
         Returns True when Binance confirmed the cancel (or that it was already gone), False when it was only parked -
         parking is bookkeeping, not proof that the stop is gone (AUD-04 r3). Existing callers may ignore the result."""
         if self.dry or not tag: return True
+        holder = next((k for k, l in self.state['lots'].items() if l.get('stop_id') == tag), None)
+        if holder is not None:                                  # LANE3-F2 r1 (Codex #361): a stop that a LIVE lot still records
+            log.warning(f'{sym} stop {tag} not cancelled: lot {holder} still records it as its protection')   # is that lot's
+            return False                                        # protection (a shared carrier) - never cancelled from here
         try:
             self.trade.cancel(sym, tag); return True
         except Exception as e:
@@ -5778,8 +5782,8 @@ class Engine:
         self.health.setdefault('confirmed', {}).setdefault('stops', {})[sym] = now_utc().isoformat(timespec='seconds')
         self.resolve(f'open-orders|{sym}', f'open orders {sym} readable again')
         tags = {r['tag'] for r in rows}
-        short = self._stops_short(sym, rows)                 # LANE3-F2: listed but not protecting -> never confirmed
-        self._stops_seen(sym, tags, short=short)
+        short, unknown = self._stops_short(sym, rows, strict)   # LANE3-F2: listed but not proven -> never confirmed
+        self._stops_seen(sym, tags, short={**short, **unknown})
         now, changed, recheck = self.clock(), False, False
         owned = self._owned_stop_tags(sym)        # lot stops AND AUD-03b provisional stops: never an extra, never adopted
         orph = {t for s_, t in self.state.get('orphans') or [] if s_ == sym}   # queued for cancellation: never adopted (the
@@ -5798,6 +5802,9 @@ class Engine:
                 continue
             if k in short:                                        # LANE3-F2: listed, but it does not protect this lot
                 if self._stop_short_found(k, l, short[k]): changed = True
+                continue
+            if k in unknown:                                      # LANE3-F2 r1: listed, protection not provable
+                if self._stop_unknown_found(k, l, unknown[k]): changed = True
                 continue
             if l['stop_id'] in tags: continue                     # confirmed above
             if l.get('stop_dirty') and l.get('stop_miss_why') != 'owner_check': continue   # being replaced by manage already
@@ -5883,38 +5890,56 @@ class Engine:
         if ps == side: return True
         return ps == 'BOTH' and bool(row.get('reduce_only') or row.get('close_position'))
 
-    def _stops_short(self, sym, rows):
-        """LANE3-F2: {lot key: reason} for every lot on `sym` whose recorded stop id IS listed in `rows` but whose row does
-        not protect that lot. An id alone is not protection: the row must be a stop order (STOP_TYPES) that CLOSES the
-        lot's side (_protects), trigger at the lot's recorded stop (within half a tick), and hold enough quantity for the
-        lot - a closePosition row covers the whole side; one row recorded by several lots is a shared ledger (its
-        quantity is counted once, never per lot). A detail that the row does not carry (None: a detail-less listing)
-        is not judged - such a row confirms its id exactly as before; a detail that IS present and wrong is never
-        confirmation. Pending lots are skipped (reconcile owns them)."""
+    def _stops_short(self, sym, rows, strict=True):
+        """LANE3-F2: ({lot key: reason} short, {lot key: reason} unknown) for every lot on `sym` whose recorded stop id IS
+        listed in `rows` but whose row does not PROVE that it protects that lot. An id alone is not protection: the row
+        must be a stop order (STOP_TYPES) that CLOSES the lot's side (_protects; a supplied positionSide is checked on its
+        own too), trigger at the lot's recorded stop (within half a tick), and hold enough quantity for the lot - a
+        closePosition row covers the whole side; one row recorded by several lots is a shared ledger (its quantity is
+        counted once, never per lot).
+        short   = a supplied detail is wrong (the stop is re-placed, stop-first).
+        unknown = a detailed row (strict read) lacks a detail the proof needs (type, side, trigger, quantity - the REST
+                  parser maps a malformed number to None): never confirmed, alerted, nothing re-placed on it alone.
+        strict=False (the tag-only listing of an older client): ids only, judged as before. Pending lots are skipped."""
         by_tag = {r['tag']: r for r in rows}
         r_ = self.rules.get(sym) or dict(step=1e-9, tick=1e-9)
-        left, out = {}, {}
+        left, out, unknown = {}, {}, {}
+        if not strict: return out, unknown
         lots = sorted(((k, l) for k, l in self.state['lots'].items()
                        if l['symbol'] == sym and not l.get('pending') and l.get('stop_id') in by_tag), key=lambda kl: kl[0])
         for k, l in lots:
             row = by_tag[l['stop_id']]
-            typ = row.get('type')
+            typ, ps = row.get('type'), str(row.get('position_side') or '').upper()
             if typ is not None and str(typ).upper() not in STOP_TYPES:
                 out[k] = f'is a {typ} order, not a stop'; continue
-            if row.get('side') is not None:                   # direction known: it must CLOSE this lot's side
-                if not self._protects(row, l['side']):
-                    out[k] = f"does not close the {l['side']} side ({row.get('side')} / {row.get('position_side')})"; continue
+            if ps and ps not in (l['side'], 'BOTH'):            # a supplied positionSide is judged on its own
+                out[k] = f"belongs to the {ps} side, not {l['side']}"; continue
+            if row.get('side') is not None and not self._protects(row, l['side']):
+                out[k] = f"does not close the {l['side']} side ({row.get('side')} / {row.get('position_side')})"; continue
             sp = row.get('stop_price')
             if sp is not None and l.get('stop') is not None and abs(float(sp) - float(l['stop'])) > r_['tick'] / 2 + 1e-12:
                 out[k] = f"triggers at {sp}, the lot's stop is {l['stop']}"; continue
-            if row.get('close_position') is True: continue
-            q = row.get('qty')
-            if q is None: continue
+            cp, q = row.get('close_position') is True, row.get('qty')
+            missing = [n for n, v in (('type', typ), ('side', row.get('side')), ('trigger', sp)) if v is None]
+            if q is None and not cp: missing.append('quantity')
+            if missing:
+                unknown[k] = 'its listing lacks ' + ', '.join(missing); continue
+            if cp: continue
             have = left.get(row['tag'], float(q))
             if have < l['qty'] - r_['step'] / 2:
                 out[k] = f"covers {have:g} of the lot's {l['qty']:g}"; continue
             left[row['tag']] = have - l['qty']
-        return out
+        return out, unknown
+
+    def _stop_unknown_found(self, k, l, why):
+        """LANE3-F2 (Codex #361 r1): the recorded stop is listed but its row lacks a detail needed to prove protection.
+        Unknown stays unknown: never confirmed (tag-only reads cannot confirm it either), one keyed alert; nothing is
+        re-placed on missing data alone (a persistently malformed listing would otherwise churn stops every pass)."""
+        first = l.get('stop_short') != why
+        l['stop_confirmed_t'] = None; l['stop_short'] = why
+        self.err(f"{l['symbol']} {l['side']} [{l['sleeve']}]: protective stop {l['stop_id']} is listed but {why} - not "
+                 'counted as protection until a complete listing proves it', key=f'stop-short|{k}')
+        return first
 
     def _stop_short_found(self, k, l, why):
         """LANE3-F2: the lot's recorded stop is listed but does not protect it. Fail closed: never 'protected'; the lot is

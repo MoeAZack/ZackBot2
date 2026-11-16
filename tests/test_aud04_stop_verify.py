@@ -506,7 +506,7 @@ def test_d2_algo_endpoint_unsupported_while_holding_an_algo_stop_is_unknown_neve
         if 'lgo' in p and down['on']: return Resp(404, {'code': -1404, 'msg': 'HTTP 404 (not JSON)'})
         if p == '/v1/openOrders': return Resp(200, [])
         if p == '/v1/openAlgoOrders':
-            return Resp(200, {'orders': [{'algoId': 77, 'orderType': 'STOP_MARKET', 'positionSide': 'LONG', 'quantity': str(lot['qty']),
+            return Resp(200, {'orders': [{'algoId': 77, 'orderType': 'STOP_MARKET', 'side': 'SELL', 'positionSide': 'LONG', 'quantity': str(lot['qty']),
                                           'triggerPrice': str(lot['stop']), 'clientAlgoId': 'za' + '7' * 22}] if 'a:77' in live else []})
         if p == '/v1/order' and m == 'POST': n['o'] += 1; live.add(f"o:{n['o']}"); return Resp(200, {'orderId': n['o'], 'status': 'NEW'})
         if m == 'DELETE': live.discard(('a:' if 'lgo' in p else 'o:') + str(q.get('algoId') or q.get('orderId'))); return Resp(200, {})
