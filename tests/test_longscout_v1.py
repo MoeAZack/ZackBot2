@@ -5842,3 +5842,121 @@ def test_v88_regime_gate_and_hour_zero(monkeypatch):
             g = _sig(key, coin, btc)
             assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
             monkeypatch.undo()
+
+
+import longscout_v89 as L89
+L89.register()
+
+_V89_COIN = {'l89_broad_volume_uptrend_4h': lambda: _ms(_mk(2600, '4h', 49)),
+             's89_broad_volume_downtrend_4h': lambda: _ms(_mk(2600, '4h', 49))}
+
+
+@pytest.mark.parametrize('key', sorted(L89.CANDIDATES))
+def test_v89_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V89_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l89': le.sum() and not se.any(), 's89': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent - 1) | set(ent) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v89_ref(D, up, m=30, n=120):
+    days = list(D.index); c = [float(x) for x in D.c]; v = [float(x) for x in D.v]; L = len(c)
+    H = [None] * L
+    for t in range(m - 1, L):
+        q = [c[s] * v[s] for s in range(t - m + 1, t + 1)]; T = sum(q)
+        H[t] = sum((x / T) ** 2 for x in q)
+
+    def low(t):
+        return H[t] < min(H[t - n:t])
+
+    res = np.zeros(L, bool)
+    for j in range(m + n, L):
+        if days[j] - days[j - (m + n)] != pd.Timedelta(days=m + n):
+            continue
+        R = math.log(c[j] / c[j - m])
+        res[j] = low(j) and not low(j - 1) and (R > 0 if up else R < 0)
+    return res
+
+
+def test_v89_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (49, 45, 47, 51):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for up in (True, False):
+            v = L89._broad_v(D, L89.IP, up).values
+            np.testing.assert_array_equal(v, _v89_ref(D, up), err_msg=str((seed, up)))
+            hits[up] = hits.get(up, 0) + int(v.sum())
+            if seed == 49:
+                for cut in range(160, len(D), 37):
+                    np.testing.assert_array_equal(L89._broad_v(D.iloc[:cut], L89.IP, up).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(L89._broad_v(gap, L89.IP, up).values, _v89_ref(gap, up))
+    assert all(hits.values()), hits
+
+
+def test_v89_hhi_definition():
+    idx = pd.date_range('2022-01-01', periods=40, freq='D')
+    D = pd.DataFrame(dict(h=2.0, l=2.0, c=2.0, v=5.0), index=idx)
+    assert np.allclose(L89._hhi(D, 30).values[29:], 1 / 30)                   # equal days: the minimum 1/30
+    D2 = D.copy(); D2.loc[idx[35], 'v'] = 5.0 * 1e9                           # one day dominates: close to 1
+    assert L89._hhi(D2, 30).iloc[35] > 0.99
+    D3 = D.copy(); D3.loc[idx[35], 'c'] = 4.0                                 # dollar volume, not raw volume
+    assert L89._hhi(D3, 30).iloc[35] > 1 / 30 + 1e-6
+
+
+def test_v89_boundaries(monkeypatch):
+    L_ = 158
+    idx = pd.date_range('2022-01-01', periods=L_, freq='D')
+    def run(H, c, up):
+        D = pd.DataFrame(dict(h=c, l=c, c=c, v=1.0), index=idx)
+        monkeypatch.setattr(L89, '_hhi', lambda D, m: pd.Series(H, index=D.index))
+        out = L89._broad_v(D, L89.IP, up).values[150:].tolist()
+        monkeypatch.undo()
+        return out
+    H = np.r_[np.full(29, np.nan), np.full(121, 1.0), [0.9, 0.8, 0.8, 1.0, 1.0, 0.7, 2.0, 2.0]]   # rows 150..157
+    rise = np.exp(np.linspace(0, 1, L_)); fall = 1 / rise
+    assert run(H, rise, True) == [True, False, False, False, False, True, False, False]
+    assert run(H, fall, False) == [True, False, False, False, False, True, False, False]
+    assert not any(run(H, rise, False)) and not any(run(H, fall, True))
+    H2 = H.copy(); H2[150] = 1.0
+    assert run(H2, rise, True)[:2] == [False, True]
+    eq = rise.copy(); eq[150] = eq[120]; eqf = fall.copy(); eqf[150] = eqf[120]
+    assert run(H, eq, True)[0] is False and run(H, eqf, False)[0] is False   # R exactly 0
+    base = rise.copy(); base[121] = 5.0; fb = fall.copy(); fb[121] = 0.01      # only day j-30 is the base of R
+    assert run(H, base, True)[0] is True and run(H, fb, False)[0] is True
+    Hx = H.copy(); Hx[30] = 0.85                                              # day j-120 is still inside the 120-day window
+    assert run(Hx, rise, True)[0] is False
+    gap = pd.date_range('2022-01-01', periods=L_ + 1, freq='D').delete(2)
+    D = pd.DataFrame(dict(h=rise, l=rise, c=rise, v=1.0), index=gap)
+    monkeypatch.setattr(L89, '_hhi', lambda D, m: pd.Series(np.r_[np.full(29, np.nan), np.full(122, 1.0), [0.9, 1.0, 0.8],
+                                                                  np.full(4, 1.0)], index=D.index))
+    # row 151 is day 152: j-150 = day 2 missing -> no signal; row 153 (day 154) has days 4..154 complete
+    assert L89._broad_v(D, L89.IP, True).values[151:154].tolist() == [False, False, True]
+
+
+def test_v89_regime_gate_and_hour_zero(monkeypatch):
+    btc = _ms(_mk(2600, '4h', 52))
+    for key, up, ok in (('l89_broad_volume_uptrend_4h', True, (1,)), ('s89_broad_volume_downtrend_4h', False, (-1,))):
+        coin = _V89_COIN[key](); d = S.indicators(coin); cr = L.coin_regime(d)
+        f = np.asarray(L89._broad(d, L89.IP, up))
+        full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+        assert got.any(), key
+        np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+        t = pd.to_datetime(coin.t).dt.normalize()
+        for i in np.flatnonzero(got)[:15]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=100)].reset_index(drop=True)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            g = _sig(key, cut, btc)
+            assert not (np.asarray(g['le'])[k0] or np.asarray(g['se'])[k0]), key
+        for forced in (1.0, 0.0, -1.0):
+            monkeypatch.setattr(L89.L1, 'coin_regime', lambda d, v=forced: np.full(len(d), v))
+            g = _sig(key, coin, btc)
+            assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
+            monkeypatch.undo()
