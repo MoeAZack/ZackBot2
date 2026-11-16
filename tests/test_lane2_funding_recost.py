@@ -1,5 +1,5 @@
 import unittest
-from tools.research.lane2_funding_recost import recost_trade, quantities, ORIGINAL_LUNC
+from tools.research.lane2_funding_recost import recost_trade, quantities, ORIGINAL_LUNC, expand_job, rate_coverage_gaps
 from tools.research.lane2_funding_history import validate_page
 
 
@@ -75,6 +75,31 @@ class ReCostTests(unittest.TestCase):
     def test_wrong_query_range_rejected(self):
         r = dict(self.event(), symbol='BTCUSDT')
         with self.assertRaises(ValueError): validate_page([r], 'BTCUSDT', 11000, 20000)
+
+    def test_cost_expansion_uses_matching_baseline(self):
+        t = self.trade(); t['pnl_by_cost'] = {'7': '22', '15': '20', '23': '18'}
+        j = dict(job_id='lead', parity={'pass': True}, trades=[t])
+        rows = list(expand_job(j))
+        self.assertEqual([r['cost_bp'] for r in rows], [7, 15, 23])
+        self.assertEqual([r['trades'][0]['baseline_R'] for r in rows], [2.2, 2, 1.8])
+        self.assertTrue(all(r['parity']['matches'] for r in rows))
+
+    def test_empty_rate_history_is_a_gap(self):
+        self.assertTrue(rate_coverage_gaps({'events': []}, 0, 1000))
+
+    def test_interior_cadence_gap_not_zeroed(self):
+        c = dict(events=[self.event(0), self.event(40000000)], cadence_gaps=[(0, 40000000)])
+        self.assertTrue(rate_coverage_gaps(c, 10000, 30000000))
+
+    def test_native_mark_always_overrides_proxy(self):
+        p = {('BTCUSDT', 10000): dict(value='999', low='900', high='1000')}
+        r = recost_trade(self.trade(), [self.event()], 10000, p, True)
+        self.assertFalse(r['labelled_proxy'])
+        self.assertEqual(r['funding_cash'], -2)
+
+    def test_nonfinite_proxy_rejected(self):
+        p = {('BTCUSDT', 10000): dict(value='NaN', low='90', high='110')}
+        with self.assertRaises(ValueError): recost_trade(self.trade(), [self.event(mark='')], 10000, p, True)
 
 
 if __name__ == '__main__': unittest.main()

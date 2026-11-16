@@ -7,6 +7,12 @@ The full-range retrieval found additional missing marks. Their candles may be ac
 as public source facts, but economic substitution beyond the original four remains
 pending the owner's answer to the extension question. No omission or zero substitution.
 
+Authorization amendment, 16 November 2026, before economic re-costing: the owner answered
+"Yes, apply it to additional needed LUNC marks", then "Yes, extend the labelled proxy to
+all required missing marks". The same disclosure, affected-result flags and OHLC bounds
+therefore apply to every required missing settlement mark, across all symbols. This
+supersedes the pending-extension restriction above; no strategy or timing rule changes.
+
 All computation stays in the isolated lane-2 clone. Research only; no runtime, accounts,
 keys, settings, schedulers, watchdogs, orders, installations, canary actions or mainnet.
 No strategy rules, thresholds, universe orders, trade paths or historical sizing change.
