@@ -4374,8 +4374,9 @@ class Engine:
             self._apply_close(l, new, px or l.get('tp_px') or l['avg'], TP_EXIT)
             self._px_unmeasured(l, measured=bool(px))                     # FILL-PNL-01: no px = booked at the TP limit
             l['tp_done'] = (l.get('tp_done') or 0.0) + new
-        if was_held:                                # one durable write holds the booking AND the end of the hold: an
-            l.pop('tp_held', None); self._tpq_release(l)   # interruption before it leaves the hold (the record is re-read)
+            if l['qty'] > 0: l['stop_dirty'] = True     # LANE3-F1-TP r6 (Codex #368 r7): the resize is owed in the SAME
+        if was_held:                                    # durable write as the booking (old stop kept until replaced);
+            l.pop('tp_held', None); self._tpq_release(l)   # one write: booking + resize owed + end of the hold (r5/r6)
         if new > 0:
             self.notify(f"🎯 TAKE PROFIT {l['side']} {sym} [{l['sleeve']}] {new:g} @ {px or l.get('tp_px')} (resting exchange target)")
         if l['qty'] <= 0:

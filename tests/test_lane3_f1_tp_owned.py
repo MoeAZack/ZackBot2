@@ -397,3 +397,31 @@ def test_r5_an_interruption_before_booking_keeps_the_hold_and_the_restart_books_
     import json
     doc = json.load(open(e2.F['state'], encoding='utf-8'))
     assert doc['lots'][k]['tp_done'] == pytest.approx(q / 2) and cid not in (doc.get('tp_quarantine') or {})
+
+
+# ---- r6: Codex #368 round 7 (c6930316917): the stop resize is owed in the same durable write ----
+@pytest.mark.parametrize('extra', [False, True])
+def test_r6_restart_right_after_the_durable_partial_booking_keeps_the_stop_resize_due(extra):
+    e, tmp = mk(); k = open_(e); lot = e.state['lots'][k]
+    tag, cid = lot['tp_id'], lot['tp_cid']
+    row, rec = e.trade.tps.pop(tag), e.trade.recs.pop(cid)
+    verify(e, later=3600)
+    e.trade.tps[tag], e.trade.recs[cid] = row, rec
+    q = lot['qty']; e.trade.fill_tp(tag, qty=q / 2, final=False)
+    real = e._tpq_release
+    def save_then_crash(l):
+        real(l); raise _Crash('process stopped right after the durable write')
+    e._tpq_release = save_then_crash
+    with pytest.raises(_Crash): verify(e, later=3700)
+    if extra: e.trade.pos[('BTCUSDT', 'LONG')] += q / 2                  # hedge mode: another same-side 0.5
+    old_stop = lot['stop_id']
+    assert e.trade.stops[old_stop][2] == pytest.approx(q)                 # the exchange stop is still the old size
+    e2 = _restart(tmp, e.trade)
+    l2 = e2.state['lots'][k]
+    assert l2['qty'] == pytest.approx(q / 2) and l2['tp_done'] == pytest.approx(q / 2) and not l2.get('tp_held')
+    assert l2.get('stop_dirty'), 'the reload lost the owed stop resize'
+    e2.manage(e2.trade.marks()); verify(e2, later=3800)
+    mine = [v for v in e2.trade.stops.values() if v[0] == 'BTCUSDT' and v[1] == 'LONG']
+    assert len(mine) == 1 and mine[0][2] == pytest.approx(q / 2) and old_stop not in e2.trade.stops
+    assert not l2.get('stop_dirty') and l2['stop_id'] in e2.trade.stops
+    assert sum(f[2] for f in l2['fills'] if f[1] == 'take_profit_resting') == pytest.approx(q / 2)   # booked once
