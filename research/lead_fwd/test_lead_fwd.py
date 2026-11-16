@@ -31,9 +31,17 @@ def test_freeze_matches_committed_sha_and_cases():
     orig9 = {'ADAUSDT', 'AVAXUSDT', 'BNBUSDT', 'BTCUSDT', 'DOGEUSDT', 'ETHUSDT', 'LINKUSDT', 'SOLUSDT', 'XRPUSDT'}
     assert not orig9 & set(fz['universe']['fresh134'] + fz['universe']['extra31'])
     assert set(fz['leads']) == {'l24_breakaway_day_4h', 's26_weekly_close_breakdown_4h', 's36_max_effect_4h', 'l40_dual_momentum_4h',
-                                's40_relative_weakness_4h', 's51_momentum_accel_4h', 's54_double_top_4h'}
+                                's40_relative_weakness_4h', 's51_momentum_accel_4h', 's54_double_top_4h',
+                                's76_uptrend_line_break_4h', 'r74_prior_month_break_4h'}
     assert fz['leads']['s54_double_top_4h']['addendum'] == 'LEADFWD-01-A1-S54'
     assert fz['leads']['s54_double_top_4h']['t_fwd_ms'] >= fz['t_fwd_ms']
+    for k in ('s76_uptrend_line_break_4h', 'r74_prior_month_break_4h'):        # A4: later, flat start on a 00:00 UTC boundary
+        L = fz['leads'][k]
+        assert L['addendum'] == 'LEADFWD-01-A4-S76-R74' and L['t_fwd_ms'] == 1794873600000 > fz['t_fwd_ms']
+        assert L['t_fwd_ms'] == int(pd.Timestamp(L['t_fwd_utc'], tz='UTC').value // 10 ** 6)
+    assert fz['leads']['s76_uptrend_line_break_4h']['commit'].startswith('b528105d')
+    assert fz['leads']['r74_prior_month_break_4h']['commit'].startswith('8d675af2')
+    assert fz['leads']['r74_prior_month_break_4h']['side'] == 'both'          # both sides exactly as frozen; no short-only variant
     for k, L in fz['leads'].items():
         c = json.load(open(os.path.join(ROOT, L['cases_file']), encoding='utf-8'))
         case = c['cases'][k]
@@ -67,13 +75,13 @@ def test_addendum_is_pinned_and_cannot_touch_existing_books(tmp_path, monkeypatc
     with pytest.raises(SystemExit): RF.load_freeze(check=True)
     setup(dict(A, leads={'l24_breakaway_day_4h': A['leads']['s54_double_top_4h']}))
     with pytest.raises(SystemExit): RF.load_freeze(check=True)
-    setup(dict(A, t_fwd_ms=A['t_fwd_ms'] - 86400000))
-    with pytest.raises(SystemExit): RF.load_freeze(check=True)
+    setup(dict(A, t_fwd_ms=A['t_fwd_ms'] - 86400000, t_fwd_utc='2026-11-15 00:00'))   # consistent times, one day early
+    with pytest.raises(SystemExit, match='before the main t_fwd'): RF.load_freeze(check=True)
 
 
 def test_integrity_amendment_needs_its_exact_parents(tmp_path, monkeypatch):
     fz = RF.load_freeze(check=True)
-    assert fz['integrity_amendments'] == ['A2', 'A3'] and fz['code_sha256'] == RF.code_shas()
+    assert fz['integrity_amendments'] == ['A2', 'A3', 'A4'] and fz['code_sha256'] == RF.code_shas()
     f = tmp_path / 'freeze.json'; f.write_text(open(RF.FREEZE, encoding='utf-8').read() + '\n', encoding='utf-8')   # a different parent
     (tmp_path / 'freeze.sha256').write_text(hashlib.sha256(f.read_bytes()).hexdigest(), encoding='utf-8')
     monkeypatch.setattr(RF, 'FREEZE', str(f)); monkeypatch.setattr(RF, 'FREEZE_SHA_FILE', str(tmp_path / 'freeze.sha256'))
@@ -82,7 +90,7 @@ def test_integrity_amendment_needs_its_exact_parents(tmp_path, monkeypatch):
 
 def test_a3_is_bound_to_a2(tmp_path, monkeypatch):
     fz = RF.load_freeze(check=True)
-    assert fz['integrity_amendments'] == ['A2', 'A3']
+    assert fz['integrity_amendments'] == ['A2', 'A3', 'A4']
     import shutil
     for f in os.listdir(HERE):
         if f.startswith('freeze'): shutil.copy(os.path.join(HERE, f), tmp_path / f)
@@ -92,6 +100,105 @@ def test_a3_is_bound_to_a2(tmp_path, monkeypatch):
     monkeypatch.setattr(RF, 'HERE', str(tmp_path)); monkeypatch.setattr(RF, 'FREEZE', str(tmp_path / 'freeze.json'))
     monkeypatch.setattr(RF, 'FREEZE_SHA_FILE', str(tmp_path / 'freeze.sha256'))
     with pytest.raises(SystemExit, match='parent amendment'): RF.load_freeze(check=True)
+
+
+def _copy_freeze(tmp_path, monkeypatch):
+    import shutil
+    for f in os.listdir(HERE):
+        if f.startswith('freeze'): shutil.copy(os.path.join(HERE, f), tmp_path / f)
+    monkeypatch.setattr(RF, 'HERE', str(tmp_path)); monkeypatch.setattr(RF, 'FREEZE', str(tmp_path / 'freeze.json'))
+    monkeypatch.setattr(RF, 'FREEZE_SHA_FILE', str(tmp_path / 'freeze.sha256'))
+
+
+def _set_a4(tmp_path, addendum=None, amend=None):
+    """Rewrite the A4 book addendum and/or A4 amendment in the copy, re-pinning shas so that only the tested guard can refuse."""
+    ad = tmp_path / 'freeze_a4_s76_r74.json'
+    if addendum is not None: ad.write_text(json.dumps(addendum), encoding='utf-8')
+    a4p = tmp_path / 'freeze_amendment_a4.json'
+    A4 = json.loads(a4p.read_text(encoding='utf-8'))
+    A4['addenda'] = [dict(file='freeze_a4_s76_r74.json', sha256=hashlib.sha256(ad.read_bytes()).hexdigest())]
+    if amend: A4.update(amend)
+    a4p.write_text(json.dumps(A4), encoding='utf-8')
+    (tmp_path / 'freeze_amendment_a4.sha256').write_text(hashlib.sha256(a4p.read_bytes()).hexdigest(), encoding='utf-8')
+
+
+def test_a4_adds_books_only_with_a_later_flat_start(tmp_path, monkeypatch):
+    _copy_freeze(tmp_path, monkeypatch)
+    ad = json.load(open(os.path.join(HERE, 'freeze_a4_s76_r74.json'), encoding='utf-8'))
+    _set_a4(tmp_path, ad); assert 'r74_prior_month_break_4h' in RF.load_freeze(check=True)['leads']
+    s76 = ad['leads']['s76_uptrend_line_break_4h']
+    for bad, why in [(dict(ad, leads={'s54_double_top_4h': s76}), 'existing book'),
+                     (dict(ad, leads={'l24_breakaway_day_4h': s76}), 'existing book'),
+                     (dict(ad, t_fwd_ms=1794787200000, t_fwd_utc='2026-11-16 00:00'), 'after the main t_fwd'),
+                     (dict(ad, t_fwd_ms=1794787200000 - 86400000), 'main t_fwd'),
+                     (dict(ad, t_fwd_ms=1794873600000 + 3600000), '00:00 UTC')]:
+        _set_a4(tmp_path, bad)
+        with pytest.raises(SystemExit, match=why): RF.load_freeze(check=True)
+    _set_a4(tmp_path, ad, amend=dict(at_ms=1794873600000, at_utc='2026-11-17 00:00:00'))                 # amendment written at/after the start = backfill
+    with pytest.raises(SystemExit, match='amendment time'): RF.load_freeze(check=True)
+
+
+def test_a4_addendum_is_pinned_and_a4_is_bound_to_a3(tmp_path, monkeypatch):
+    _copy_freeze(tmp_path, monkeypatch)
+    ad = tmp_path / 'freeze_a4_s76_r74.json'
+    ad.write_text(ad.read_text(encoding='utf-8') + '\n', encoding='utf-8')     # changed addendum, A4 pin not updated
+    with pytest.raises(SystemExit, match='differs from the sha pinned in freeze_amendment_a4'): RF.load_freeze(check=True)
+    _copy_freeze(tmp_path, monkeypatch)
+    a3 = tmp_path / 'freeze_amendment_a3.json'
+    a3.write_text(a3.read_text(encoding='utf-8') + '\n', encoding='utf-8')
+    (tmp_path / 'freeze_amendment_a3.sha256').write_text(hashlib.sha256(a3.read_bytes()).hexdigest(), encoding='utf-8')
+    with pytest.raises(SystemExit, match='parent amendment'): RF.load_freeze(check=True)   # A3 passes its own checks; A4 refuses
+    _copy_freeze(tmp_path, monkeypatch)
+    monkeypatch.setattr(RF, 'INTEGRITY_AMENDMENTS', ['freeze_amendment_a2.json', 'freeze_amendment_a4.json'])
+    (tmp_path / 'freeze_amendment_a3.json').write_text('{}', encoding='utf-8')              # A3 dropped from the chain and altered
+    with pytest.raises(SystemExit, match='declared parent'): RF.load_freeze(check=True)
+
+
+def test_a4_leaves_the_seven_original_books_unchanged(monkeypatch):
+    new = RF.load_freeze(check=True)
+    monkeypatch.setattr(RF, 'INTEGRITY_AMENDMENTS', ['freeze_amendment_a2.json', 'freeze_amendment_a3.json'])
+    old = RF.load_freeze(check=False)
+    assert len(old['leads']) == 7 and all(new['leads'][k] == v for k, v in old['leads'].items())
+    for k in ('t_fwd_ms', 't_fwd_utc', 'universe', 'rule', 'review', 'costs_proxy', 'forward_fetch', 'clock'):
+        assert new[k] == old[k]
+
+
+def test_not_started_only_for_later_books_before_their_own_start():
+    fz = RF.load_freeze(check=True)
+    main, late = fz['leads']['l24_breakaway_day_4h'], fz['leads']['s76_uptrend_line_break_4h']
+    for B, l in [(1790000000000, True), (1794787200000, True), (1794873600000, True), (1794960000000, False)]:
+        assert RF.not_started(fz, main, B) is False and RF.not_started(fz, late, B) is l   # originals always run (dry runs too)
+    assert RF.not_started(fz, late, 1794873600000, '2026-11-16 00:00') is False      # a test override applies to every book
+
+
+def test_addendum_and_amendment_times_must_agree(tmp_path, monkeypatch):     # adversarial D1/D2
+    _copy_freeze(tmp_path, monkeypatch)
+    ad = json.load(open(os.path.join(HERE, 'freeze_a4_s76_r74.json'), encoding='utf-8'))
+    _set_a4(tmp_path, dict(ad, t_fwd_utc='2026-11-16 00:00'))                 # ms says 17 Nov, utc says 16 Nov
+    with pytest.raises(SystemExit, match='disagree'): RF.load_freeze(check=True)
+    _set_a4(tmp_path, ad, amend=dict(at_utc='2026-11-18 09:30:00'))           # time text after the start, ms before it
+    with pytest.raises(SystemExit, match='disagree'): RF.load_freeze(check=True)
+
+
+def test_late_first_scored_book_is_noted(monkeypatch):                         # adversarial D3: recorded, never hidden
+    fz = RF.load_freeze(check=True)
+    lead = dict(primary=dict(closed=[], open=[], stats=dict(n=0)), signals=dict(n=0, rows=[]))
+    prev = dict(boundary_ms=1794960000000, boundary_utc='2026-11-18 00:00', leads={'l24_breakaway_day_4h': lead})
+    cur = dict(leads={'l24_breakaway_day_4h': lead, 's76_uptrend_line_break_4h': lead})
+    n = RF.late_books(fz, prev, cur)
+    assert len(n) == 1 and n[0].startswith('s76_uptrend_line_break_4h: first scored row') and '2026-11-16 09:16:45' in n[0]
+    assert RF.late_books(fz, dict(prev, boundary_ms=1794873600000), cur) == []     # earlier row was before its start: normal
+    assert RF.late_books(fz, dict(prev, leads=cur['leads']), cur) == []
+
+
+def test_parity_with_not_started_books():
+    def lead(n):
+        return dict(primary=dict(closed=[], open=[], stats=dict(n=n)), signals=dict(n=0, rows=[]))
+    prev = dict(boundary_utc='2026-11-17 00:00', leads={'l24': lead(0), 's76': dict(status='NOT_STARTED')})
+    cur = dict(leads={'l24': lead(0), 's76': lead(0)})
+    assert RF.parity(prev, cur) == []                                           # a book may start after an earlier row
+    assert RF.parity(dict(prev, leads={'s76': lead(0)}), dict(leads={'s76': dict(status='NOT_STARTED')}))   # never un-start
+    assert RF.parity(dict(prev, leads={'s76': lead(0)}), dict(leads={}))        # never vanish
 
 
 @pytest.mark.skipif(not os.path.exists(os.path.join(ROOT, 'data_long', '1h', 'BTCUSDT_1h.csv')), reason='sample data missing')
@@ -401,7 +508,7 @@ def test_two_boundaries_replay_exactly_and_never_rewrite(tmp_path):
     r1 = json.load(open(tmp_path / 'rows' / 'test' / str(B1) / 'row.json', encoding='utf-8'))
     r2 = json.load(open(tmp_path / 'rows' / 'test' / str(B2) / 'row.json', encoding='utf-8'))
     assert r1['status'] == r2['status'] == 'COMPLETE' and r2['parity_with_boundary_ms'] == B1 and r2['kind'] == 'TEST'
-    assert len(r2['leads']) == 7 and all('primary' in v for v in r2['leads'].values())
+    assert len(r2['leads']) == 9 and all('primary' in v for v in r2['leads'].values())
     n1 = sum(v['primary']['stats']['n'] for v in r1['leads'].values()); n2 = sum(v['primary']['stats']['n'] for v in r2['leads'].values())
     assert 0 < n1 < n2
     for v in r2['leads'].values():
@@ -425,8 +532,42 @@ def test_cut_coin_row_is_incomplete_but_books_still_run(tmp_path):
     assert r1['status'] == 'COMPLETE'
     assert r2['status'] in ('INCOMPLETE', 'NONPARITY') and r2['dropped_from_universe'] == ['1000SHIBUSDT']
     assert any(p.startswith('1000SHIBUSDT: missing prices') for p in r2['problems'])
-    assert len(r2['leads']) == 7 and all('primary' in v for v in r2['leads'].values())
+    assert len(r2['leads']) == 9 and all('primary' in v for v in r2['leads'].values())
     for v in r2['leads'].values():
         assert all(t['sym'] != '1000SHIBUSDT' or t['t_out'] < r1['boundary_utc'] for t in v['primary']['closed'])
     held = any(t['sym'] == '1000SHIBUSDT' for v in r1['leads'].values() for t in v['primary']['closed'] + v['primary']['open'])
     assert (r2['status'] == 'NONPARITY') == held      # dropping the coin rewrites the past only if it had a trade
+
+
+@pytest.mark.skipif(not SAMPLE, reason='sample data missing')
+def test_books_before_their_own_start_are_not_started_and_never_run(tmp_path):
+    B = pd.Timestamp('2026-10-04').value // 10 ** 6                   # before every frozen start (no --t-fwd override)
+    base = _fixture(tmp_path, [B])
+    r = subprocess.run([sys.executable, os.path.join(HERE, 'run_fwd.py'), str(tmp_path / 'fwd'), str(tmp_path / 'rows'), '--boundary-ms', str(B),
+                        '--fresh', str(base), '--skip-base-verify', '--orders', '2', '--keep-work'], capture_output=True, text=True, encoding='utf-8')
+    assert r.returncode == 0, r.stderr[-3000:]
+    row = json.load(open(tmp_path / 'rows' / 'test' / str(B) / 'row.json', encoding='utf-8'))
+    late = ('s76_uptrend_line_break_4h', 'r74_prior_month_break_4h')
+    assert len(row['leads']) == 9 and all(row['leads'][k]['status'] == 'NOT_STARTED' and 'primary' not in row['leads'][k] for k in late)
+    assert row['leads']['s76_uptrend_line_break_4h']['t_fwd_utc'] == '2026-11-17 00:00'
+    orig = [k for k in row['leads'] if k not in late]                       # the seven originals still run (flat, before start)
+    assert len(orig) == 7 and all(row['leads'][k]['primary']['stats']['n'] == 0 and row['leads'][k]['t_fwd'] == '2026-11-16 00:00' for k in orig)
+    assert row['integrity_amendments'] == ['A2', 'A3', 'A4'] and row['flags'] == [] and row['pooled']['n'] == 0
+    assert not any((tmp_path / 'rows' / '_work' / str(B) / k).exists() for k in late)   # no worker ran for a later book
+    assert all((tmp_path / 'rows' / '_work' / str(B) / k).exists() for k in orig)
+    assert 'NOT_STARTED' in open(tmp_path / 'rows' / 'test' / str(B) / 'summary.md', encoding='utf-8').read()
+
+
+@pytest.mark.skipif(not SAMPLE, reason='sample data missing')
+def test_book_first_scored_after_an_earlier_row_is_noted_in_the_row(tmp_path):
+    B1 = pd.Timestamp('2026-03-15').value // 10 ** 6; B2 = pd.Timestamp('2026-04-15').value // 10 ** 6
+    base = _fixture(tmp_path, [B1, B2])
+    r = subprocess.run([sys.executable, os.path.join(HERE, 'run_fwd.py'), str(tmp_path / 'fwd'), str(tmp_path / 'rows'), '--boundary-ms', str(B1),
+                        '--fresh', str(base), '--skip-base-verify', '--orders', '2', '--t-fwd', '2026-01-01 00:00', '--leads', 's76_uptrend_line_break_4h'],
+                       capture_output=True, text=True, encoding='utf-8')
+    assert r.returncode == 0, r.stderr[-3000:]
+    r = _run(tmp_path, base, B2); assert r.returncode == 0, r.stderr[-3000:]
+    row = json.load(open(tmp_path / 'rows' / 'test' / str(B2) / 'row.json', encoding='utf-8'))
+    assert row['parity_with_boundary_ms'] == B1 and row['status'] == 'COMPLETE'
+    assert sorted(n.split(':')[0] for n in row['notes']) == sorted(k for k in row['leads'] if k != 's76_uptrend_line_break_4h')
+    assert 'Notes: ' in open(tmp_path / 'rows' / 'test' / str(B2) / 'summary.md', encoding='utf-8').read()

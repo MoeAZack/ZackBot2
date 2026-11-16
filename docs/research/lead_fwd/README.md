@@ -46,7 +46,7 @@ python research/lead_fwd/run_fwd.py C:/Dev/ZackBot_research_cache/leadfwd01_fetc
 ```
 Before the start, one **dry run** at B = 2026-11-15 00:00 UTC (1794700800000) checks the base caches, the overlap with the fresh fetch and the
 runtime. It is written under `rows/dryrun/` and is not evidence.
-No scheduler is installed by this code. A daily scheduled task on the PC needs moe's approval written in the project thread.
+No scheduler is installed by this code. The approved PC task is described under "Daily task (PC)" below.
 
 ## Amendment A0 (before t_fwd, no row existed)
 An adversarial review found these problems in the first freeze (eb093eeb), and A0 fixes them:
@@ -80,6 +80,32 @@ Codex put A2 on HOLD (#351 comment 6902417655) over two remaining gaps, and A3 c
 - **A real mismatch wins.** Overlapping bars are compared first. Any bar that differs is a MISMATCH, which stops every book for that row, even if other overlap bars are missing.
 
 A3 is a separate file, `freeze_amendment_a3.json`. It binds the shas of `freeze.json`, `freeze_a1_s54.json` and `freeze_amendment_a2.json`, all of which are byte-identical to before. The runner checks every link in that chain.
+
+## Amendment A4: two new books, s76 and r74 (after the main t_fwd; their own later start)
+moe approved adding the two leads that Codex reproduced in #347 6901683042 ("do the 4", 16 Nov 08:36 UTC):
+- `s76_uptrend_line_break_4h` (short): rules b528105d, cases 8ab4ab22. Screen +0.035 R15, 223 closes, ex-top5 +0.018, every year positive. The edge is small.
+- `r74_prior_month_break_4h` (both sides): rules 8d675af2, cases 3fbb578e. Screen +0.054 R15, 215 closes. It is **fragile**: order 0 without its best 3 trades is -0.005, and the shorts carry it while the longs are negative. It runs exactly as frozen, on both sides. A short-only variant would be a new hypothesis, and it is not run.
+
+How A4 works:
+- The two books are frozen in `freeze_a4_s76_r74.json` with **their own t_fwd of 2026-11-17 00:00 UTC**. They start flat, with no backfill.
+- The main start has already passed, so `freeze.json` stays byte-identical. A4 is an integrity amendment, `freeze_amendment_a4.json`. It pins the new addendum by sha and binds the shas of freeze.json, A1, A2 and A3. It also pins the new runner code.
+- The runner accepts a later addendum only if all of these hold:
+  - its sha matches the pin;
+  - it touches no existing book;
+  - it starts after the main t_fwd, on a 00:00 UTC boundary;
+  - it starts after the amendment's own time.
+- In a row at boundary B, a book added later whose own t_fwd is at or after B is recorded as **NOT_STARTED**. It is not run or scored. The seven original books run exactly as before, including in dry runs. A book that was scored in an earlier row can never become NOT_STARTED or vanish; if that happens, the row is NONPARITY.
+- If a book is scored for the first time after an earlier row whose boundary was already past its start (for example, because the PC moved to the A4 head only after review), the row adds a **note** saying so. Its bars since t_fwd are replayed. That replay is valid only because the addendum was frozen before t_fwd. The proof is the amendment time together with the git push time.
+- The loader also checks that each `t_fwd_utc` matches its `t_fwd_ms`, and that the amendment's `at_utc` matches its `at_ms`.
+- Rows also record the ids of the integrity amendments.
+- The seven original books, the main t_fwd, coins, costs, rule v1 and the review rule are unchanged. A test checks this against the A3 view.
+- The 16 Nov dry run at B = t_fwd stays a pipeline check. The first scored row for the seven books is B = 17 Nov 00:00 UTC. s76 and r74 are first scored at B = 18 Nov 00:00 UTC, and only once Codex has passed A4. Until then, the PC keeps running the A3 head, and these two books are simply absent. Each row re-runs from each book's own t_fwd, so adding them later loses no forward bar.
+
+## Daily task (PC)
+moe approved in this thread on 16 Nov 08:37 UTC: "approve daily LEADFWD task at 02:15 Cairo on my PC". The Windows task is `ZackBot-LEADFWD-Daily`, and it runs `C:\Dev\ZackBot_research_cache\leadfwd01_daily\run_daily.ps1` daily at 02:15 Cairo.
+- It fetches the latest settled 00:00 UTC boundary and then runs `run_fwd.py` on the worktree's checked-out head.
+- It never rewrites a row and never commits or pushes. Rows are reviewed and pushed separately.
+- It runs as the logged-on user with StartWhenAvailable, and touches no account or runtime.
 
 ## Tests (cloud, non-official)
 `python -m pytest -q research/lead_fwd/test_lead_fwd.py` covers:

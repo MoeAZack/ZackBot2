@@ -1,4 +1,4 @@
-"""LEADFWD-01: forward book rows for six frozen LONGSCOUT leads on public data. RESEARCH ONLY.
+"""LEADFWD-01: forward book rows for the frozen LONGSCOUT leads (main freeze + addenda) on public data. RESEARCH ONLY.
 
 Each row is a pure re-run from t_fwd (freeze.json) over CLOSED bars before the boundary B:
   1. verify the freeze, every lead's frozen cases file, the pinned base history and the forward fetch manifest;
@@ -10,6 +10,7 @@ Each row is a pure re-run from t_fwd (freeze.json) over CLOSED bars before the b
 No network, account, key, order, PAPER, runtime or scheduler action.
   python research/lead_fwd/run_fwd.py <fwd_fetch_root> <rows_root> --boundary-ms B [--fresh DIR] [--extra DIR] [--orders 40]
 Rows before t_fwd (B <= t_fwd) are written under <rows_root>/dryrun/ and are pipeline checks, not forward evidence.
+A book added later with its own, later t_fwd (A4) is NOT_STARTED (not run, not scored) in every row with B <= its t_fwd.
 """
 import sys, os, json, hashlib, subprocess, argparse, shutil, time
 
@@ -19,13 +20,22 @@ X31 = os.path.join(ROOT, 'research', 'extra31_screen')
 sys.path.insert(0, X31)
 FREEZE = os.path.join(HERE, 'freeze.json')
 FREEZE_SHA_FILE = os.path.join(HERE, 'freeze.sha256')
-INTEGRITY_AMENDMENTS = ['freeze_amendment_a2.json', 'freeze_amendment_a3.json']   # applied in order; each pins the runner code that replaces the previous pins
+INTEGRITY_AMENDMENTS = ['freeze_amendment_a2.json', 'freeze_amendment_a3.json', 'freeze_amendment_a4.json']   # applied in order; each pins the runner code that replaces the previous pins
 H = 3600000
 COLS = ['o', 'h', 'l', 'c', 'v', 'qv']
 
 
 def sha(p):
     return hashlib.sha256(open(p, 'rb').read()).hexdigest()
+
+
+def add_books(fz, file, A):
+    """Add the books of a separately frozen addendum; never change an existing book; never start before the main t_fwd."""
+    if A['t_fwd_ms'] < fz['t_fwd_ms']: raise SystemExit(f'{file}: a book cannot start before the main t_fwd')
+    if utc_ms(A['t_fwd_utc']) != A['t_fwd_ms']: raise SystemExit(f'{file}: t_fwd_utc and t_fwd_ms disagree')
+    for k, L in A['leads'].items():
+        if k in fz['leads']: raise SystemExit(f'{file} would change the existing book {k}')
+        fz['leads'][k] = dict(L, t_fwd_utc=A['t_fwd_utc'], t_fwd_ms=A['t_fwd_ms'], addendum=A['id'])
 
 
 def load_freeze(check=True):
@@ -39,10 +49,7 @@ def load_freeze(check=True):
         p = os.path.join(HERE, ad['file'])
         if check and sha(p) != ad['sha256']: raise SystemExit(f'{ad["file"]} differs from the sha pinned in freeze.json')
         A = json.load(open(p, encoding='utf-8'))
-        if A['t_fwd_ms'] < fz['t_fwd_ms']: raise SystemExit(f'{ad["file"]}: a book cannot start before the main t_fwd')
-        for k, L in A['leads'].items():
-            if k in fz['leads']: raise SystemExit(f'{ad["file"]} would change the existing book {k}')
-            fz['leads'][k] = dict(L, t_fwd_utc=A['t_fwd_utc'], t_fwd_ms=A['t_fwd_ms'], addendum=A['id'])
+        add_books(fz, ad['file'], A)
     for name in INTEGRITY_AMENDMENTS:                   # A2+: replace only the runner code pins; never a book, date, coin or cost
         p = os.path.join(HERE, name)
         if check:
@@ -56,6 +63,19 @@ def load_freeze(check=True):
             for prev in INTEGRITY_AMENDMENTS[:INTEGRITY_AMENDMENTS.index(name)]:   # A3+: bound to every earlier amendment
                 if A.get('parent_amendments_sha256', {}).get(prev) != sha(os.path.join(HERE, prev)):
                     raise SystemExit(f'{name}: parent amendment {prev} sha differs')
+            for prev, h in A.get('parent_amendments_sha256', {}).items():      # A4+: every declared parent must match too
+                if not os.path.exists(os.path.join(HERE, prev)) or sha(os.path.join(HERE, prev)) != h:
+                    raise SystemExit(f'{name}: declared parent amendment {prev} sha differs')
+        for ad in A.get('addenda', []):                  # A4+: a later amendment may add NEW books with a later, flat start
+            q = os.path.join(HERE, ad['file'])
+            if check and sha(q) != ad['sha256']: raise SystemExit(f'{ad["file"]} differs from the sha pinned in {name}')
+            B4 = json.load(open(q, encoding='utf-8'))
+            if B4['t_fwd_ms'] <= fz['t_fwd_ms']: raise SystemExit(f'{ad["file"]}: a book added after the start must start after the main t_fwd')
+            if B4['t_fwd_ms'] % 86400000: raise SystemExit(f'{ad["file"]}: t_fwd must be a 00:00 UTC boundary')
+            if utc_ms(A['at_utc']) != A['at_ms']: raise SystemExit(f'{name}: at_utc and at_ms disagree')
+            if B4['t_fwd_ms'] <= A['at_ms']: raise SystemExit(f'{ad["file"]}: t_fwd must be after the amendment time (no backfill)')
+            add_books(fz, ad['file'], B4)
+            for k in B4['leads']: fz['leads'][k]['frozen_at_utc'] = A['at_utc']
         fz['code_sha256'] = A['code_sha256']
         fz.setdefault('integrity_amendments', []).append(A['id'])
     if check:
@@ -69,6 +89,20 @@ CODE = {'run_fwd.py': os.path.join(HERE, 'run_fwd.py'), 'fetch_fwd.py': os.path.
         'sieve_v1.py': os.path.join(X31, 'sieve_v1.py'), 'run_screen.py': os.path.join(X31, 'run_screen.py'),
         'contract.json': os.path.join(X31, 'contract.json'), 'sieve_v1_panel_cases.json': os.path.join(X31, 'sieve_v1_panel_cases.json'),
         'sieve_v1_mp_variant.json': os.path.join(X31, 'sieve_v1_mp_variant.json'), 'longscout_v1_cases.json': os.path.join(X31, 'longscout_v1_cases.json')}
+
+
+def utc_ms(t):
+    import pandas as pd
+    return int(pd.Timestamp(t, tz='UTC').value // 10 ** 6)
+
+
+def not_started(fz, L, B, t_override=None):
+    """A book added later with its own, later t_fwd is NOT_STARTED (not run, not scored) at every boundary B <= that t_fwd.
+    Books that start at the main t_fwd (the original seven) run exactly as before A4, including in dry runs. A test override
+    of t_fwd applies to every book alike, so no book is later than the main start under it."""
+    if t_override: return False
+    start = int(L.get('t_fwd_ms', fz['t_fwd_ms']))
+    return start > fz['t_fwd_ms'] and B <= start
 
 
 def code_shas():
@@ -361,6 +395,20 @@ def parity(prev, cur):
     return probs
 
 
+def late_books(fz, prev, cur, t_override=None):
+    """Books scored now that had already started by the earlier row's boundary but were absent or NOT_STARTED there (e.g. the
+    runner moved to a later amendment head after review). Their bars since t_fwd are replayed, which is only valid because the
+    addendum was frozen before t_fwd (amendment at_utc < t_fwd; the git push time is the proof). Recorded, never hidden."""
+    out = []
+    for k, c in cur['leads'].items():
+        L = fz['leads'].get(k, {})
+        start = utc_ms(t_override) if t_override else L.get('t_fwd_ms', fz['t_fwd_ms'])
+        if 'primary' in c and start < prev['boundary_ms'] and 'primary' not in prev['leads'].get(k, {}):
+            out.append(f"{k}: first scored row, although its t_fwd {L.get('t_fwd_utc')} is before the earlier row's boundary "
+                       f"{prev['boundary_utc']}; bars since t_fwd replayed from a freeze made at {L.get('frozen_at_utc', '?')} UTC")
+    return out
+
+
 def latest_row(rows_root, B):
     if not os.path.isdir(rows_root): return None
     """The latest earlier COMPLETE row (INCOMPLETE / NONPARITY rows are never a parity reference)."""
@@ -378,14 +426,15 @@ def summary_md(row):
          "Signals sit on the 00:00 UTC candle; modeled entries fill at the next bar open (04:00 UTC). s36/s40 are count-failed exploratory controls.", '',
          '| lead | closes | sum R15 | mean R15 | mean R23 | open | signals since start | 40-order median closes |', '|---|---|---|---|---|---|---|---|']
     for k, v in row['leads'].items():
-        if 'primary' not in v: L.append(f'| {k} | {v.get("status")} | | | | | | |'); continue
+        if 'primary' not in v: L.append(f'| {k} | {v.get("status")}' + (f' (starts {v["t_fwd_utc"]} UTC)' if v.get('t_fwd_utc') else '') + ' | | | | | | |'); continue
         s = v['primary']['stats']
         tag = ' (control)' if 'CONTROL' in v.get('label', '') else ''
         L.append(f"| {k}{tag} | {s['n']} | {s.get('sumR15', 0)} | {s.get('meanR15', '-')} | {s.get('meanR23', '-')} | {len(v['primary']['open'])} | "
                  f"{v['signals']['n']} | {v['orders']['median_closes']} |")
     p = row.get('pooled') or {}
-    L += ['', f"Pooled diagnostic (six books together, never a pass or decision): {p.get('n', 0)} closes, sum R15 {p.get('sumR15', 0)}."]
+    L += ['', f"Pooled diagnostic (all scored books together, never a pass or decision): {p.get('n', 0)} closes, sum R15 {p.get('sumR15', 0)}."]
     if row.get('flags'): L += ['', 'Flags: ' + '; '.join(row['flags'])]
+    if row.get('notes'): L += ['', 'Notes: ' + '; '.join(row['notes'])]
     if row.get('problems'): L += ['', 'Problems: ' + '; '.join(row['problems'])]
     cut = [s for s, i in row['coverage'].items() if i['status'] != 'OK']
     L += ['', f"Coverage: {len(row['coverage']) - len(cut)} of {len(row['coverage'])} series complete to the boundary" + (f"; cut: {', '.join(cut)}" if cut else '') + '.']
@@ -444,6 +493,8 @@ def main():
     if not any(p.startswith('BTCUSDT') or 'overlap mismatch' in p for p in problems):   # a cut coin: leads still run, the row stays INCOMPLETE
         for k in (a.leads.split(',') if a.leads else list(fz['leads'])):
             L = fz['leads'][k]
+            if not_started(fz, L, B, a.t_fwd):          # a later-added book has not started at this boundary: no run, no score
+                leads[k] = dict(status='NOT_STARTED', t_fwd_utc=L['t_fwd_utc'], label=L['label']); continue
             RS.CONTRACT['sources'][L['source']] = dict(commit=L['commit'], modules=L['modules'])
             out = os.path.join(work, k); os.makedirs(out, exist_ok=True)
             src = RS.export(L['source'], out)
@@ -456,13 +507,14 @@ def main():
     pooled = [r for v in leads.values() for r in (v.get('primary') or {}).get('closed', [])]
     row = dict(id='LEADFWD-01', boundary_ms=B, boundary_utc=time.strftime('%Y-%m-%d %H:%M', time.gmtime(B / 1000)),
                t_fwd_utc=a.t_fwd or fz['t_fwd_utc'], kind='TEST' if test else ('DRYRUN_BEFORE_START' if pre else 'FORWARD'),
-               freeze_sha256=sha(FREEZE), runner_sha256=sha(os.path.abspath(__file__)), code_sha256=code_shas(), fetch_manifest_sha256=fetch_sha,
+               freeze_sha256=sha(FREEZE), integrity_amendments=fz.get('integrity_amendments', []), runner_sha256=sha(os.path.abspath(__file__)), code_sha256=code_shas(), fetch_manifest_sha256=fetch_sha,
                coverage=cov, dropped_from_universe=dropped, leads=leads,
-               pooled=dict(label='DIAGNOSTIC ONLY: the six books pooled, never a pass or decision', n=len(pooled), sumR15=round(sum(r['R15'] for r in pooled), 4)),
+               pooled=dict(label='DIAGNOSTIC ONLY: all scored books pooled, never a pass or decision', n=len(pooled), sumR15=round(sum(r['R15'] for r in pooled), 4)),
                problems=problems, runtime_s=round(time.time() - t_start, 1))
     prev = latest_row(rows_root, B)
     if prev is not None and leads:
         problems += parity(prev, row); row['parity_with_boundary_ms'] = prev['boundary_ms']
+        row['notes'] = late_books(fz, prev, row, a.t_fwd)
     row['flags'] = review_flags(fz, leads)
     row['status'] = ('NONPARITY' if any('earlier row' in p or 'missing or differs' in p for p in problems)
                      else ('INCOMPLETE' if problems else 'COMPLETE'))
