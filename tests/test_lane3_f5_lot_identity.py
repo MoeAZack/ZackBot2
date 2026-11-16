@@ -201,3 +201,36 @@ def test_r2_the_seeded_mark_is_the_latest_referenced_second(monkeypatch):
     e.state[E.CANDIDATE_PENDING_KEY] = ids
     e._create_lot(dict(PLAN), 1., 100.)
     assert e.state['lot_key_seq']['MAN|BTCUSDT|LONG']['t'] == 1799000300
+
+
+# ---- r4 (Codex #363 6927870662): the migration seeds the SUFFIX high-water too, and both parts only go up ----
+def test_r4_codex_probe_migration_seeds_the_suffix_so_an_evicted_seen_id_is_never_reissued(monkeypatch):
+    e, clock = bare(monkeypatch)
+    seen = 'MAN|BTCUSDT|LONG|1799000000-2'                                   # legacy history row, no lot_key_seq yet
+    e.history = [dict(id=seen)]
+    issued = []
+    e._create_lot(dict(PLAN), 1., 100.); issued.append(e._last_lot_key)
+    assert e.state['lot_key_seq']['MAN|BTCUSDT|LONG']['n'] >= 2
+    e.history = []                                                            # ordinary history eviction
+    e._create_lot(dict(PLAN), 1., 100.); issued.append(e._last_lot_key)
+    assert seen not in issued and len(set(issued)) == 2, issued
+
+
+def test_r4_a_mark_older_than_its_references_is_raised_never_lowered(monkeypatch):
+    e, clock = bare(monkeypatch)
+    e.state['lot_key_seq'] = {'MAN|BTCUSDT|LONG': dict(t=1798999000, n=1)}  # stale mark from an older state copy
+    e.history = [dict(id='MAN|BTCUSDT|LONG|1799000000-7'), dict(id='MAN|BTCUSDT|LONG|1799000050')]
+    e._create_lot(dict(PLAN), 1., 100.)
+    seq = e.state['lot_key_seq']['MAN|BTCUSDT|LONG']
+    assert seq['t'] == 1799000050 and seq['n'] >= 8 and e._last_lot_key == 'MAN|BTCUSDT|LONG|1799000000-8'
+    e.history = []
+    e.state['lot_key_seq']['MAN|BTCUSDT|LONG'] = dict(seq)
+    e._create_lot(dict(PLAN), 1., 100.)
+    assert e._last_lot_key == 'MAN|BTCUSDT|LONG|1799000000-9'
+
+
+def test_r4_other_prefixes_and_malformed_ids_do_not_move_the_mark(monkeypatch):
+    e, clock = bare(monkeypatch)
+    e.history = [dict(id='MAN|ETHUSDT|LONG|1799000000-40'), dict(id='MAN|BTCUSDT|LONG|x-9'), dict(id='MAN|BTCUSDT|LONG|1799000000-z')]
+    e._create_lot(dict(PLAN), 1., 100.)
+    assert e._last_lot_key == 'MAN|BTCUSDT|LONG|1799000000-1'                 # same second seen; other coin's -40 ignored

@@ -7682,20 +7682,27 @@ class Engine:
         than t gets the plain key;
         any second <= t (same second, clock rollback) gets base-<n+1>. On top, any id still referenced (_lot_ids_referenced:
         the audited list of persistent consumers) is skipped, and a prefix without a mark (legacy / restored state) seeds
-        it from those ids - covering a state restored from an older copy.
+        it from those ids (r4: both the second and the suffix, and only ever upward) - covering a state restored from an
+        older copy.
         The symbol stays field [1], the format other code splits on."""
         st = self.state
         prefix, ts = base.rsplit('|', 1); ts = int(ts)
         allseq = st['lot_key_seq'] = st.get('lot_key_seq') if isinstance(st.get('lot_key_seq'), dict) else {}
         seq = allseq.get(prefix) if isinstance(allseq.get(prefix), dict) else {}
         taken = self._lot_ids_referenced()
-        if not seq:                     # r2 migration (legacy / restored state without a mark): seed it from every referenced
-            for t_ in taken:            # id of this prefix, so a rollback to or below their latest second is suffixed
-                p_, _, rest = t_.rpartition('|')
-                if p_ == prefix:
-                    try: seq = dict(t=max(int(seq.get('t', -1)), int(rest.split('-', 1)[0])), n=int(seq.get('n', 0)))
-                    except ValueError: pass
         last_t, n = int(seq.get('t', -1)), int(seq.get('n', 0))
+        # r2/r4 migration (Codex #363 6927870662): BOTH parts of the mark are raised (never lowered) from every referenced id of
+        # this prefix - the latest second AND the highest suffix - so an id seen once (legacy / restored state, or a mark
+        # older than its references) is never issued again after those references are evicted
+        for t_ in taken:
+            p_, _, rest = t_.rpartition('|')
+            if p_ != prefix: continue
+            sec, _, suf = rest.partition('-')
+            try: last_t = max(last_t, int(sec))
+            except ValueError: continue
+            if suf:
+                try: n = max(n, int(suf))
+                except ValueError: pass
         key = base
         if ts <= last_t or key in taken:
             n += 1; key = f'{base}-{n}'
