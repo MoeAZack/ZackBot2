@@ -15,7 +15,11 @@ after fees, slippage and funding?
   lock-step settings. The `prot` variants change only the stop movers; entries, targets, tp1 partials and time exits stay.
   The runner variants are a different exit regime: `backtest.run` also drops `tp_r` / `max_bars` for them, so they are
   shown for reference only.
-- **Costs:** 7, 15 and 23 bp all-in per executed side (FWD-01's levels). Funding is the backtest's 3 bp / 8h.
+- **Costs:** 7, 15 and 23 bp all-in per executed side (FWD-01's levels). Funding is the backtest's `FUND_PER_BAR` = 0.00005 per 4h bar
+  (0.5 bp per bar, about 1 bp / 8h). It is charged as a cost on every open position, longs and shorts alike, on the bar's
+  close. (Corrected 16 Nov: an earlier version of this report said 3 bp / 8h; the runs always used 0.5 bp per bar.)
+  **Sensitivity:** with funding at 3 bp / 8h (0.00015 per bar) the recommendation is unchanged. ΔR at 15 bp, summed over
+  the 8 strategies, is A +70, B +68, L +21, against +73 / +69 / +20 at the default.
   `prot`'s breakeven buffer is pinned to the live engine's own (about 12 bp: `prot.PROT_FEE` / `PROT_SLIP`). The research
   therefore tests a slot exactly as `engine.py` would run it, even when real costs are higher.
 - **Open trades:** trades still open at a period's end are not in ΔR. Their unrealised P&L is reported as `open_usd`, and it

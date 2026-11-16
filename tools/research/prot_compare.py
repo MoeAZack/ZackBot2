@@ -5,7 +5,8 @@ mixed with slot interactions. Every variant changes only the stop movers (be_r /
 targets, tp1 partials, time exits and sizing are untouched.
 
 Costs: the backtest's own model, re-run at three all-in levels per executed side (FWD-01's 7 / 15 / 23 bp), by setting
-backtest.FEE (slip kept at 2 bp) for the run; funding stays at backtest.FUND_PER_BAR. prot's breakeven BUFFER is pinned to
+backtest.FEE (slip kept at 2 bp) for the run; funding stays at backtest.FUND_PER_BAR (0.00005 per
+bar = 0.5 bp per 4h bar, about 1 bp / 8h, a cost on longs and shorts alike). prot's breakeven BUFFER is pinned to
 the live engine's (prot.PROT_FEE / PROT_SLIP, what a slot without 'buf' / 'cost' gets in engine.py) whatever the cost level
 (--buffer live, default), so a recommended slot is tested exactly as it would run; --buffer cost lets it follow the level.
 RUN_* variants are a different EXIT REGIME, not just a stop mover: with 'runner' backtest.run also drops tp_r / max_bars and
