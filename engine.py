@@ -7652,7 +7652,12 @@ class Engine:
     def _settle_unconfirmed(self, live):
         self._normalize_order_owners()                           # CAPS-01 r5: one owner per order before fills / protection
         ue = self.state.get('unconfirmed_entries') or {}
+        # CAPS-01 r7 (Codex #365): an order still owned by a resting maker record (its handover not finished - e.g. the
+        # transfer's write failed) is settled by NOTHING here: that record stays its single owner (reserved, never polled by
+        # its old record) until the transfer is durable - so no client id can ever be booked twice
+        held = {r_.get('cid') for r_ in (self.state.get('resting_entries') or {}).values() if r_.get('cid')}
         for uk, u in list(ue.items()):
+            if u.get('cid') and u['cid'] in held: continue
             sym, side = u['symbol'], u['side']
             r = self.rules.get(sym)
             if r is None: continue
