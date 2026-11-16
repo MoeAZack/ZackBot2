@@ -124,6 +124,7 @@ def test_r2_the_alert_closes_when_the_lot_is_closed():
     assert e.health['incidents'][f'tp-unknown|{k}']['open']
     e.close_lot(k, 'exit_signal', e.trade.marks()['BTCUSDT'])
     assert k not in e.state['lots']
+    e.manage(e.trade.marks())                                              # the next pass ends the alert (outside pinned _finish)
     assert not e.health['incidents'][f'tp-unknown|{k}']['open']
 
 
