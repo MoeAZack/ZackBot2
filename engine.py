@@ -4351,7 +4351,7 @@ class Engine:
         rec = self._tp_record(l)
         if rec['state'] == 'ok':
             self.resolve(f'tp-unknown|{k}', f'{sym}: take-profit order record found')      # LANE3-F1-TP
-            if self._tp_is_held(l): l.pop('tp_held', None); self._tpq_release(l)
+            was_held = self._tp_is_held(l)          # LANE3-F1-TP r5 (Codex #368 r6): released only AFTER the booking below
             new, px, final = self._rd(max(0.0, rec['exec'] - (l.get('tp_done') or 0.0)), step), rec['px'], rec['final']
             if tag.startswith('c:') and rec.get('oid') and not final: l['tp_id'] = f"o:{rec['oid']}"   # lost answer: it exists
         elif short is not None and not listed and l.get('stop_id') in tags and not self._tp_owned_id(l):
@@ -4369,10 +4369,14 @@ class Engine:
             return 'held'
         else:
             return 'unknown'
+        if rec['state'] != 'ok': was_held = False
         if new > 0:
             self._apply_close(l, new, px or l.get('tp_px') or l['avg'], TP_EXIT)
             self._px_unmeasured(l, measured=bool(px))                     # FILL-PNL-01: no px = booked at the TP limit
             l['tp_done'] = (l.get('tp_done') or 0.0) + new
+        if was_held:                                # one durable write holds the booking AND the end of the hold: an
+            l.pop('tp_held', None); self._tpq_release(l)   # interruption before it leaves the hold (the record is re-read)
+        if new > 0:
             self.notify(f"🎯 TAKE PROFIT {l['side']} {sym} [{l['sleeve']}] {new:g} @ {px or l.get('tp_px')} (resting exchange target)")
         if l['qty'] <= 0:
             self._tp_clear(l)                                       # filled: nothing left to cancel

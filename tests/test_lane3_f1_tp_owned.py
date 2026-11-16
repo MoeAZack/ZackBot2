@@ -359,3 +359,41 @@ def test_r4_a_live_lot_with_a_quarantine_claim_but_no_flag_is_treated_as_held():
     assert e.trade.calls.count('tp') == n_tp and lot['tp_id'] == tag                    # never replaced
     e.manage(e.trade.marks())
     assert lot.get('tp_held')                                                            # migrated back to held
+
+
+# ---- r5: Codex #368 round 6 (c6929850537): the booking and the end of the hold are one durable write ----
+def _restart(tmp, fake):
+    E.Futures = lambda *a, **k: fake
+    e = E.Engine(dict(MODE='paper', API_KEY='k' * 16, API_SECRET='s' * 16), tmp)
+    e.data = e.trade
+    e.S.update(dict(UNIVERSE=['BTCUSDT', 'ETHUSDT'], SYMBOLS_ON={'BTCUSDT': True, 'ETHUSDT': True}, CAPITAL_CAP=500.0))
+    e.connect(); e.marks = e.trade.marks()
+    return e
+
+
+class _Crash(BaseException):
+    pass
+
+
+@pytest.mark.parametrize('offset', [True, False])
+def test_r5_an_interruption_before_booking_keeps_the_hold_and_the_restart_books_the_record(offset):
+    e, tmp = mk(); k = open_(e); lot = e.state['lots'][k]
+    tag, cid = lot['tp_id'], lot['tp_cid']
+    row, rec = e.trade.tps.pop(tag), e.trade.recs.pop(cid)
+    verify(e, later=3600)
+    assert lot['tp_held'] and cid in e.state['tp_quarantine']
+    e.trade.tps[tag], e.trade.recs[cid] = row, rec                       # listed again after half executed unseen
+    q = lot['qty']; e.trade.fill_tp(tag, qty=q / 2, final=False)
+    def crash(*a, **kw): raise _Crash('process stopped just before booking')
+    e._apply_close = crash
+    with pytest.raises(_Crash): verify(e, later=3700)
+    if offset: e.trade.pos[('BTCUSDT', 'LONG')] += q / 2                 # an offsetting same-side change: net qty matches
+    e2 = _restart(tmp, e.trade)
+    l2 = e2.state['lots'][k]
+    assert l2.get('tp_held') and cid in e2.state['tp_quarantine'], 'the hold was released before the booking was durable'
+    e2.reconcile(e2.equity()); verify(e2, later=3800)
+    assert l2.get('tp_done') == pytest.approx(q / 2) and l2['qty'] == pytest.approx(q / 2)
+    assert not l2.get('tp_held') and cid not in e2.state['tp_quarantine']
+    import json
+    doc = json.load(open(e2.F['state'], encoding='utf-8'))
+    assert doc['lots'][k]['tp_done'] == pytest.approx(q / 2) and cid not in (doc.get('tp_quarantine') or {})
