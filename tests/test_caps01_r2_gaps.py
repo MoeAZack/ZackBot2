@@ -146,4 +146,5 @@ def test_r2_a_maker_intent_is_counted_once_before_and_after_it_becomes_a_lot():
 def test_r2_an_older_plan_without_stop_distance_reserves_its_planned_risk():
     assert E.Engine._plan_risk(dict(risk_usd=7.5), 3.0) == 7.5
     assert E.Engine._plan_risk(dict(stop_dist=2.0, risk_usd=99), 3.0) == 6.0
-    assert E.Engine._plan_risk(None, 3.0) == 0.0 and E.Engine._plan_risk(dict(stop_dist=float('nan'), risk_usd=4), 1) == 4.0
+    assert E.Engine._plan_risk(dict(stop_dist=float('nan'), risk_usd=4), 1) == 4.0
+    assert E.Engine._plan_risk(None, 3.0) is None                       # r4 (Codex): unknown risk is never zero

@@ -928,6 +928,8 @@ RISK_RULE_DEFAULTS = dict(
 # warns - refuses every new entry and add with a named reason (Engine.risk_caps_block). Exits, stops and the management
 # of open positions are never blocked by it.
 RISK_CAP_POLICY = dict(open_risk_pct=2.5, daily_loss_halt=0.03, peak_dd_flatten=0.10)
+OPEN_RISK_UNKNOWN = ('open risk of a pending entry / add cannot be computed (missing stop distance, price or size) - '
+                     'no new risk until it is resolved')
 _REAL_FUTURES = Futures                                 # CAPS-01: the real Binance client, captured before any test/replay swap
 GOV_COOLDOWN_S = 24 * 3600                             # minimum time between two automatic profile switches
 GOV_MULT_MAX = 2.0                                     # martingale-style recovery (risk_mult > 1) is capped here
@@ -7780,36 +7782,79 @@ class Engine:
 
     @staticmethod
     def _plan_risk(plan, qty):
-        """Risk to the stop of `qty` of an entry plan (its stop distance; an older plan without one: its full planned risk)."""
-        plan = plan or {}
+        """Risk to the stop of `qty` of an entry plan (its stop distance; an older plan without one: its full planned risk).
+        None = NOT computable (CAPS-01 r4: unknown risk is never counted as zero - the caller fails closed)."""
+        plan = plan if isinstance(plan, dict) else {}
         try:
             d = float(plan['stop_dist']); q = float(qty)
             if math.isfinite(d) and math.isfinite(q) and d >= 0 and q >= 0: return d * q
         except (KeyError, TypeError, ValueError): pass
         try:
             v = float(plan.get('risk_usd'))
-            return v if math.isfinite(v) and v >= 0 else 0.0
-        except (TypeError, ValueError): return 0.0
+            return v if math.isfinite(v) and v >= 0 else None
+        except (TypeError, ValueError): return None
 
-    def _reserved_risk(self):
+    def _reserved_risk(self, skip_op=None):
         """CAPS-01 r2 (Codex #365): open risk of entry intents that are not lots yet, so the open-risk cap counts them -
         a resting maker entry (its full planned quantity: its fills only become a lot when the record is finalized and
         removed), an unconfirmed entry (removed when it becomes a lot) and a lot's pending add (not in lot qty until
-        confirmed). Each intent is counted once: none of them is also in state['lots'] at the same time."""
+        confirmed). Each intent is counted once: none of them is also in state['lots'] at the same time.
+        CAPS-01 r4: + a grid's in-flight risk-adding order (op) not yet in a lot's qty or pending add. Returns None when ANY
+        intent's risk cannot be computed (missing stop distance and planned risk, missing price/stop/qty): never zero."""
         out = 0.0
         for rec in (self.state.get('resting_entries') or {}).values():
-            out += self._plan_risk(rec.get('plan'), rec.get('qty') or 0.0)
+            v = self._plan_risk(rec.get('plan'), rec.get('qty'))
+            if v is None: return None
+            out += v
         for u in (self.state.get('unconfirmed_entries') or {}).values():
-            out += self._plan_risk(u.get('plan'), u.get('qty') or 0.0)
+            v = self._plan_risk(u.get('plan'), u.get('qty'))
+            if v is None: return None
+            out += v
         for l in self.state['lots'].values():
             p = l.get('pending')
             if isinstance(p, dict) and p.get('kind') == 'add':
-                try:
-                    sd = 1 if l['side'] == 'LONG' else -1
-                    v = max(0.0, sd * (float(p['px']) - float(l['stop']))) * float(p['qty'])
-                    if math.isfinite(v): out += v
-                except (KeyError, TypeError, ValueError): pass
+                v = self._side_risk(l.get('side'), p.get('px'), l.get('stop'), p.get('qty'))
+                if v is None: return None
+                out += v
+        for g in (self.state.get('grids') or {}).values():
+            op = g.get('op') if isinstance(g, dict) else None
+            if not isinstance(op, dict) or op.get('kind') not in ('open', 'add') or op.get('id') == skip_op: continue
+            lk = (g.get('lots') or {}).get(op.get('side'))
+            lot = self.state['lots'].get(lk) if lk else None
+            if op['kind'] == 'add' and lot and (lot.get('pending') or {}).get('kind') == 'add': continue   # counted above
+            if op['kind'] == 'open' and lot: continue                                                       # in its lot now
+            v = self._side_risk(op.get('side'), op.get('px'), g.get('stop_lo') if op.get('side') == 'LONG' else g.get('stop_hi'),
+                                op.get('qty'))
+            if v is None: return None
+            out += v
         return out
+
+    @staticmethod
+    def _side_risk(side, px, stop, qty):
+        """max(0, signed px - stop) * qty, or None when any input is missing / not finite (CAPS-01 r4)."""
+        try:
+            sd = {'LONG': 1, 'SHORT': -1}[side]
+            v = max(0.0, sd * (float(px) - float(stop))) * float(qty)
+        except (KeyError, TypeError, ValueError): return None
+        return v if math.isfinite(v) and float(qty) >= 0 else None
+
+    def open_risk_room(self, add_risk, skip_op=None):
+        """CAPS-01 r4: None when `add_risk` more stop risk fits under the open-risk cap (lots + every reserved intent);
+        else the refusal reason. Unknown capital, unknown reserved risk or unknown add_risk refuse (fail closed)."""
+        cap = self.guard_eq or self.last_eq or 0.0
+        pct = RISK_CAP_POLICY['open_risk_pct']
+        try: pct = min(pct, float(self.risk_rules_cfg()['open_risk_cap']['pct']))
+        except (KeyError, TypeError, ValueError): pass
+        if not (isinstance(cap, (int, float)) and math.isfinite(cap) and cap > 0): return 'bot capital unknown - no new risk'
+        res = self._reserved_risk(skip_op=skip_op)
+        if res is None: return OPEN_RISK_UNKNOWN
+        try: add = float(add_risk)
+        except (TypeError, ValueError): add = float('nan')
+        if not (math.isfinite(add) and add >= 0): return 'risk of this order cannot be computed - not sent'
+        tot = sum(self._lot_risk(l) for l in self.state['lots'].values()) + res + add
+        if tot > pct / 100 * cap + 1e-9:
+            return f'risk rule open_risk_cap: open risk to stops {tot / cap * 100:.2f}% > {pct:g}% of bot capital'
+        return None
 
     def _corr(self, a, b):
         c = self.corr
@@ -7830,8 +7875,12 @@ class Engine:
             if tot > r['x'] * cap: out.append(('coin_cap', r['mode'], f"{sym} exposure {tot:.0f} USDT > {r['x']:g}x bot capital ({r['x'] * cap:.0f})"))
         r = R['open_risk_cap']
         if r['mode'] != 'off' and cap > 0:
-            tot = sum(self._lot_risk(l) for l in lots) + self._reserved_risk() + size.get('risk', 0.0)   # CAPS-01 r2: + intents
-            if tot > r['pct'] / 100 * cap: out.append(('open_risk_cap', r['mode'], f"open risk to stops {tot / cap * 100:.1f}% > {r['pct']:g}% of bot capital"))
+            res = self._reserved_risk()                                  # CAPS-01 r2: + intents; r4: unknown -> refused
+            if res is None:
+                out.append(('open_risk_cap', 'enforce', OPEN_RISK_UNKNOWN))
+            else:
+                tot = sum(self._lot_risk(l) for l in lots) + res + size.get('risk', 0.0)
+                if tot > r['pct'] / 100 * cap: out.append(('open_risk_cap', r['mode'], f"open risk to stops {tot / cap * 100:.1f}% > {r['pct']:g}% of bot capital"))
         if manual: return out
         r = R['correlated_cap']
         if r['mode'] != 'off' and self.corr and not add:     # an add does not open a new correlated position
@@ -8154,7 +8203,7 @@ class Engine:
             age = time.time() - rec['placed_t']
             if o is None:
                 if age < 20: return False                            # may not be visible yet
-                rec['status'] = 'between'                            # never reached Binance
+                return self._maker_unknown(k, rec)                   # CAPS-01 r4: NOT proof it never reached Binance
             elif o.get('status') in ('FILLED', 'CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH'):
                 self._maker_done_order(rec, o)
             elif rec['status'] == 'open' and (age >= slice_s or legacy):
@@ -8171,6 +8220,28 @@ class Engine:
         if not legacy and not small and rec['n'] <= K and time.time() - rec['t0'] < T:
             self._maker_place(rec); return True
         self._maker_finalize(k, rem, small, px_, no_fallback=legacy)
+        return True
+
+    def _maker_unknown(self, k, rec):
+        """CAPS-01 r4 (Codex #365): a sent maker order whose lookup says 'not found' is not proof that it never reached
+        Binance or did not (partly) fill. Its ownership is never dropped: a best-effort cancel by its client id, then the
+        unknown order (its client id, the quantity it was placed for) is written as an unconfirmed entry BEFORE the resting
+        record goes - the AUD-03b path keeps it reserved, blocks a second entry on the coin/side, protects any position it
+        produced with a provisional stop and settles it from its order record. Fills already known from earlier final
+        records still become a lot through the normal finalize path (no market fallback)."""
+        sym, r = rec['symbol'], self.rules[rec['symbol']]
+        try: self.trade.cancel(sym, f"c:{rec['cid']}")
+        except Exception as ex: log.info(f"maker entry {sym}: cancel of unknown order {rec['cid']} failed ({type(ex).__name__})")
+        unk = self._rd(rec['qty'] - rec['filled'], r['step'])
+        if unk > 0:
+            self._remember_unconfirmed(dict(rec['plan'], qty=unk), rec['cid'], strict=True)   # durable before the handover
+        msg = 'maker order record not found on Binance - handed to unconfirmed-entry reconciliation, no market fallback'
+        self.err(f"maker entry {sym} {rec['side']}: {msg} (client id {rec['cid']}, {unk:g})")
+        if rec['filled'] > 0:
+            self._maker_finalize(k, 0.0, True, (self.marks or {}).get(sym) or rec.get('price') or rec['plan']['px'], no_fallback=msg)
+        else:
+            self.state['resting_entries'].pop(k, None); self._mk_refs.pop(self._mk_key(rec), None)
+        self.save_state()
         return True
 
     def _maker_finalize(self, k, rem, small, px, no_fallback=None):

@@ -920,7 +920,12 @@ class GridManager:
         if pb: raise ValueError(pb)
         cb = self.e.risk_caps_block()                               # CAPS-01 r2: last check before the send too
         if cb: raise ValueError(cb)
-        if side: self._stop_ok(g, side, m)
+        if side:
+            st = self._stop_ok(g, side, m)
+            # CAPS-01 r4: the order's own stop risk must fit the portfolio open-risk budget (lots + every reserved intent,
+            # other grids' in-flight orders included; this grid's own in-flight op is this order - not counted twice)
+            room = self.e.open_risk_room(q * abs(m - st), skip_op=(g.get('op') or {}).get('id'))
+            if room: raise ValueError(f'{room} - not sent')
         if not (g['stop_lo'] <= m <= g['stop_hi']): raise ValueError(f"mark {m:g} outside the grid's stops - not sent")
         cap = g['capital'] * float(g['cfg'].get('capital_frac', 1.0)) * (g['hi'] / g['lo']) * 1.05
         if q * m > cap: raise ValueError(f"order {q:g} @ {m:g} exceeds the grid's own capital - not sent")
