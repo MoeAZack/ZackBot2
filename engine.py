@@ -4177,7 +4177,7 @@ class Engine:
     # A plain fixed tp_r target can rest on Binance as a reduce-only TAKE_PROFIT_MARKET (mark-price trigger) instead of being
     # checked on the manage poll and closed at market. The protective stop is never touched, widened or delayed for it: the TP
     # is placed only AFTER the stop is confirmed, and a TP that cannot be placed falls back to the poll path for good.
-    _TP_FIELDS = ('tp_id', 'tp_cid', 'tp_acid', 'tp_px', 'tp_qty', 'tp_done', 'tp_placed_t')
+    _TP_FIELDS = ('tp_id', 'tp_cid', 'tp_acid', 'tp_px', 'tp_qty', 'tp_done', 'tp_placed_t', 'tp_held')
 
     def _tp_wanted(self, lot):
         return not self.dry and not lot.get('manual') and not lot.get('tp_failed') and resting_tp_eligible(lot.get('mgmt'))
@@ -4192,6 +4192,8 @@ class Engine:
         return q
 
     def _tp_clear(self, lot):
+        k = next((k for k, l in self.state['lots'].items() if l is lot), None)
+        if k: self.resolve(f'tp-unknown|{k}', f"{lot['symbol']}: take-profit settled")
         for f in self._TP_FIELDS: lot.pop(f, None)
 
     def _tp_fail(self, lot, why):
@@ -4242,6 +4244,7 @@ class Engine:
         the lot's quantity is placed first, then the old one is cancelled (parked + retried if the cancel fails)."""
         tag = lot.get('tp_id')
         if not tag or self.dry or lot.get('pending') or lot['symbol'] not in self.rules: return False
+        if lot.get('tp_held'): return False               # LANE3-F1-TP: an unproven TP is never replaced (it could still fill)
         left = (lot.get('tp_qty') or 0.0) - (lot.get('tp_done') or 0.0)
         if abs(left - lot['qty']) <= self._qty_tol(self.rules[lot['symbol']]['step']): return False
         old = {f: lot[f] for f in self._TP_FIELDS if f in lot}
@@ -4309,12 +4312,18 @@ class Engine:
         sym, step, listed = l['symbol'], self.rules[l['symbol']]['step'], tag in tags
         rec = self._tp_record(l)
         if rec['state'] == 'ok':
+            self.resolve(f'tp-unknown|{k}', f'{sym}: take-profit order record found')      # LANE3-F1-TP
+            l.pop('tp_held', None)
             new, px, final = self._rd(max(0.0, rec['exec'] - (l.get('tp_done') or 0.0)), step), rec['px'], rec['final']
             if tag.startswith('c:') and rec.get('oid') and not final: l['tp_id'] = f"o:{rec['oid']}"   # lost answer: it exists
-        elif rec['state'] == 'notfound' and not listed:
-            new, px, final = 0.0, None, True                       # Binance has no such order: it never existed
         elif short is not None and not listed and l.get('stop_id') in tags:
             new, px, final = min(self._rd(short, step), l['qty']), l.get('tp_px'), True
+        elif rec['state'] == 'notfound' and not listed:
+            # LANE3-F1-TP (Codex #360 ruling 3): 'not found' and not listed is not proof that this known client id never
+            # existed or cannot still execute - clearing it and placing a new TP could close the lot twice. Ownership is
+            # kept (nothing placed again; the stop stays), the owner is alerted after 5 min; the record or a listing decides
+            self._tp_hold(k, l, 'not found on Binance and not listed')
+            return 'held'
         else:
             return 'unknown'
         if new > 0:
@@ -4339,6 +4348,23 @@ class Engine:
             self.save_state(); return 'gone'
         return 'none'
 
+    def _tp_known_cid(self, l):
+        """A classic resting TP whose client id Binance can be asked about (an algo TP / a client without get_order: no)."""
+        return bool(l.get('tp_cid')) and callable(getattr(self.trade, 'get_order', None)) and str(l.get('tp_id') or '').startswith(('o:', 'c:'))
+
+    def _tp_hold(self, k, l, what):
+        """LANE3-F1-TP: keep an unproven TP owned; one keyed alert (and one push) once it has been placed 5 min."""
+        key = f'tp-unknown|{k}'
+        l['tp_held'] = True                                # _tp_sync / a stop resize never replaces it while held
+        if self.clock() - (l.get('tp_placed_t') or self.clock()) <= 300: return
+        if (self.health.get('incidents', {}).get(key) or {}).get('open'):
+            self.err(f"{l['symbol']} {l['side']} [{l['sleeve']}] take-profit {l.get('tp_cid')}: still {what}", key=key); return
+        msg = (f"{l['symbol']} {l['side']} [{l['sleeve']}]: resting take-profit (client id {l.get('tp_cid')}) {what} - held as "
+               'unresolved: no new take-profit is placed while it could still execute; the stop stays. Check the open '
+               'orders and order history on Binance')
+        self.err(msg, key=key)
+        self.notify(f'⚠️ {msg}.')
+
     def _tp_by_position(self, k, tags):
         """No order record for a missing TP: one critical positions read decides - the position intact -> the TP is gone
         (placed again); smaller -> settled as its fill while the stop is listed, else left to reconcile."""
@@ -4348,6 +4374,9 @@ class Engine:
         have = live.get((sym, side), 0.0)
         expected = sum(x['qty'] for x in self.state['lots'].values() if x['symbol'] == sym and x['side'] == side)
         if have >= expected - self._qty_tol(self.rules[sym]['step']):
+            if self._tp_known_cid(l):                       # LANE3-F1-TP: an intact position does not prove a KNOWN TP id
+                self._tp_hold(k, l, 'order record unreadable and not listed')   # can no longer execute - kept, never replaced
+                return 'unknown'
             self._tp_clear(l); self._place_tp(l); self.save_state(); return 'gone'
         return self._tp_settle(k, tags, short=expected - have)
 
@@ -4379,14 +4408,16 @@ class Engine:
                 row = by_cid.get(l.get('tp_cid') or '') or by_cid.get(l.get('tp_acid') or '')
                 if row: l['tp_id'] = tag = row['tag']; changed = True       # a lost answer: listed under its client id
             if tag in tags:
+                self.resolve(f'tp-unknown|{k}', f'{sym}: take-profit listed again')        # LANE3-F1-TP
+                l.pop('tp_held', None)
                 changed = self._tp_sync(l) or changed
                 continue
             if now - (l.get('tp_placed_t') or -1e18) < STOP_LIST_GRACE_S:
                 self._stopv_due(sym, now + STOP_RECHECK_S); continue        # just placed: not listed yet is not a miss
             res = self._tp_settle(k, tags)
             if res == 'unknown': res = self._tp_by_position(k, tags)
-            if res == 'unknown': self._stopv_due(sym, now + STOP_RECHECK_S)
-            changed = changed or res not in ('none', 'unknown')
+            if res in ('unknown', 'held'): self._stopv_due(sym, now + STOP_RECHECK_S)
+            changed = changed or res not in ('none', 'unknown', 'held')
         return changed
 
     @staticmethod
@@ -4810,6 +4841,7 @@ class Engine:
         lot = self.state['lots'].pop(key, None)
         if not lot: return
         self.resolve(f'stop-missing|{key}', f"{lot['symbol']} {lot['side']} [{lot['sleeve']}]: trade closed ({why}) - stop check ended")
+        self.resolve(f'tp-unknown|{key}', f"{lot['symbol']} {lot['side']} [{lot['sleeve']}]: trade closed ({why}) - take-profit check ended")
         if why != 'stop': self._cancel_or_park(lot['symbol'], lot.get('stop_id'))   # no stale stop may survive its lot
         if lot.get('tp_id') and why != TP_EXIT:            # resting TP: cancelled on every other close (a failed cancel is
             self._cancel_or_park(lot['symbol'], lot['tp_id'])   # parked and retried - it never blocks the close)
