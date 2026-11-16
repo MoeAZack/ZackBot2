@@ -174,7 +174,8 @@
   "strategies.py:merge_mgmt": "5f7757b22e868ea04c305b5f5567e217cd29282f7b0cfed96396753fb58c121e",
   "feasibility.py:risk_qty": "915774c71722bcaf0f62773c13732b521b9de3381c501664d580ab760cb27821",
   "feasibility.py:size_check": "d1df693e6592f62fe5d812b2c8e51e334b119935c0e7532d74099229dc946429",
-  "feasibility.py:round_step": "8e0ec1641587267bdba6a69a1391c04ca62b1554333e55bd6947a3abe1bad60f"
+  "_amended_lane3_f6": "feasibility.py:round_step 8e0ec1641587267bdba6a69a1391c04ca62b1554333e55bd6947a3abe1bad60f -> 74a6198f6c7a343f9189f1584baf7bd27a7604f50a9639d16a52d0d3c325afbd (rounding places = feasibility.step_decimals; bit-identical for power-of-ten steps) per contracts/lane3_f6/pin_amendment.v1.json - PROPOSED, pending Codex ruling. Every other pin is unchanged",
+  "feasibility.py:round_step": "74a6198f6c7a343f9189f1584baf7bd27a7604f50a9639d16a52d0d3c325afbd"
  },
  "open_questions": [],
  "roadmap_fit": "Strategy Factory -> rapid candidate-to-PAPER pipeline",

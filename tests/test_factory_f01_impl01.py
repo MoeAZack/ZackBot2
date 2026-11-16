@@ -25,6 +25,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(ROOT, 'contracts', 'factory_f01_impl_01', 'cohort_manifest.v1.json')
 AMEND = os.path.join(ROOT, 'contracts', 'factory_f01_impl_01', 'pin_amendment.v1.json')
 EVICT_AMEND = os.path.join(ROOT, 'contracts', 'cand_evict_ack_01', 'pin_amendment.v1.json')   # Codex 6518282215
+F6_AMEND = os.path.join(ROOT, 'contracts', 'lane3_f6', 'pin_amendment.v1.json')            # LANE3-F6, PR #364
 
 
 def _manifest_pins():
@@ -32,6 +33,8 @@ def _manifest_pins():
     (Codex 6518282215; manifest-only correction 6518560081), so nothing is overlaid: each amended pin must equal 'to'."""
     pins = dict(json.load(open(MANIFEST, encoding='utf-8'))['pins_expected'])
     for k, ch in json.load(open(EVICT_AMEND, encoding='utf-8'))['amended'].items():
+        assert pins[k] == ch['to'] != ch['from'], k
+    for k, ch in json.load(open(F6_AMEND, encoding='utf-8'))['amended'].items():   # LANE3-F6 (PROPOSED, PR #364)
         assert pins[k] == ch['to'] != ch['from'], k
     return pins
 
