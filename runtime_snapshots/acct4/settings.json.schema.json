@@ -1,0 +1,111 @@
+{
+  "AI_FILTER": "bool",
+  "AI_SCAN": "bool",
+  "CAPITAL_CAP": "float",
+  "CAP_ADJ": {
+    "type": "array",
+    "items": "omitted"
+  },
+  "CAP_CYCLES": {
+    "type": "array",
+    "items": "omitted"
+  },
+  "CAP_SINCE": "str",
+  "CLAUDE_DAILY_BUDGET_USD": "float",
+  "CLAUDE_MONTHLY_BUDGET_USD": "float",
+  "CLAUDE_SHADOW_ANALYST": "bool",
+  "CLAUDE_SHADOW_MODEL": "str",
+  "COMPOUND": "bool",
+  "CTRL_BIAS": "str",
+  "CTRL_RISK": "str",
+  "DAILY_LOSS_HALT": "float",
+  "ENTRIES_PAUSED": "bool",
+  "ENTRY_ORDER": "str",
+  "FEE_EDGE_GATE": "bool",
+  "FEE_EDGE_MULT": "float",
+  "FEE_MAKER": "float",
+  "GOVERNOR": {
+    "mode": "str",
+    "rules": {
+      "type": "array",
+      "items": "omitted"
+    }
+  },
+  "GRID_SLOTS": {
+    "type": "array",
+    "items": "omitted"
+  },
+  "MAKER_FALLBACK": "bool",
+  "MAKER_REPRICE": "int",
+  "MAKER_WAIT_S": "int",
+  "MARKET_COLLECTOR": "bool",
+  "MAX_LEVERAGE": "int",
+  "ML_SHADOW": "bool",
+  "PAPER_BOOKS": "bool",
+  "PAPER_BOOK_CAP": "float",
+  "PEAK_DD_FLATTEN": "float",
+  "PRESET": "str",
+  "PUMP_GUARD": {},
+  "RISK_RULES": {
+    "open_risk_cap": {
+      "mode": "str",
+      "pct": "float"
+    }
+  },
+  "ROTATION_MGMT_OVERLAY": {},
+  "RUN_IN_BACKGROUND": "bool",
+  "SLEEVES": {
+    "type": "array",
+    "items": "omitted"
+  },
+  "STRATEGY_SHADOW": "bool",
+  "SYMBOLS_ON": {
+    "AAVEUSDT": "bool",
+    "ADAUSDT": "bool",
+    "APTUSDT": "bool",
+    "ARBUSDT": "bool",
+    "ARKUSDT": "bool",
+    "AVAXUSDT": "bool",
+    "BCHUSDT": "bool",
+    "BNBUSDT": "bool",
+    "BTCUSDT": "bool",
+    "DOGEUSDT": "bool",
+    "DOTUSDT": "bool",
+    "ENAUSDT": "bool",
+    "ENJUSDT": "bool",
+    "ETCUSDT": "bool",
+    "ETHUSDT": "bool",
+    "FETUSDT": "bool",
+    "FILUSDT": "bool",
+    "GALAUSDT": "bool",
+    "INJUSDT": "bool",
+    "LINKUSDT": "bool",
+    "LTCUSDT": "bool",
+    "MANAUSDT": "bool",
+    "MOVRUSDT": "bool",
+    "NEARUSDT": "bool",
+    "ONDOUSDT": "bool",
+    "ONEUSDT": "bool",
+    "QNTUSDT": "bool",
+    "SANDUSDT": "bool",
+    "SOLUSDT": "bool",
+    "STRKUSDT": "bool",
+    "SUIUSDT": "bool",
+    "SUPERUSDT": "bool",
+    "TAOUSDT": "bool",
+    "UNIUSDT": "bool",
+    "WLDUSDT": "bool",
+    "XLMUSDT": "bool",
+    "XRPUSDT": "bool",
+    "ZECUSDT": "bool",
+    "ZROUSDT": "bool"
+  },
+  "TELEGRAM_CHAT": "str",
+  "TELEGRAM_ON": "bool",
+  "TRUE_BOOKS": "bool",
+  "UNIVERSE": {
+    "type": "array",
+    "items": "omitted"
+  },
+  "schema_version": "int"
+}

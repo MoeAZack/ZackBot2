@@ -1,0 +1,5276 @@
+[
+  {
+    "file": "runtime_snapshots/acct1/source/actual_costs.py",
+    "line": 192,
+    "snapshot_line": 192,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/actual_costs.py",
+    "line": 372,
+    "snapshot_line": 372,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_filter.py",
+    "line": 214,
+    "snapshot_line": 214,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan.py",
+    "line": 186,
+    "snapshot_line": 186,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan.py",
+    "line": 267,
+    "snapshot_line": 267,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan.py",
+    "line": 481,
+    "snapshot_line": 481,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan.py",
+    "line": 507,
+    "snapshot_line": 507,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan_dataplane.py",
+    "line": 48,
+    "snapshot_line": 48,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan_dataplane.py",
+    "line": 80,
+    "snapshot_line": 80,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan_dataplane.py",
+    "line": 211,
+    "snapshot_line": 211,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan_dataplane.py",
+    "line": 295,
+    "snapshot_line": 295,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan_dataplane.py",
+    "line": 337,
+    "snapshot_line": 337,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan_dataplane.py",
+    "line": 372,
+    "snapshot_line": 372,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan_dataplane.py",
+    "line": 407,
+    "snapshot_line": 407,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan_dataplane.py",
+    "line": 413,
+    "snapshot_line": 413,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan_dataplane.py",
+    "line": 455,
+    "snapshot_line": 455,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan_dataplane.py",
+    "line": 676,
+    "snapshot_line": 676,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan_dataplane.py",
+    "line": 733,
+    "snapshot_line": 733,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan_dataplane.py",
+    "line": 778,
+    "snapshot_line": 778,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan_ledger.py",
+    "line": 145,
+    "snapshot_line": 145,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ai_scan_ledger.py",
+    "line": 411,
+    "snapshot_line": 411,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/app.py",
+    "line": 107,
+    "snapshot_line": 107,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/app.py",
+    "line": 111,
+    "snapshot_line": 111,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/app.py",
+    "line": 111,
+    "snapshot_line": 111,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/app.py",
+    "line": 112,
+    "snapshot_line": 112,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/app.py",
+    "line": 112,
+    "snapshot_line": 112,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/app.py",
+    "line": 215,
+    "snapshot_line": 215,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/app.py",
+    "line": 271,
+    "snapshot_line": 271,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/app.py",
+    "line": 554,
+    "snapshot_line": 554,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/app.py",
+    "line": 591,
+    "snapshot_line": 591,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/app.py",
+    "line": 611,
+    "snapshot_line": 611,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/app.py",
+    "line": 626,
+    "snapshot_line": 626,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/app.py",
+    "line": 1328,
+    "snapshot_line": 1328,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/app.py",
+    "line": 1434,
+    "snapshot_line": 1434,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/app.py",
+    "line": 1901,
+    "snapshot_line": 1901,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/app.py",
+    "line": 1918,
+    "snapshot_line": 1918,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/binance_client.py",
+    "line": 345,
+    "snapshot_line": 345,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 219,
+    "snapshot_line": 219,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 1139,
+    "snapshot_line": 1139,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 1788,
+    "snapshot_line": 1788,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 2083,
+    "snapshot_line": 2083,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 2096,
+    "snapshot_line": 2096,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 2220,
+    "snapshot_line": 2220,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 2246,
+    "snapshot_line": 2246,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 2379,
+    "snapshot_line": 2379,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 2523,
+    "snapshot_line": 2523,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 2558,
+    "snapshot_line": 2558,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 2616,
+    "snapshot_line": 2616,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 2938,
+    "snapshot_line": 2938,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 3014,
+    "snapshot_line": 3014,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 3168,
+    "snapshot_line": 3168,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 3403,
+    "snapshot_line": 3403,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 3585,
+    "snapshot_line": 3585,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 3779,
+    "snapshot_line": 3779,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 3996,
+    "snapshot_line": 3996,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 4135,
+    "snapshot_line": 4135,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 4558,
+    "snapshot_line": 4558,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 4912,
+    "snapshot_line": 4912,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 5088,
+    "snapshot_line": 5088,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 5351,
+    "snapshot_line": 5351,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 5571,
+    "snapshot_line": 5571,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 6041,
+    "snapshot_line": 6041,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 6187,
+    "snapshot_line": 6187,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 6231,
+    "snapshot_line": 6231,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 7039,
+    "snapshot_line": 7039,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 7423,
+    "snapshot_line": 7423,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 7672,
+    "snapshot_line": 7672,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 7713,
+    "snapshot_line": 7713,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 7819,
+    "snapshot_line": 7819,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 7899,
+    "snapshot_line": 7899,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 7933,
+    "snapshot_line": 7933,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 8049,
+    "snapshot_line": 8049,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/engine.py",
+    "line": 8098,
+    "snapshot_line": 8098,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/exec_calibration.py",
+    "line": 82,
+    "snapshot_line": 82,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/exec_calibration.py",
+    "line": 134,
+    "snapshot_line": 134,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/exec_calibration.py",
+    "line": 218,
+    "snapshot_line": 218,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/exec_calibration.py",
+    "line": 317,
+    "snapshot_line": 317,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/exec_calibration.py",
+    "line": 406,
+    "snapshot_line": 406,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/exec_calibration.py",
+    "line": 493,
+    "snapshot_line": 493,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/f01_activation.py",
+    "line": 1,
+    "snapshot_line": 1,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/f01_canary.py",
+    "line": 64,
+    "snapshot_line": 64,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/f01_canary.py",
+    "line": 169,
+    "snapshot_line": 169,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/f01_canary.py",
+    "line": 265,
+    "snapshot_line": 265,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/f01_canary.py",
+    "line": 350,
+    "snapshot_line": 350,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/feasibility.py",
+    "line": 36,
+    "snapshot_line": 36,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/feasibility.py",
+    "line": 50,
+    "snapshot_line": 50,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/feasibility.py",
+    "line": 167,
+    "snapshot_line": 167,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/feasibility.py",
+    "line": 184,
+    "snapshot_line": 184,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/feasibility.py",
+    "line": 242,
+    "snapshot_line": 242,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/grid.py",
+    "line": 1,
+    "snapshot_line": 1,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/grid.py",
+    "line": 623,
+    "snapshot_line": 521,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/grid.py",
+    "line": 666,
+    "snapshot_line": 564,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/grid.py",
+    "line": 751,
+    "snapshot_line": 649,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/grid.py",
+    "line": 833,
+    "snapshot_line": 731,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/grid.py",
+    "line": 997,
+    "snapshot_line": 895,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/grid.py",
+    "line": 1036,
+    "snapshot_line": 934,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/instance.py",
+    "line": 18,
+    "snapshot_line": 18,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/instance.py",
+    "line": 41,
+    "snapshot_line": 41,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/instance.py",
+    "line": 104,
+    "snapshot_line": 104,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/lab.py",
+    "line": 30,
+    "snapshot_line": 30,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/lab.py",
+    "line": 65,
+    "snapshot_line": 65,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/lab.py",
+    "line": 176,
+    "snapshot_line": 176,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/lab.py",
+    "line": 263,
+    "snapshot_line": 263,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/lab.py",
+    "line": 306,
+    "snapshot_line": 306,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/lab.py",
+    "line": 390,
+    "snapshot_line": 390,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/lab.py",
+    "line": 506,
+    "snapshot_line": 506,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/lab.py",
+    "line": 626,
+    "snapshot_line": 626,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/lab.py",
+    "line": 695,
+    "snapshot_line": 695,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/market_collector.py",
+    "line": 88,
+    "snapshot_line": 88,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/market_collector.py",
+    "line": 113,
+    "snapshot_line": 113,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/market_collector.py",
+    "line": 155,
+    "snapshot_line": 155,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/market_data.py",
+    "line": 1,
+    "snapshot_line": 1,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/market_data.py",
+    "line": 42,
+    "snapshot_line": 23,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/market_data.py",
+    "line": 60,
+    "snapshot_line": 41,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/market_data.py",
+    "line": 87,
+    "snapshot_line": 68,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/market_data.py",
+    "line": 181,
+    "snapshot_line": 162,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/market_data.py",
+    "line": 210,
+    "snapshot_line": 191,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/market_data.py",
+    "line": 231,
+    "snapshot_line": 212,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/market_data.py",
+    "line": 273,
+    "snapshot_line": 254,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/market_data.py",
+    "line": 354,
+    "snapshot_line": 335,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/market_data.py",
+    "line": 422,
+    "snapshot_line": 403,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/market_data.py",
+    "line": 477,
+    "snapshot_line": 458,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ml_shadow/pairs.py",
+    "line": 94,
+    "snapshot_line": 94,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ml_shadow/pairs.py",
+    "line": 117,
+    "snapshot_line": 117,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ml_shadow/pairs.py",
+    "line": 170,
+    "snapshot_line": 170,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ml_shadow/pairs.py",
+    "line": 184,
+    "snapshot_line": 184,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ml_shadow/pairs.py",
+    "line": 257,
+    "snapshot_line": 257,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ml_shadow/pairs.py",
+    "line": 297,
+    "snapshot_line": 297,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ml_shadow/sanitize.py",
+    "line": 77,
+    "snapshot_line": 77,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ml_shadow/writer.py",
+    "line": 41,
+    "snapshot_line": 41,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ml_shadow/writer.py",
+    "line": 68,
+    "snapshot_line": 68,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/ml_shadow/writer.py",
+    "line": 138,
+    "snapshot_line": 138,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/domain/base.py",
+    "line": 68,
+    "snapshot_line": 68,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/domain/base.py",
+    "line": 162,
+    "snapshot_line": 162,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/domain/codec.py",
+    "line": 73,
+    "snapshot_line": 73,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/domain/codec.py",
+    "line": 108,
+    "snapshot_line": 108,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/domain/codec.py",
+    "line": 204,
+    "snapshot_line": 204,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/domain/instrument.py",
+    "line": 100,
+    "snapshot_line": 100,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/domain/orders.py",
+    "line": 296,
+    "snapshot_line": 296,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/domain/portfolio.py",
+    "line": 246,
+    "snapshot_line": 246,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/domain/portfolio.py",
+    "line": 403,
+    "snapshot_line": 403,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/ports/journal.py",
+    "line": 216,
+    "snapshot_line": 216,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/ports/journal.py",
+    "line": 228,
+    "snapshot_line": 228,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/ports/journal.py",
+    "line": 364,
+    "snapshot_line": 364,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/ports/journal.py",
+    "line": 479,
+    "snapshot_line": 479,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/ports/journal.py",
+    "line": 496,
+    "snapshot_line": 496,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/ports/keys.py",
+    "line": 40,
+    "snapshot_line": 40,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/ports/keys.py",
+    "line": 69,
+    "snapshot_line": 69,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/store/journal.py",
+    "line": 126,
+    "snapshot_line": 126,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/store/journal.py",
+    "line": 186,
+    "snapshot_line": 186,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/store/journal.py",
+    "line": 203,
+    "snapshot_line": 203,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/store/recovery.py",
+    "line": 108,
+    "snapshot_line": 108,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/store/recovery.py",
+    "line": 174,
+    "snapshot_line": 174,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/store/recovery.py",
+    "line": 214,
+    "snapshot_line": 214,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/store/recovery.py",
+    "line": 266,
+    "snapshot_line": 266,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/store/recovery.py",
+    "line": 288,
+    "snapshot_line": 288,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/newcore/store/recovery.py",
+    "line": 296,
+    "snapshot_line": 296,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/replay.py",
+    "line": 128,
+    "snapshot_line": 128,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/replay.py",
+    "line": 128,
+    "snapshot_line": 128,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/research_refresh.py",
+    "line": 31,
+    "snapshot_line": 31,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/research_refresh.py",
+    "line": 44,
+    "snapshot_line": 44,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/research_refresh.py",
+    "line": 55,
+    "snapshot_line": 55,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/research_refresh.py",
+    "line": 96,
+    "snapshot_line": 96,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/shadow_analyst.py",
+    "line": 39,
+    "snapshot_line": 39,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/shadow_analyst.py",
+    "line": 40,
+    "snapshot_line": 40,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/shadow_analyst.py",
+    "line": 49,
+    "snapshot_line": 49,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/shadow_analyst.py",
+    "line": 114,
+    "snapshot_line": 114,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/shadow_analyst.py",
+    "line": 297,
+    "snapshot_line": 297,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/shadow_analyst.py",
+    "line": 330,
+    "snapshot_line": 330,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/shadow_analyst.py",
+    "line": 440,
+    "snapshot_line": 440,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/shadow_analyst.py",
+    "line": 472,
+    "snapshot_line": 472,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/shadow_analyst.py",
+    "line": 569,
+    "snapshot_line": 569,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/shadow_analyst.py",
+    "line": 595,
+    "snapshot_line": 595,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/shadow_analyst.py",
+    "line": 724,
+    "snapshot_line": 724,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/shadow_funding.py",
+    "line": 1,
+    "snapshot_line": 1,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/strategies.py",
+    "line": 24,
+    "snapshot_line": 24,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/strategies.py",
+    "line": 88,
+    "snapshot_line": 88,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/strategies.py",
+    "line": 162,
+    "snapshot_line": 162,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/strategies.py",
+    "line": 237,
+    "snapshot_line": 237,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/strategies.py",
+    "line": 262,
+    "snapshot_line": 262,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/strategies.py",
+    "line": 347,
+    "snapshot_line": 347,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/strategies.py",
+    "line": 431,
+    "snapshot_line": 431,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/strategy_shadow.py",
+    "line": 145,
+    "snapshot_line": 145,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/strategy_shadow.py",
+    "line": 193,
+    "snapshot_line": 193,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/strategy_shadow.py",
+    "line": 242,
+    "snapshot_line": 242,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/strategy_shadow.py",
+    "line": 564,
+    "snapshot_line": 564,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/telegram_ctl.py",
+    "line": 69,
+    "snapshot_line": 69,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/telegram_ctl.py",
+    "line": 122,
+    "snapshot_line": 122,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/test_app_ui.py",
+    "line": 34,
+    "snapshot_line": 34,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/test_app_ui.py",
+    "line": 71,
+    "snapshot_line": 71,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/test_app_ui.py",
+    "line": 143,
+    "snapshot_line": 143,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/test_app_ui.py",
+    "line": 143,
+    "snapshot_line": 143,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/test_app_ui.py",
+    "line": 174,
+    "snapshot_line": 174,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/test_app_ui.py",
+    "line": 192,
+    "snapshot_line": 192,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/test_app_ui.py",
+    "line": 261,
+    "snapshot_line": 261,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/trade_audit.py",
+    "line": 75,
+    "snapshot_line": 75,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/trade_audit.py",
+    "line": 123,
+    "snapshot_line": 123,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/trade_audit.py",
+    "line": 176,
+    "snapshot_line": 176,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/trade_audit.py",
+    "line": 542,
+    "snapshot_line": 542,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/trade_audit.py",
+    "line": 621,
+    "snapshot_line": 621,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/trade_audit.py",
+    "line": 738,
+    "snapshot_line": 738,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/trade_audit.py",
+    "line": 1035,
+    "snapshot_line": 1035,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/trade_audit.py",
+    "line": 1145,
+    "snapshot_line": 1145,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/trade_audit.py",
+    "line": 1389,
+    "snapshot_line": 1389,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/trade_audit.py",
+    "line": 1437,
+    "snapshot_line": 1437,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/trade_audit.py",
+    "line": 1469,
+    "snapshot_line": 1469,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/trade_audit.py",
+    "line": 1584,
+    "snapshot_line": 1584,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/trade_audit.py",
+    "line": 1676,
+    "snapshot_line": 1676,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/verify.py",
+    "line": 61,
+    "snapshot_line": 61,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/verify.py",
+    "line": 98,
+    "snapshot_line": 98,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/verify.py",
+    "line": 118,
+    "snapshot_line": 118,
+    "kind": "private key"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/verify.py",
+    "line": 346,
+    "snapshot_line": 346,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/verify_ci.py",
+    "line": 80,
+    "snapshot_line": 80,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct1/source/verify_ci.py",
+    "line": 162,
+    "snapshot_line": 162,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/actual_costs.py",
+    "line": 192,
+    "snapshot_line": 192,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/actual_costs.py",
+    "line": 372,
+    "snapshot_line": 372,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_filter.py",
+    "line": 214,
+    "snapshot_line": 214,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan.py",
+    "line": 186,
+    "snapshot_line": 186,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan.py",
+    "line": 267,
+    "snapshot_line": 267,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan.py",
+    "line": 481,
+    "snapshot_line": 481,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan.py",
+    "line": 507,
+    "snapshot_line": 507,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan_dataplane.py",
+    "line": 48,
+    "snapshot_line": 48,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan_dataplane.py",
+    "line": 80,
+    "snapshot_line": 80,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan_dataplane.py",
+    "line": 211,
+    "snapshot_line": 211,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan_dataplane.py",
+    "line": 295,
+    "snapshot_line": 295,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan_dataplane.py",
+    "line": 337,
+    "snapshot_line": 337,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan_dataplane.py",
+    "line": 372,
+    "snapshot_line": 372,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan_dataplane.py",
+    "line": 407,
+    "snapshot_line": 407,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan_dataplane.py",
+    "line": 413,
+    "snapshot_line": 413,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan_dataplane.py",
+    "line": 455,
+    "snapshot_line": 455,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan_dataplane.py",
+    "line": 676,
+    "snapshot_line": 676,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan_dataplane.py",
+    "line": 733,
+    "snapshot_line": 733,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan_dataplane.py",
+    "line": 778,
+    "snapshot_line": 778,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan_ledger.py",
+    "line": 145,
+    "snapshot_line": 145,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ai_scan_ledger.py",
+    "line": 411,
+    "snapshot_line": 411,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/app.py",
+    "line": 108,
+    "snapshot_line": 108,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/app.py",
+    "line": 112,
+    "snapshot_line": 112,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/app.py",
+    "line": 112,
+    "snapshot_line": 112,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/app.py",
+    "line": 113,
+    "snapshot_line": 113,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/app.py",
+    "line": 113,
+    "snapshot_line": 113,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/app.py",
+    "line": 216,
+    "snapshot_line": 216,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/app.py",
+    "line": 272,
+    "snapshot_line": 272,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/app.py",
+    "line": 555,
+    "snapshot_line": 555,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/app.py",
+    "line": 592,
+    "snapshot_line": 592,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/app.py",
+    "line": 612,
+    "snapshot_line": 612,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/app.py",
+    "line": 627,
+    "snapshot_line": 627,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/app.py",
+    "line": 1329,
+    "snapshot_line": 1329,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/app.py",
+    "line": 1435,
+    "snapshot_line": 1435,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/app.py",
+    "line": 1909,
+    "snapshot_line": 1909,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/app.py",
+    "line": 1926,
+    "snapshot_line": 1926,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/binance_client.py",
+    "line": 345,
+    "snapshot_line": 345,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 220,
+    "snapshot_line": 220,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 1140,
+    "snapshot_line": 1140,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 1789,
+    "snapshot_line": 1789,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 2084,
+    "snapshot_line": 2084,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 2097,
+    "snapshot_line": 2097,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 2221,
+    "snapshot_line": 2221,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 2247,
+    "snapshot_line": 2247,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 2380,
+    "snapshot_line": 2380,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 2524,
+    "snapshot_line": 2524,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 2559,
+    "snapshot_line": 2559,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 2617,
+    "snapshot_line": 2617,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 2939,
+    "snapshot_line": 2939,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 3015,
+    "snapshot_line": 3015,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 3169,
+    "snapshot_line": 3169,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 3404,
+    "snapshot_line": 3404,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 3586,
+    "snapshot_line": 3586,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 3780,
+    "snapshot_line": 3780,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 3997,
+    "snapshot_line": 3997,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 4136,
+    "snapshot_line": 4136,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 4559,
+    "snapshot_line": 4559,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 4913,
+    "snapshot_line": 4913,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 5089,
+    "snapshot_line": 5089,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 5352,
+    "snapshot_line": 5352,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 5572,
+    "snapshot_line": 5572,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 6042,
+    "snapshot_line": 6042,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 6188,
+    "snapshot_line": 6188,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 6232,
+    "snapshot_line": 6232,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 7040,
+    "snapshot_line": 7040,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 7432,
+    "snapshot_line": 7432,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 7681,
+    "snapshot_line": 7681,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 7722,
+    "snapshot_line": 7722,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 7829,
+    "snapshot_line": 7829,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 7909,
+    "snapshot_line": 7909,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 7943,
+    "snapshot_line": 7943,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 8059,
+    "snapshot_line": 8059,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/engine.py",
+    "line": 8108,
+    "snapshot_line": 8108,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/exec_calibration.py",
+    "line": 82,
+    "snapshot_line": 82,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/exec_calibration.py",
+    "line": 134,
+    "snapshot_line": 134,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/exec_calibration.py",
+    "line": 218,
+    "snapshot_line": 218,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/exec_calibration.py",
+    "line": 317,
+    "snapshot_line": 317,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/exec_calibration.py",
+    "line": 406,
+    "snapshot_line": 406,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/exec_calibration.py",
+    "line": 493,
+    "snapshot_line": 493,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/f01_activation.py",
+    "line": 1,
+    "snapshot_line": 1,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/f01_canary.py",
+    "line": 64,
+    "snapshot_line": 64,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/f01_canary.py",
+    "line": 169,
+    "snapshot_line": 169,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/f01_canary.py",
+    "line": 265,
+    "snapshot_line": 265,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/f01_canary.py",
+    "line": 350,
+    "snapshot_line": 350,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/feasibility.py",
+    "line": 36,
+    "snapshot_line": 36,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/feasibility.py",
+    "line": 50,
+    "snapshot_line": 50,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/feasibility.py",
+    "line": 167,
+    "snapshot_line": 167,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/feasibility.py",
+    "line": 184,
+    "snapshot_line": 184,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/feasibility.py",
+    "line": 242,
+    "snapshot_line": 242,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/grid.py",
+    "line": 1,
+    "snapshot_line": 1,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/grid.py",
+    "line": 623,
+    "snapshot_line": 521,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/grid.py",
+    "line": 666,
+    "snapshot_line": 564,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/grid.py",
+    "line": 751,
+    "snapshot_line": 649,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/grid.py",
+    "line": 833,
+    "snapshot_line": 731,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/grid.py",
+    "line": 997,
+    "snapshot_line": 895,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/grid.py",
+    "line": 1036,
+    "snapshot_line": 934,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/instance.py",
+    "line": 18,
+    "snapshot_line": 18,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/instance.py",
+    "line": 41,
+    "snapshot_line": 41,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/instance.py",
+    "line": 104,
+    "snapshot_line": 104,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/lab.py",
+    "line": 30,
+    "snapshot_line": 30,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/lab.py",
+    "line": 65,
+    "snapshot_line": 65,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/lab.py",
+    "line": 176,
+    "snapshot_line": 176,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/lab.py",
+    "line": 263,
+    "snapshot_line": 263,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/lab.py",
+    "line": 306,
+    "snapshot_line": 306,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/lab.py",
+    "line": 390,
+    "snapshot_line": 390,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/lab.py",
+    "line": 506,
+    "snapshot_line": 506,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/lab.py",
+    "line": 630,
+    "snapshot_line": 630,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/lab.py",
+    "line": 699,
+    "snapshot_line": 699,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/market_collector.py",
+    "line": 88,
+    "snapshot_line": 88,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/market_collector.py",
+    "line": 113,
+    "snapshot_line": 113,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/market_collector.py",
+    "line": 155,
+    "snapshot_line": 155,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/market_data.py",
+    "line": 1,
+    "snapshot_line": 1,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/market_data.py",
+    "line": 42,
+    "snapshot_line": 23,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/market_data.py",
+    "line": 60,
+    "snapshot_line": 41,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/market_data.py",
+    "line": 87,
+    "snapshot_line": 68,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/market_data.py",
+    "line": 181,
+    "snapshot_line": 162,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/market_data.py",
+    "line": 210,
+    "snapshot_line": 191,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/market_data.py",
+    "line": 231,
+    "snapshot_line": 212,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/market_data.py",
+    "line": 273,
+    "snapshot_line": 254,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/market_data.py",
+    "line": 354,
+    "snapshot_line": 335,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/market_data.py",
+    "line": 422,
+    "snapshot_line": 403,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/market_data.py",
+    "line": 477,
+    "snapshot_line": 458,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ml_shadow/pairs.py",
+    "line": 94,
+    "snapshot_line": 94,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ml_shadow/pairs.py",
+    "line": 117,
+    "snapshot_line": 117,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ml_shadow/pairs.py",
+    "line": 170,
+    "snapshot_line": 170,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ml_shadow/pairs.py",
+    "line": 184,
+    "snapshot_line": 184,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ml_shadow/pairs.py",
+    "line": 257,
+    "snapshot_line": 257,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ml_shadow/pairs.py",
+    "line": 297,
+    "snapshot_line": 297,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ml_shadow/sanitize.py",
+    "line": 77,
+    "snapshot_line": 77,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ml_shadow/writer.py",
+    "line": 41,
+    "snapshot_line": 41,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ml_shadow/writer.py",
+    "line": 68,
+    "snapshot_line": 68,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/ml_shadow/writer.py",
+    "line": 138,
+    "snapshot_line": 138,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/account_context.py",
+    "line": 25,
+    "snapshot_line": 25,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/account_context.py",
+    "line": 27,
+    "snapshot_line": 27,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/account_context.py",
+    "line": 29,
+    "snapshot_line": 29,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/account_context.py",
+    "line": 30,
+    "snapshot_line": 30,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/account_context.py",
+    "line": 31,
+    "snapshot_line": 31,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/base_clean.py",
+    "line": 39,
+    "snapshot_line": 39,
+    "kind": "long base64-like string; long hex string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/base_clean.py",
+    "line": 41,
+    "snapshot_line": 41,
+    "kind": "long base64-like string; long hex string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/domain/base.py",
+    "line": 68,
+    "snapshot_line": 68,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/domain/base.py",
+    "line": 162,
+    "snapshot_line": 162,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/domain/codec.py",
+    "line": 73,
+    "snapshot_line": 73,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/domain/codec.py",
+    "line": 108,
+    "snapshot_line": 108,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/domain/codec.py",
+    "line": 204,
+    "snapshot_line": 204,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/domain/instrument.py",
+    "line": 100,
+    "snapshot_line": 100,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/domain/orders.py",
+    "line": 296,
+    "snapshot_line": 296,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/domain/portfolio.py",
+    "line": 246,
+    "snapshot_line": 246,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/domain/portfolio.py",
+    "line": 403,
+    "snapshot_line": 403,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/ports/journal.py",
+    "line": 216,
+    "snapshot_line": 216,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/ports/journal.py",
+    "line": 228,
+    "snapshot_line": 228,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/ports/journal.py",
+    "line": 364,
+    "snapshot_line": 364,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/ports/journal.py",
+    "line": 479,
+    "snapshot_line": 479,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/ports/journal.py",
+    "line": 496,
+    "snapshot_line": 496,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/ports/keys.py",
+    "line": 40,
+    "snapshot_line": 40,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/ports/keys.py",
+    "line": 69,
+    "snapshot_line": 69,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/simulator.py",
+    "line": 100,
+    "snapshot_line": 100,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/store/journal.py",
+    "line": 126,
+    "snapshot_line": 126,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/store/journal.py",
+    "line": 186,
+    "snapshot_line": 186,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/store/journal.py",
+    "line": 203,
+    "snapshot_line": 203,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/store/recovery.py",
+    "line": 108,
+    "snapshot_line": 108,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/store/recovery.py",
+    "line": 174,
+    "snapshot_line": 174,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/store/recovery.py",
+    "line": 214,
+    "snapshot_line": 214,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/store/recovery.py",
+    "line": 266,
+    "snapshot_line": 266,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/store/recovery.py",
+    "line": 288,
+    "snapshot_line": 288,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/newcore/store/recovery.py",
+    "line": 296,
+    "snapshot_line": 296,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/replay.py",
+    "line": 128,
+    "snapshot_line": 128,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/replay.py",
+    "line": 128,
+    "snapshot_line": 128,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/research_refresh.py",
+    "line": 31,
+    "snapshot_line": 31,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/research_refresh.py",
+    "line": 44,
+    "snapshot_line": 44,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/research_refresh.py",
+    "line": 55,
+    "snapshot_line": 55,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/research_refresh.py",
+    "line": 96,
+    "snapshot_line": 96,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/shadow_analyst.py",
+    "line": 39,
+    "snapshot_line": 39,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/shadow_analyst.py",
+    "line": 40,
+    "snapshot_line": 40,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/shadow_analyst.py",
+    "line": 49,
+    "snapshot_line": 49,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/shadow_analyst.py",
+    "line": 114,
+    "snapshot_line": 114,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/shadow_analyst.py",
+    "line": 297,
+    "snapshot_line": 297,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/shadow_analyst.py",
+    "line": 330,
+    "snapshot_line": 330,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/shadow_analyst.py",
+    "line": 440,
+    "snapshot_line": 440,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/shadow_analyst.py",
+    "line": 472,
+    "snapshot_line": 472,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/shadow_analyst.py",
+    "line": 569,
+    "snapshot_line": 569,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/shadow_analyst.py",
+    "line": 595,
+    "snapshot_line": 595,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/shadow_analyst.py",
+    "line": 724,
+    "snapshot_line": 724,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/shadow_funding.py",
+    "line": 1,
+    "snapshot_line": 1,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/strategy_shadow.py",
+    "line": 145,
+    "snapshot_line": 145,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/strategy_shadow.py",
+    "line": 193,
+    "snapshot_line": 193,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/strategy_shadow.py",
+    "line": 242,
+    "snapshot_line": 242,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/strategy_shadow.py",
+    "line": 564,
+    "snapshot_line": 564,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/telegram_ctl.py",
+    "line": 69,
+    "snapshot_line": 69,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/telegram_ctl.py",
+    "line": 122,
+    "snapshot_line": 122,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/test_app_ui.py",
+    "line": 34,
+    "snapshot_line": 34,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/test_app_ui.py",
+    "line": 71,
+    "snapshot_line": 71,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/test_app_ui.py",
+    "line": 143,
+    "snapshot_line": 143,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/test_app_ui.py",
+    "line": 143,
+    "snapshot_line": 143,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/test_app_ui.py",
+    "line": 174,
+    "snapshot_line": 174,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/test_app_ui.py",
+    "line": 192,
+    "snapshot_line": 192,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/test_app_ui.py",
+    "line": 261,
+    "snapshot_line": 261,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/trade_audit.py",
+    "line": 75,
+    "snapshot_line": 75,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/trade_audit.py",
+    "line": 123,
+    "snapshot_line": 123,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/trade_audit.py",
+    "line": 176,
+    "snapshot_line": 176,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/trade_audit.py",
+    "line": 542,
+    "snapshot_line": 542,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/trade_audit.py",
+    "line": 621,
+    "snapshot_line": 621,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/trade_audit.py",
+    "line": 738,
+    "snapshot_line": 738,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/trade_audit.py",
+    "line": 1035,
+    "snapshot_line": 1035,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/trade_audit.py",
+    "line": 1145,
+    "snapshot_line": 1145,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/trade_audit.py",
+    "line": 1389,
+    "snapshot_line": 1389,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/trade_audit.py",
+    "line": 1437,
+    "snapshot_line": 1437,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/trade_audit.py",
+    "line": 1469,
+    "snapshot_line": 1469,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/trade_audit.py",
+    "line": 1584,
+    "snapshot_line": 1584,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/trade_audit.py",
+    "line": 1676,
+    "snapshot_line": 1676,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/verify.py",
+    "line": 61,
+    "snapshot_line": 61,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/verify.py",
+    "line": 98,
+    "snapshot_line": 98,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/verify.py",
+    "line": 118,
+    "snapshot_line": 118,
+    "kind": "private key"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/verify.py",
+    "line": 346,
+    "snapshot_line": 346,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/verify_ci.py",
+    "line": 80,
+    "snapshot_line": 80,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct2/source/verify_ci.py",
+    "line": 162,
+    "snapshot_line": 162,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/actual_costs.py",
+    "line": 192,
+    "snapshot_line": 192,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/actual_costs.py",
+    "line": 372,
+    "snapshot_line": 372,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_filter.py",
+    "line": 214,
+    "snapshot_line": 214,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan.py",
+    "line": 186,
+    "snapshot_line": 186,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan.py",
+    "line": 267,
+    "snapshot_line": 267,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan.py",
+    "line": 481,
+    "snapshot_line": 481,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan.py",
+    "line": 507,
+    "snapshot_line": 507,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan_dataplane.py",
+    "line": 48,
+    "snapshot_line": 48,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan_dataplane.py",
+    "line": 80,
+    "snapshot_line": 80,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan_dataplane.py",
+    "line": 211,
+    "snapshot_line": 211,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan_dataplane.py",
+    "line": 295,
+    "snapshot_line": 295,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan_dataplane.py",
+    "line": 337,
+    "snapshot_line": 337,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan_dataplane.py",
+    "line": 372,
+    "snapshot_line": 372,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan_dataplane.py",
+    "line": 407,
+    "snapshot_line": 407,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan_dataplane.py",
+    "line": 413,
+    "snapshot_line": 413,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan_dataplane.py",
+    "line": 455,
+    "snapshot_line": 455,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan_dataplane.py",
+    "line": 676,
+    "snapshot_line": 676,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan_dataplane.py",
+    "line": 733,
+    "snapshot_line": 733,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan_dataplane.py",
+    "line": 778,
+    "snapshot_line": 778,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan_ledger.py",
+    "line": 145,
+    "snapshot_line": 145,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ai_scan_ledger.py",
+    "line": 411,
+    "snapshot_line": 411,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/app.py",
+    "line": 109,
+    "snapshot_line": 109,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/app.py",
+    "line": 113,
+    "snapshot_line": 113,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/app.py",
+    "line": 113,
+    "snapshot_line": 113,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/app.py",
+    "line": 114,
+    "snapshot_line": 114,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/app.py",
+    "line": 114,
+    "snapshot_line": 114,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/app.py",
+    "line": 217,
+    "snapshot_line": 217,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/app.py",
+    "line": 273,
+    "snapshot_line": 273,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/app.py",
+    "line": 556,
+    "snapshot_line": 556,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/app.py",
+    "line": 593,
+    "snapshot_line": 593,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/app.py",
+    "line": 613,
+    "snapshot_line": 613,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/app.py",
+    "line": 628,
+    "snapshot_line": 628,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/app.py",
+    "line": 1330,
+    "snapshot_line": 1330,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/app.py",
+    "line": 1436,
+    "snapshot_line": 1436,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/app.py",
+    "line": 1913,
+    "snapshot_line": 1913,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/app.py",
+    "line": 1930,
+    "snapshot_line": 1930,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/binance_client.py",
+    "line": 345,
+    "snapshot_line": 345,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 221,
+    "snapshot_line": 221,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 1141,
+    "snapshot_line": 1141,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 1790,
+    "snapshot_line": 1790,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 2085,
+    "snapshot_line": 2085,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 2098,
+    "snapshot_line": 2098,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 2222,
+    "snapshot_line": 2222,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 2248,
+    "snapshot_line": 2248,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 2381,
+    "snapshot_line": 2381,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 2525,
+    "snapshot_line": 2525,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 2560,
+    "snapshot_line": 2560,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 2618,
+    "snapshot_line": 2618,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 2940,
+    "snapshot_line": 2940,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 3016,
+    "snapshot_line": 3016,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 3170,
+    "snapshot_line": 3170,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 3405,
+    "snapshot_line": 3405,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 3587,
+    "snapshot_line": 3587,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 3781,
+    "snapshot_line": 3781,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 3998,
+    "snapshot_line": 3998,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 4137,
+    "snapshot_line": 4137,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 4560,
+    "snapshot_line": 4560,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 4914,
+    "snapshot_line": 4914,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 5090,
+    "snapshot_line": 5090,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 5353,
+    "snapshot_line": 5353,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 5578,
+    "snapshot_line": 5578,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 6051,
+    "snapshot_line": 6051,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 6197,
+    "snapshot_line": 6197,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 6241,
+    "snapshot_line": 6241,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 7049,
+    "snapshot_line": 7049,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 7441,
+    "snapshot_line": 7441,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 7690,
+    "snapshot_line": 7690,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 7731,
+    "snapshot_line": 7731,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 7838,
+    "snapshot_line": 7838,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 7918,
+    "snapshot_line": 7918,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 7952,
+    "snapshot_line": 7952,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 8068,
+    "snapshot_line": 8068,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/engine.py",
+    "line": 8117,
+    "snapshot_line": 8117,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/exec_calibration.py",
+    "line": 82,
+    "snapshot_line": 82,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/exec_calibration.py",
+    "line": 134,
+    "snapshot_line": 134,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/exec_calibration.py",
+    "line": 218,
+    "snapshot_line": 218,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/exec_calibration.py",
+    "line": 317,
+    "snapshot_line": 317,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/exec_calibration.py",
+    "line": 406,
+    "snapshot_line": 406,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/exec_calibration.py",
+    "line": 493,
+    "snapshot_line": 493,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/f01_activation.py",
+    "line": 1,
+    "snapshot_line": 1,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/f01_canary.py",
+    "line": 64,
+    "snapshot_line": 64,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/f01_canary.py",
+    "line": 169,
+    "snapshot_line": 169,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/f01_canary.py",
+    "line": 265,
+    "snapshot_line": 265,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/f01_canary.py",
+    "line": 350,
+    "snapshot_line": 350,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/feasibility.py",
+    "line": 36,
+    "snapshot_line": 36,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/feasibility.py",
+    "line": 50,
+    "snapshot_line": 50,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/feasibility.py",
+    "line": 167,
+    "snapshot_line": 167,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/feasibility.py",
+    "line": 184,
+    "snapshot_line": 184,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/feasibility.py",
+    "line": 242,
+    "snapshot_line": 242,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/grid.py",
+    "line": 1,
+    "snapshot_line": 1,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/grid.py",
+    "line": 623,
+    "snapshot_line": 521,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/grid.py",
+    "line": 666,
+    "snapshot_line": 564,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/grid.py",
+    "line": 751,
+    "snapshot_line": 649,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/grid.py",
+    "line": 833,
+    "snapshot_line": 731,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/grid.py",
+    "line": 997,
+    "snapshot_line": 895,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/grid.py",
+    "line": 1036,
+    "snapshot_line": 934,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/instance.py",
+    "line": 18,
+    "snapshot_line": 18,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/instance.py",
+    "line": 41,
+    "snapshot_line": 41,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/instance.py",
+    "line": 104,
+    "snapshot_line": 104,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/lab.py",
+    "line": 30,
+    "snapshot_line": 30,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/lab.py",
+    "line": 65,
+    "snapshot_line": 65,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/lab.py",
+    "line": 176,
+    "snapshot_line": 176,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/lab.py",
+    "line": 263,
+    "snapshot_line": 263,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/lab.py",
+    "line": 306,
+    "snapshot_line": 306,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/lab.py",
+    "line": 390,
+    "snapshot_line": 390,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/lab.py",
+    "line": 506,
+    "snapshot_line": 506,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/lab.py",
+    "line": 630,
+    "snapshot_line": 630,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/lab.py",
+    "line": 699,
+    "snapshot_line": 699,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/market_collector.py",
+    "line": 88,
+    "snapshot_line": 88,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/market_collector.py",
+    "line": 113,
+    "snapshot_line": 113,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/market_collector.py",
+    "line": 155,
+    "snapshot_line": 155,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/market_data.py",
+    "line": 1,
+    "snapshot_line": 1,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/market_data.py",
+    "line": 42,
+    "snapshot_line": 23,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/market_data.py",
+    "line": 60,
+    "snapshot_line": 41,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/market_data.py",
+    "line": 87,
+    "snapshot_line": 68,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/market_data.py",
+    "line": 181,
+    "snapshot_line": 162,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/market_data.py",
+    "line": 210,
+    "snapshot_line": 191,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/market_data.py",
+    "line": 231,
+    "snapshot_line": 212,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/market_data.py",
+    "line": 273,
+    "snapshot_line": 254,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/market_data.py",
+    "line": 354,
+    "snapshot_line": 335,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/market_data.py",
+    "line": 422,
+    "snapshot_line": 403,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/market_data.py",
+    "line": 477,
+    "snapshot_line": 458,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ml_shadow/pairs.py",
+    "line": 94,
+    "snapshot_line": 94,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ml_shadow/pairs.py",
+    "line": 117,
+    "snapshot_line": 117,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ml_shadow/pairs.py",
+    "line": 170,
+    "snapshot_line": 170,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ml_shadow/pairs.py",
+    "line": 184,
+    "snapshot_line": 184,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ml_shadow/pairs.py",
+    "line": 257,
+    "snapshot_line": 257,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ml_shadow/pairs.py",
+    "line": 297,
+    "snapshot_line": 297,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ml_shadow/sanitize.py",
+    "line": 77,
+    "snapshot_line": 77,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ml_shadow/writer.py",
+    "line": 41,
+    "snapshot_line": 41,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ml_shadow/writer.py",
+    "line": 68,
+    "snapshot_line": 68,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/ml_shadow/writer.py",
+    "line": 138,
+    "snapshot_line": 138,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/account_context.py",
+    "line": 25,
+    "snapshot_line": 25,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/account_context.py",
+    "line": 27,
+    "snapshot_line": 27,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/account_context.py",
+    "line": 29,
+    "snapshot_line": 29,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/account_context.py",
+    "line": 30,
+    "snapshot_line": 30,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/account_context.py",
+    "line": 31,
+    "snapshot_line": 31,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/base_clean.py",
+    "line": 39,
+    "snapshot_line": 39,
+    "kind": "long base64-like string; long hex string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/base_clean.py",
+    "line": 41,
+    "snapshot_line": 41,
+    "kind": "long base64-like string; long hex string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/domain/base.py",
+    "line": 68,
+    "snapshot_line": 68,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/domain/base.py",
+    "line": 162,
+    "snapshot_line": 162,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/domain/codec.py",
+    "line": 73,
+    "snapshot_line": 73,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/domain/codec.py",
+    "line": 108,
+    "snapshot_line": 108,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/domain/codec.py",
+    "line": 204,
+    "snapshot_line": 204,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/domain/instrument.py",
+    "line": 100,
+    "snapshot_line": 100,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/domain/orders.py",
+    "line": 296,
+    "snapshot_line": 296,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/domain/portfolio.py",
+    "line": 246,
+    "snapshot_line": 246,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/domain/portfolio.py",
+    "line": 403,
+    "snapshot_line": 403,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/ports/journal.py",
+    "line": 216,
+    "snapshot_line": 216,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/ports/journal.py",
+    "line": 228,
+    "snapshot_line": 228,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/ports/journal.py",
+    "line": 364,
+    "snapshot_line": 364,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/ports/journal.py",
+    "line": 479,
+    "snapshot_line": 479,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/ports/journal.py",
+    "line": 496,
+    "snapshot_line": 496,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/ports/keys.py",
+    "line": 40,
+    "snapshot_line": 40,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/ports/keys.py",
+    "line": 69,
+    "snapshot_line": 69,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/simulator.py",
+    "line": 100,
+    "snapshot_line": 100,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/store/journal.py",
+    "line": 126,
+    "snapshot_line": 126,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/store/journal.py",
+    "line": 186,
+    "snapshot_line": 186,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/store/journal.py",
+    "line": 203,
+    "snapshot_line": 203,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/store/recovery.py",
+    "line": 108,
+    "snapshot_line": 108,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/store/recovery.py",
+    "line": 174,
+    "snapshot_line": 174,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/store/recovery.py",
+    "line": 214,
+    "snapshot_line": 214,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/store/recovery.py",
+    "line": 266,
+    "snapshot_line": 266,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/store/recovery.py",
+    "line": 288,
+    "snapshot_line": 288,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/newcore/store/recovery.py",
+    "line": 296,
+    "snapshot_line": 296,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/replay.py",
+    "line": 128,
+    "snapshot_line": 128,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/replay.py",
+    "line": 128,
+    "snapshot_line": 128,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/research_refresh.py",
+    "line": 31,
+    "snapshot_line": 31,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/research_refresh.py",
+    "line": 44,
+    "snapshot_line": 44,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/research_refresh.py",
+    "line": 55,
+    "snapshot_line": 55,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/research_refresh.py",
+    "line": 96,
+    "snapshot_line": 96,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/shadow_analyst.py",
+    "line": 39,
+    "snapshot_line": 39,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/shadow_analyst.py",
+    "line": 40,
+    "snapshot_line": 40,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/shadow_analyst.py",
+    "line": 49,
+    "snapshot_line": 49,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/shadow_analyst.py",
+    "line": 114,
+    "snapshot_line": 114,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/shadow_analyst.py",
+    "line": 297,
+    "snapshot_line": 297,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/shadow_analyst.py",
+    "line": 330,
+    "snapshot_line": 330,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/shadow_analyst.py",
+    "line": 440,
+    "snapshot_line": 440,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/shadow_analyst.py",
+    "line": 472,
+    "snapshot_line": 472,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/shadow_analyst.py",
+    "line": 569,
+    "snapshot_line": 569,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/shadow_analyst.py",
+    "line": 595,
+    "snapshot_line": 595,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/shadow_analyst.py",
+    "line": 724,
+    "snapshot_line": 724,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/shadow_funding.py",
+    "line": 1,
+    "snapshot_line": 1,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/strategy_shadow.py",
+    "line": 145,
+    "snapshot_line": 145,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/strategy_shadow.py",
+    "line": 193,
+    "snapshot_line": 193,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/strategy_shadow.py",
+    "line": 242,
+    "snapshot_line": 242,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/strategy_shadow.py",
+    "line": 564,
+    "snapshot_line": 564,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/telegram_ctl.py",
+    "line": 69,
+    "snapshot_line": 69,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/telegram_ctl.py",
+    "line": 122,
+    "snapshot_line": 122,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/test_app_ui.py",
+    "line": 34,
+    "snapshot_line": 34,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/test_app_ui.py",
+    "line": 71,
+    "snapshot_line": 71,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/test_app_ui.py",
+    "line": 143,
+    "snapshot_line": 143,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/test_app_ui.py",
+    "line": 143,
+    "snapshot_line": 143,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/test_app_ui.py",
+    "line": 174,
+    "snapshot_line": 174,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/test_app_ui.py",
+    "line": 192,
+    "snapshot_line": 192,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/test_app_ui.py",
+    "line": 261,
+    "snapshot_line": 261,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/trade_audit.py",
+    "line": 75,
+    "snapshot_line": 75,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/trade_audit.py",
+    "line": 123,
+    "snapshot_line": 123,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/trade_audit.py",
+    "line": 176,
+    "snapshot_line": 176,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/trade_audit.py",
+    "line": 542,
+    "snapshot_line": 542,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/trade_audit.py",
+    "line": 621,
+    "snapshot_line": 621,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/trade_audit.py",
+    "line": 738,
+    "snapshot_line": 738,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/trade_audit.py",
+    "line": 1035,
+    "snapshot_line": 1035,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/trade_audit.py",
+    "line": 1145,
+    "snapshot_line": 1145,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/trade_audit.py",
+    "line": 1389,
+    "snapshot_line": 1389,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/trade_audit.py",
+    "line": 1437,
+    "snapshot_line": 1437,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/trade_audit.py",
+    "line": 1469,
+    "snapshot_line": 1469,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/trade_audit.py",
+    "line": 1584,
+    "snapshot_line": 1584,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/trade_audit.py",
+    "line": 1676,
+    "snapshot_line": 1676,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/verify.py",
+    "line": 61,
+    "snapshot_line": 61,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/verify.py",
+    "line": 98,
+    "snapshot_line": 98,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/verify.py",
+    "line": 118,
+    "snapshot_line": 118,
+    "kind": "private key"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/verify.py",
+    "line": 346,
+    "snapshot_line": 346,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/verify_ci.py",
+    "line": 80,
+    "snapshot_line": 80,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/source/verify_ci.py",
+    "line": 162,
+    "snapshot_line": 162,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct3/launcher/start_account3.py",
+    "line": 34,
+    "snapshot_line": 34,
+    "kind": "long base64-like string; long hex string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/overlay/r6_panel_client.py",
+    "line": 4,
+    "snapshot_line": 4,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/overlay/r6_readonly_monitor.py",
+    "line": 85,
+    "snapshot_line": 85,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/overlay/r6_readonly_monitor.py",
+    "line": 85,
+    "snapshot_line": 85,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/overlay/r6_readonly_monitor.py",
+    "line": 162,
+    "snapshot_line": 162,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/actual_costs.py",
+    "line": 192,
+    "snapshot_line": 192,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/actual_costs.py",
+    "line": 372,
+    "snapshot_line": 372,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_filter.py",
+    "line": 214,
+    "snapshot_line": 214,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan.py",
+    "line": 186,
+    "snapshot_line": 186,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan.py",
+    "line": 267,
+    "snapshot_line": 267,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan.py",
+    "line": 481,
+    "snapshot_line": 481,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan.py",
+    "line": 507,
+    "snapshot_line": 507,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan_dataplane.py",
+    "line": 48,
+    "snapshot_line": 48,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan_dataplane.py",
+    "line": 80,
+    "snapshot_line": 80,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan_dataplane.py",
+    "line": 211,
+    "snapshot_line": 211,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan_dataplane.py",
+    "line": 295,
+    "snapshot_line": 295,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan_dataplane.py",
+    "line": 337,
+    "snapshot_line": 337,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan_dataplane.py",
+    "line": 372,
+    "snapshot_line": 372,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan_dataplane.py",
+    "line": 407,
+    "snapshot_line": 407,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan_dataplane.py",
+    "line": 413,
+    "snapshot_line": 413,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan_dataplane.py",
+    "line": 455,
+    "snapshot_line": 455,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan_dataplane.py",
+    "line": 676,
+    "snapshot_line": 676,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan_dataplane.py",
+    "line": 733,
+    "snapshot_line": 733,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan_dataplane.py",
+    "line": 778,
+    "snapshot_line": 778,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan_ledger.py",
+    "line": 145,
+    "snapshot_line": 145,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ai_scan_ledger.py",
+    "line": 411,
+    "snapshot_line": 411,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/app.py",
+    "line": 108,
+    "snapshot_line": 108,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/app.py",
+    "line": 112,
+    "snapshot_line": 112,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/app.py",
+    "line": 112,
+    "snapshot_line": 112,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/app.py",
+    "line": 113,
+    "snapshot_line": 113,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/app.py",
+    "line": 113,
+    "snapshot_line": 113,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/app.py",
+    "line": 216,
+    "snapshot_line": 216,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/app.py",
+    "line": 272,
+    "snapshot_line": 272,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/app.py",
+    "line": 555,
+    "snapshot_line": 555,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/app.py",
+    "line": 592,
+    "snapshot_line": 592,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/app.py",
+    "line": 612,
+    "snapshot_line": 612,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/app.py",
+    "line": 627,
+    "snapshot_line": 627,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/app.py",
+    "line": 1329,
+    "snapshot_line": 1329,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/app.py",
+    "line": 1435,
+    "snapshot_line": 1435,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/app.py",
+    "line": 1909,
+    "snapshot_line": 1909,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/app.py",
+    "line": 1926,
+    "snapshot_line": 1926,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/binance_client.py",
+    "line": 432,
+    "snapshot_line": 432,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 220,
+    "snapshot_line": 220,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 1140,
+    "snapshot_line": 1140,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 1789,
+    "snapshot_line": 1789,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 2084,
+    "snapshot_line": 2084,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 2099,
+    "snapshot_line": 2099,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 2223,
+    "snapshot_line": 2223,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 2249,
+    "snapshot_line": 2249,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 2382,
+    "snapshot_line": 2382,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 2526,
+    "snapshot_line": 2526,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 2561,
+    "snapshot_line": 2561,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 2619,
+    "snapshot_line": 2619,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 2941,
+    "snapshot_line": 2941,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 3017,
+    "snapshot_line": 3017,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 3171,
+    "snapshot_line": 3171,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 3406,
+    "snapshot_line": 3406,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 3588,
+    "snapshot_line": 3588,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 3782,
+    "snapshot_line": 3782,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 3999,
+    "snapshot_line": 3999,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 4175,
+    "snapshot_line": 4175,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 4601,
+    "snapshot_line": 4601,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 4955,
+    "snapshot_line": 4955,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 5131,
+    "snapshot_line": 5131,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 5394,
+    "snapshot_line": 5394,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 5614,
+    "snapshot_line": 5614,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 6084,
+    "snapshot_line": 6084,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 6230,
+    "snapshot_line": 6230,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 6274,
+    "snapshot_line": 6274,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 7082,
+    "snapshot_line": 7082,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 7474,
+    "snapshot_line": 7474,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 7725,
+    "snapshot_line": 7725,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 7766,
+    "snapshot_line": 7766,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 7873,
+    "snapshot_line": 7873,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 7953,
+    "snapshot_line": 7953,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 7987,
+    "snapshot_line": 7987,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 8103,
+    "snapshot_line": 8103,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/engine.py",
+    "line": 8152,
+    "snapshot_line": 8152,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/exec_calibration.py",
+    "line": 82,
+    "snapshot_line": 82,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/exec_calibration.py",
+    "line": 134,
+    "snapshot_line": 134,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/exec_calibration.py",
+    "line": 218,
+    "snapshot_line": 218,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/exec_calibration.py",
+    "line": 317,
+    "snapshot_line": 317,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/exec_calibration.py",
+    "line": 406,
+    "snapshot_line": 406,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/exec_calibration.py",
+    "line": 493,
+    "snapshot_line": 493,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/f01_activation.py",
+    "line": 1,
+    "snapshot_line": 1,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/f01_canary.py",
+    "line": 64,
+    "snapshot_line": 64,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/f01_canary.py",
+    "line": 169,
+    "snapshot_line": 169,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/f01_canary.py",
+    "line": 265,
+    "snapshot_line": 265,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/f01_canary.py",
+    "line": 350,
+    "snapshot_line": 350,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/feasibility.py",
+    "line": 36,
+    "snapshot_line": 36,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/feasibility.py",
+    "line": 50,
+    "snapshot_line": 50,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/feasibility.py",
+    "line": 167,
+    "snapshot_line": 167,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/feasibility.py",
+    "line": 184,
+    "snapshot_line": 184,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/feasibility.py",
+    "line": 242,
+    "snapshot_line": 242,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/grid.py",
+    "line": 1,
+    "snapshot_line": 1,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/grid.py",
+    "line": 623,
+    "snapshot_line": 521,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/grid.py",
+    "line": 666,
+    "snapshot_line": 564,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/grid.py",
+    "line": 751,
+    "snapshot_line": 649,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/grid.py",
+    "line": 833,
+    "snapshot_line": 731,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/grid.py",
+    "line": 997,
+    "snapshot_line": 895,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/grid.py",
+    "line": 1036,
+    "snapshot_line": 934,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/instance.py",
+    "line": 18,
+    "snapshot_line": 18,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/instance.py",
+    "line": 41,
+    "snapshot_line": 41,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/instance.py",
+    "line": 104,
+    "snapshot_line": 104,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/lab.py",
+    "line": 30,
+    "snapshot_line": 30,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/lab.py",
+    "line": 65,
+    "snapshot_line": 65,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/lab.py",
+    "line": 176,
+    "snapshot_line": 176,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/lab.py",
+    "line": 263,
+    "snapshot_line": 263,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/lab.py",
+    "line": 306,
+    "snapshot_line": 306,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/lab.py",
+    "line": 390,
+    "snapshot_line": 390,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/lab.py",
+    "line": 506,
+    "snapshot_line": 506,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/lab.py",
+    "line": 630,
+    "snapshot_line": 630,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/lab.py",
+    "line": 699,
+    "snapshot_line": 699,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/market_collector.py",
+    "line": 88,
+    "snapshot_line": 88,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/market_collector.py",
+    "line": 113,
+    "snapshot_line": 113,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/market_collector.py",
+    "line": 155,
+    "snapshot_line": 155,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/market_data.py",
+    "line": 1,
+    "snapshot_line": 1,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/market_data.py",
+    "line": 42,
+    "snapshot_line": 23,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/market_data.py",
+    "line": 60,
+    "snapshot_line": 41,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/market_data.py",
+    "line": 87,
+    "snapshot_line": 68,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/market_data.py",
+    "line": 181,
+    "snapshot_line": 162,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/market_data.py",
+    "line": 210,
+    "snapshot_line": 191,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/market_data.py",
+    "line": 231,
+    "snapshot_line": 212,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/market_data.py",
+    "line": 273,
+    "snapshot_line": 254,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/market_data.py",
+    "line": 354,
+    "snapshot_line": 335,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/market_data.py",
+    "line": 422,
+    "snapshot_line": 403,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/market_data.py",
+    "line": 477,
+    "snapshot_line": 458,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/ml_shadow/pairs.py",
+    "line": 94,
+    "snapshot_line": 94,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/ml_shadow/pairs.py",
+    "line": 117,
+    "snapshot_line": 117,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/ml_shadow/pairs.py",
+    "line": 170,
+    "snapshot_line": 170,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/ml_shadow/pairs.py",
+    "line": 184,
+    "snapshot_line": 184,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/ml_shadow/pairs.py",
+    "line": 257,
+    "snapshot_line": 257,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/ml_shadow/pairs.py",
+    "line": 297,
+    "snapshot_line": 297,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/ml_shadow/sanitize.py",
+    "line": 77,
+    "snapshot_line": 77,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/pairs.py",
+    "line": 94,
+    "snapshot_line": 94,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/pairs.py",
+    "line": 117,
+    "snapshot_line": 117,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/pairs.py",
+    "line": 170,
+    "snapshot_line": 170,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/pairs.py",
+    "line": 184,
+    "snapshot_line": 184,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/pairs.py",
+    "line": 257,
+    "snapshot_line": 257,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/pairs.py",
+    "line": 297,
+    "snapshot_line": 297,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/sanitize.py",
+    "line": 77,
+    "snapshot_line": 77,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/writer.py",
+    "line": 41,
+    "snapshot_line": 41,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/writer.py",
+    "line": 68,
+    "snapshot_line": 68,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/ml_shadow/writer.py",
+    "line": 138,
+    "snapshot_line": 138,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/account_context.py",
+    "line": 25,
+    "snapshot_line": 25,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/account_context.py",
+    "line": 27,
+    "snapshot_line": 27,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/account_context.py",
+    "line": 29,
+    "snapshot_line": 29,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/account_context.py",
+    "line": 30,
+    "snapshot_line": 30,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/account_context.py",
+    "line": 31,
+    "snapshot_line": 31,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/base_clean.py",
+    "line": 39,
+    "snapshot_line": 39,
+    "kind": "long base64-like string; long hex string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/base_clean.py",
+    "line": 41,
+    "snapshot_line": 41,
+    "kind": "long base64-like string; long hex string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/domain/base.py",
+    "line": 68,
+    "snapshot_line": 68,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/domain/base.py",
+    "line": 162,
+    "snapshot_line": 162,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/domain/codec.py",
+    "line": 73,
+    "snapshot_line": 73,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/domain/codec.py",
+    "line": 108,
+    "snapshot_line": 108,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/domain/codec.py",
+    "line": 204,
+    "snapshot_line": 204,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/domain/instrument.py",
+    "line": 100,
+    "snapshot_line": 100,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/domain/orders.py",
+    "line": 296,
+    "snapshot_line": 296,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/domain/portfolio.py",
+    "line": 246,
+    "snapshot_line": 246,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/domain/portfolio.py",
+    "line": 403,
+    "snapshot_line": 403,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/ports/journal.py",
+    "line": 216,
+    "snapshot_line": 216,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/ports/journal.py",
+    "line": 228,
+    "snapshot_line": 228,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/ports/journal.py",
+    "line": 364,
+    "snapshot_line": 364,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/ports/journal.py",
+    "line": 479,
+    "snapshot_line": 479,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/ports/journal.py",
+    "line": 496,
+    "snapshot_line": 496,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/ports/keys.py",
+    "line": 40,
+    "snapshot_line": 40,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/ports/keys.py",
+    "line": 69,
+    "snapshot_line": 69,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/simulator.py",
+    "line": 100,
+    "snapshot_line": 100,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/store/journal.py",
+    "line": 126,
+    "snapshot_line": 126,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/store/journal.py",
+    "line": 186,
+    "snapshot_line": 186,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/store/journal.py",
+    "line": 203,
+    "snapshot_line": 203,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/store/recovery.py",
+    "line": 108,
+    "snapshot_line": 108,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/store/recovery.py",
+    "line": 174,
+    "snapshot_line": 174,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/store/recovery.py",
+    "line": 214,
+    "snapshot_line": 214,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/store/recovery.py",
+    "line": 266,
+    "snapshot_line": 266,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/store/recovery.py",
+    "line": 288,
+    "snapshot_line": 288,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/newcore/store/recovery.py",
+    "line": 296,
+    "snapshot_line": 296,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/r6_regime_flip.py",
+    "line": 36,
+    "snapshot_line": 36,
+    "kind": "long base64-like string; long hex string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/r6_regime_flip.py",
+    "line": 37,
+    "snapshot_line": 37,
+    "kind": "long base64-like string; long hex string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/r6_regime_flip.py",
+    "line": 38,
+    "snapshot_line": 38,
+    "kind": "long base64-like string; long hex string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/r6_regime_flip.py",
+    "line": 62,
+    "snapshot_line": 62,
+    "kind": "long base64-like string; long hex string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/r6_regime_flip.py",
+    "line": 80,
+    "snapshot_line": 80,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/r6_regime_flip.py",
+    "line": 136,
+    "snapshot_line": 136,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/r6_regime_flip.py",
+    "line": 185,
+    "snapshot_line": 185,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/replay.py",
+    "line": 128,
+    "snapshot_line": 128,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/replay.py",
+    "line": 128,
+    "snapshot_line": 128,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/research_refresh.py",
+    "line": 31,
+    "snapshot_line": 31,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/research_refresh.py",
+    "line": 44,
+    "snapshot_line": 44,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/research_refresh.py",
+    "line": 55,
+    "snapshot_line": 55,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/research_refresh.py",
+    "line": 96,
+    "snapshot_line": 96,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/shadow_analyst.py",
+    "line": 39,
+    "snapshot_line": 39,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/shadow_analyst.py",
+    "line": 40,
+    "snapshot_line": 40,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/shadow_analyst.py",
+    "line": 49,
+    "snapshot_line": 49,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/shadow_analyst.py",
+    "line": 114,
+    "snapshot_line": 114,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/shadow_analyst.py",
+    "line": 297,
+    "snapshot_line": 297,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/shadow_analyst.py",
+    "line": 330,
+    "snapshot_line": 330,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/shadow_analyst.py",
+    "line": 440,
+    "snapshot_line": 440,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/shadow_analyst.py",
+    "line": 472,
+    "snapshot_line": 472,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/shadow_analyst.py",
+    "line": 569,
+    "snapshot_line": 569,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/shadow_analyst.py",
+    "line": 595,
+    "snapshot_line": 595,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/shadow_analyst.py",
+    "line": 724,
+    "snapshot_line": 724,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/shadow_funding.py",
+    "line": 1,
+    "snapshot_line": 1,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/strategy_shadow.py",
+    "line": 145,
+    "snapshot_line": 145,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/strategy_shadow.py",
+    "line": 193,
+    "snapshot_line": 193,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/strategy_shadow.py",
+    "line": 242,
+    "snapshot_line": 242,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/strategy_shadow.py",
+    "line": 564,
+    "snapshot_line": 564,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/telegram_ctl.py",
+    "line": 69,
+    "snapshot_line": 69,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/telegram_ctl.py",
+    "line": 122,
+    "snapshot_line": 122,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/test_app_ui.py",
+    "line": 34,
+    "snapshot_line": 34,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/test_app_ui.py",
+    "line": 71,
+    "snapshot_line": 71,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/test_app_ui.py",
+    "line": 143,
+    "snapshot_line": 143,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/test_app_ui.py",
+    "line": 143,
+    "snapshot_line": 143,
+    "kind": "credential/account/user-id literal (conservative)"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/test_app_ui.py",
+    "line": 174,
+    "snapshot_line": 174,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/test_app_ui.py",
+    "line": 192,
+    "snapshot_line": 192,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/test_app_ui.py",
+    "line": 261,
+    "snapshot_line": 261,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/trade_audit.py",
+    "line": 75,
+    "snapshot_line": 75,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/trade_audit.py",
+    "line": 123,
+    "snapshot_line": 123,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/trade_audit.py",
+    "line": 176,
+    "snapshot_line": 176,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/trade_audit.py",
+    "line": 542,
+    "snapshot_line": 542,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/trade_audit.py",
+    "line": 621,
+    "snapshot_line": 621,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/trade_audit.py",
+    "line": 738,
+    "snapshot_line": 738,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/trade_audit.py",
+    "line": 1035,
+    "snapshot_line": 1035,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/trade_audit.py",
+    "line": 1145,
+    "snapshot_line": 1145,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/trade_audit.py",
+    "line": 1389,
+    "snapshot_line": 1389,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/trade_audit.py",
+    "line": 1437,
+    "snapshot_line": 1437,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/trade_audit.py",
+    "line": 1469,
+    "snapshot_line": 1469,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/trade_audit.py",
+    "line": 1584,
+    "snapshot_line": 1584,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/trade_audit.py",
+    "line": 1676,
+    "snapshot_line": 1676,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/verify.py",
+    "line": 61,
+    "snapshot_line": 61,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/verify.py",
+    "line": 98,
+    "snapshot_line": 98,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/verify.py",
+    "line": 118,
+    "snapshot_line": 118,
+    "kind": "private key"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/verify.py",
+    "line": 346,
+    "snapshot_line": 346,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/verify_ci.py",
+    "line": 80,
+    "snapshot_line": 80,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/source/verify_ci.py",
+    "line": 162,
+    "snapshot_line": 162,
+    "kind": "long base64-like string"
+  },
+  {
+    "file": "runtime_snapshots/acct4/launcher/start_account4.py",
+    "line": 30,
+    "snapshot_line": 30,
+    "kind": "long base64-like string; long hex string"
+  }
+]
