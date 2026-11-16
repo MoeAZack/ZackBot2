@@ -656,6 +656,7 @@ class GridManager:
         e = self.e
         if e.S.get('ENTRIES_PAUSED') or e.state.get('halted'): return False
         if e.persist_block(): return False             # AUD-05 r2/r5: state not durable / account unresolved - no new risk
+        if e.risk_caps_block(): return False           # CAPS-01 r2: caps looser than policy - no new grid side, no grid add
         if e.exchange_state().get('state') == 'outage': return False     # T05b: no new grid exposure while Binance is down
         if f"{g['sym']}|{side}" in e.untracked: return False
         if any(l['symbol'] == g['sym'] and l['side'] == side and l.get('stop_dirty') for l in e.state['lots'].values()): return False
@@ -917,6 +918,8 @@ class GridManager:
         stop exactly as it will be placed (rounded to the tick) is valid. Raises ValueError (nothing is sent)."""
         pb = self.e.persist_block()
         if pb: raise ValueError(pb)
+        cb = self.e.risk_caps_block()                               # CAPS-01 r2: last check before the send too
+        if cb: raise ValueError(cb)
         if side: self._stop_ok(g, side, m)
         if not (g['stop_lo'] <= m <= g['stop_hi']): raise ValueError(f"mark {m:g} outside the grid's stops - not sent")
         cap = g['capital'] * float(g['cfg'].get('capital_frac', 1.0)) * (g['hi'] / g['lo']) * 1.05

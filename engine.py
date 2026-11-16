@@ -7778,6 +7778,39 @@ class Engine:
                 r += l['q0'] * l['w'][k] * abs(l['levels'][k] - l['stop'])
         return r
 
+    @staticmethod
+    def _plan_risk(plan, qty):
+        """Risk to the stop of `qty` of an entry plan (its stop distance; an older plan without one: its full planned risk)."""
+        plan = plan or {}
+        try:
+            d = float(plan['stop_dist']); q = float(qty)
+            if math.isfinite(d) and math.isfinite(q) and d >= 0 and q >= 0: return d * q
+        except (KeyError, TypeError, ValueError): pass
+        try:
+            v = float(plan.get('risk_usd'))
+            return v if math.isfinite(v) and v >= 0 else 0.0
+        except (TypeError, ValueError): return 0.0
+
+    def _reserved_risk(self):
+        """CAPS-01 r2 (Codex #365): open risk of entry intents that are not lots yet, so the open-risk cap counts them -
+        a resting maker entry (its full planned quantity: its fills only become a lot when the record is finalized and
+        removed), an unconfirmed entry (removed when it becomes a lot) and a lot's pending add (not in lot qty until
+        confirmed). Each intent is counted once: none of them is also in state['lots'] at the same time."""
+        out = 0.0
+        for rec in (self.state.get('resting_entries') or {}).values():
+            out += self._plan_risk(rec.get('plan'), rec.get('qty') or 0.0)
+        for u in (self.state.get('unconfirmed_entries') or {}).values():
+            out += self._plan_risk(u.get('plan'), u.get('qty') or 0.0)
+        for l in self.state['lots'].values():
+            p = l.get('pending')
+            if isinstance(p, dict) and p.get('kind') == 'add':
+                try:
+                    sd = 1 if l['side'] == 'LONG' else -1
+                    v = max(0.0, sd * (float(p['px']) - float(l['stop']))) * float(p['qty'])
+                    if math.isfinite(v): out += v
+                except (KeyError, TypeError, ValueError): pass
+        return out
+
     def _corr(self, a, b):
         c = self.corr
         if not c or a not in c.get('symbols', []) or b not in c.get('symbols', []): return None
@@ -7797,7 +7830,7 @@ class Engine:
             if tot > r['x'] * cap: out.append(('coin_cap', r['mode'], f"{sym} exposure {tot:.0f} USDT > {r['x']:g}x bot capital ({r['x'] * cap:.0f})"))
         r = R['open_risk_cap']
         if r['mode'] != 'off' and cap > 0:
-            tot = sum(self._lot_risk(l) for l in lots) + size.get('risk', 0.0)
+            tot = sum(self._lot_risk(l) for l in lots) + self._reserved_risk() + size.get('risk', 0.0)   # CAPS-01 r2: + intents
             if tot > r['pct'] / 100 * cap: out.append(('open_risk_cap', r['mode'], f"open risk to stops {tot / cap * 100:.1f}% > {r['pct']:g}% of bot capital"))
         if manual: return out
         r = R['correlated_cap']
@@ -8065,6 +8098,8 @@ class Engine:
         sym, r = rec['symbol'], self.rules[rec['symbol']]
         pb = self.persist_block()                                    # AUD-05 r2: no new resting order while state is untrusted
         if pb: raise RuntimeError(f'maker entry {sym} not sent: {pb}')
+        cb = self.risk_caps_block()                                  # CAPS-01 r2: no new or re-priced resting entry either
+        if cb: raise RuntimeError(f'maker entry {sym} not sent: {cb}')
         rem = self._rd(rec['qty'] - rec['filled'], r['step'])
         bt = self.trade._req('GET', '/fapi/v1/ticker/bookTicker', dict(symbol=sym))
         px = float(bt['bidPrice'] if rec['side'] == 'LONG' else bt['askPrice'])
@@ -8111,6 +8146,9 @@ class Engine:
         # re-priced on that old approval: its resting order is cancelled now and the record finalized without a market
         # fallback - whatever filled becomes a lot through the normal finalize path.
         legacy = LEGACY_LEV_EXC_MAKER if (rec.get('plan') or {}).get('lev_exception') else None
+        if not legacy:                                               # CAPS-01 r2: caps looser than policy -> the resting
+            cb = self.risk_caps_block()                              # order is cancelled, never re-priced, no market fallback
+            if cb: legacy = f'{cb} - maker entry not re-priced, no market fallback'
         if rec['status'] in ('open', 'cancelling'):
             o = self.trade.get_order(sym, rec['cid'])
             age = time.time() - rec['placed_t']
