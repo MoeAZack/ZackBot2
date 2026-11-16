@@ -1296,7 +1296,8 @@ def _validate_trail(k, p):
     for f in ('ext', 'atr', 'dev', 'until'): _num(p.get(f), f'{w}.{f}')
 
 
-OWNERSHIP_FAMILIES = ('lots', 'unconfirmed_entries', 'resting_entries', 'pending_entries', 'grids', 'orphans')
+OWNERSHIP_FAMILIES = ('lots', 'unconfirmed_entries', 'resting_entries', 'pending_entries', 'grids', 'orphans',
+                      'emg_cleanup')   # CAPS-01 r11: leftover emergency stops are exchange ownership too
 
 
 def ownership_present(state):
@@ -1701,6 +1702,10 @@ def _sig_atr(raw, d):
     a = raw.get('atr')
     if a is not None and len(a) and np.isfinite(a[-1]) and a[-1] > 0: return float(a[-1])
     return float(d.atr)
+
+
+class NewRiskFenced(RuntimeError):
+    """CAPS-01 r11: a risk-increasing send refused at its final dispatch by a same-coin fence (nothing was sent)."""
 
 
 class Engine:
@@ -5369,6 +5374,8 @@ class Engine:
             if self._tier_block(lot['symbol'], q * px, px): return False     # MAXQTY-01: Binance -2027, nothing sent
             pb = self.persist_block()
             if pb: raise RuntimeError(f"{lot['symbol']} {why} not sent: {pb}")
+            sb = self.stop_missing_block(lot['symbol'])                    # CAPS-01 r11: final-dispatch recheck
+            if sb: raise RuntimeError(f"{lot['symbol']} {why} not sent: {sb}")
             # AUD-05 r2 write-ahead: the add is recorded durably as this lot's pending order (with its client id) BEFORE it
             # is sent; a crash / lost answer after the send is settled from its order record (_resolve_pending)
             cid = cid or new_cid()
@@ -5704,10 +5711,14 @@ class Engine:
         """Entry / add block text while a lot on this coin has a recorded stop the verifier did not find on Binance; the
         text follows the most severe lot state: owner_check > restoring > checking. None = not blocked."""
         whys = {l.get('stop_miss_why') or 'checking' for l in self.state['lots'].values() if l['symbol'] == sym and l.get('stop_miss')}
-        blk = next((STOP_MISSING_BLOCKS[w] for w in STOP_MISS_ORDER if w in whys), None)
-        if blk is None and any(c.get('symbol') == sym for c in (self.state.get('emg_cleanup') or {}).values()):
-            blk = EMG_CLEANUP_BLOCK                                # CAPS-01 r10: emergency stops not confirmed gone yet
-        return blk
+        return next((STOP_MISSING_BLOCKS[w] for w in STOP_MISS_ORDER if w in whys), None) or self._emg_fence(sym)
+
+    def _emg_fence(self, sym):
+        """CAPS-01 r10/r11: new-risk fence while emergency stops of this coin are not confirmed gone (stop_missing_block, and
+        re-checked at every final risk-increasing send: market entry write-ahead, maker placement, adds, grid orders)."""
+        if any(c.get('symbol') == sym for c in ((getattr(self, 'state', None) or {}).get('emg_cleanup') or {}).values()):
+            return EMG_CLEANUP_BLOCK
+        return None
 
     def stop_missing_on(self, sym):
         return self.stop_missing_block(sym) is not None
@@ -7523,6 +7534,9 @@ class Engine:
     # The lot inherits the provisional stop (_replace_stop places the real one first, then cancels it). New entries on that
     # coin/side wait until it is settled. Engine._owned_stop_tags lists every stop the bot owns (for AUD-04's verifier).
     def _remember_unconfirmed(self, plan, cid, strict=False, save=True):
+        if strict:                                                 # CAPS-01 r11: the market entry's final-dispatch recheck
+            sb = self.stop_missing_block(plan['sym'])              # (raised before anything is recorded or sent)
+            if sb: raise NewRiskFenced(sb)
         """Record an entry by its client id. strict=True (AUD-05 r2 write-ahead): raises if the record is not durable - the
         record is then removed from memory too and the caller must not send."""
         sl = plan.get('sl') or {}
@@ -7678,9 +7692,6 @@ class Engine:
         out['ok'] = True
         return out
 
-    def _emg_capable(self):
-        return callable(getattr(self.trade, 'stop_state', None)) and callable(getattr(self.trade, 'open_stop_orders', None))
-
     def _emg_own(self, u):
         """CAPS-01 r10 (P2): durable cleanup ownership of one held order's emergency ids - kept past settlement until a scan
         confirms none of them is live (and the coin is fenced against new risk until then: stop_missing_block)."""
@@ -7701,12 +7712,10 @@ class Engine:
         storage was down (possibly by an earlier process, so nothing on disk names it) is adopted as its provisional stop -
         the newest live generation; older live ones are cancelled (or parked) and stay owned by emg_cleanup until a scan
         confirms them gone. Returns False while that is unknown (the entry then waits: no second stop, no settlement)."""
-        if not self._emg_capable():                                   # this client can never have sent one (_prov_held
-            u.pop('emg_check', None); return True                     # needs both typed lookups and the listing)
-        sc = self._emg_scan(sym, u['cid'])
+        sc = self._emg_scan(sym, u['cid'])                            # r11: a client without typed lookups = UNKNOWN
         if not sc['ok']:
-            self.err(f"{sym} {u['side']} unconfirmed entry: emergency-stop lookup failed ({sc['why']}) - not settled this pass",
-                     key=f'prov|{uk}')
+            self.err(f"{sym} {u['side']} unconfirmed entry: emergency-stop lookup failed ({sc['why']}) - not settled this pass, "
+                     'no new stop sent; its claim is kept', key=f'emg-unknown|{uk}')
             return False
         self._emg_own(u)
         u.pop('emg_check', None)
@@ -8375,6 +8384,8 @@ class Engine:
         if pb: raise RuntimeError(f'maker entry {sym} not sent: {pb}')
         cb = self.risk_caps_block()                                  # CAPS-01 r2: no new or re-priced resting entry either
         if cb: raise RuntimeError(f'maker entry {sym} not sent: {cb}')
+        sb = self.stop_missing_block(sym)                            # CAPS-01 r11: final-dispatch recheck
+        if sb: raise RuntimeError(f'maker entry {sym} not sent: {sb}')
         rem = self._rd(rec['qty'] - rec['filled'], r['step'])
         bt = self.trade._req('GET', '/fapi/v1/ticker/bookTicker', dict(symbol=sym))
         px = float(bt['bidPrice'] if rec['side'] == 'LONG' else bt['askPrice'])
@@ -8422,8 +8433,8 @@ class Engine:
         # fallback - whatever filled becomes a lot through the normal finalize path.
         legacy = LEGACY_LEV_EXC_MAKER if (rec.get('plan') or {}).get('lev_exception') else None
         if not legacy:                                               # CAPS-01 r2: caps looser than policy -> the resting
-            cb = self.risk_caps_block()                              # order is cancelled, never re-priced, no market fallback
-            if cb: legacy = f'{cb} - maker entry not re-priced, no market fallback'
+            cb = self.risk_caps_block() or self.stop_missing_block(sym)   # order is cancelled, never re-priced, no market fallback
+            if cb: legacy = f'{cb} - maker entry not re-priced, no market fallback'   # (r11: also a coin fenced for new risk)
         if self._ue_by_cid(rec.get('cid')):                       # CAPS-01 r5: finish an interrupted handover
             self._normalize_order_owners(); return True
         if rec['status'] in ('open', 'cancelling'):

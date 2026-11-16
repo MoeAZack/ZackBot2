@@ -10,6 +10,7 @@ os.environ.setdefault('LOCALAPPDATA', tempfile.mkdtemp())
 import pytest
 import engine as E
 import test_caps01_r6 as R6                                                 # noqa: E402
+from caps_venue import Venue                                                # noqa: E402  (r11: typed lookups)
 
 
 def _dual_owner_on_disk():
@@ -24,6 +25,7 @@ def _dual_owner_on_disk():
                                            placed_t=time.time() - 60, cancel_t=time.time() - 30, plan=u['plan'])
     e2._save_wal()                                                            # the real write-ahead
     e3 = R6._engine_on(data_dir, e.trade)
+    Venue(e3.trade)                                                           # r11: a client with typed stop lookups
     assert cid in [r['cid'] for r in e3.state['resting_entries'].values()]
     assert cid in [x['cid'] for x in e3.state['unconfirmed_entries'].values()]
     e3.connect(); e3.marks = e.trade.marks()

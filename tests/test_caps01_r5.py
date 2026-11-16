@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault('LOCALAPPDATA', tempfile.mkdtemp())
 import pytest
+from caps_venue import Venue                                                # noqa: E402
 import engine as E
 import test_v31_engine as TV                                               # noqa: E402
 from test_safety import mk_engine, SL, SG                                 # noqa: E402
@@ -116,7 +117,7 @@ def test_r5_codex_restart_from_the_real_handover_write_ahead_books_once():
 
 def test_r5_restart_from_an_older_mid_handover_snapshot_is_normalized():
     """The r4 shape Codex captured: the resting record (still 'cancelling', full size) AND an unconfirmed entry, one cid."""
-    e, bk = TV.maker_engine()
+    e, bk = TV.maker_engine(); Venue(e.trade)                                 # r11: a client with typed stop lookups
     cid, q, snap = _to_handover(e, bk)
     old = copy.deepcopy(snap)
     for r in old['resting_entries'].values():
@@ -171,7 +172,7 @@ def test_r5_the_handover_itself_is_idempotent_by_client_id():
 
 def test_r5_reconcile_alone_normalizes_before_it_settles_fills():
     """After a restart the first reconcile can run before any maker poll: the owners are normalized there too."""
-    e, bk = TV.maker_engine()
+    e, bk = TV.maker_engine(); Venue(e.trade)                                 # r11: a client with typed stop lookups
     cid, q, snap = _to_handover(e, bk)
     old = copy.deepcopy(snap)
     plan = next(iter(old['unconfirmed_entries'].values()))['plan']
