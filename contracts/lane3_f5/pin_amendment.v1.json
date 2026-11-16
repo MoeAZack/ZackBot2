@@ -1,0 +1,22 @@
+{
+ "amendment": "LANE3_F5 one-function pin amendment to FACTORY-F01-PARITY-01 code.pinned_function_sha256 and the FACTORY-F01-IMPL-01 cohort manifest pins_expected",
+ "version": 1,
+ "status": "PROPOSED - not accepted; NOT applied to any manifest or test overlay (Codex #364 ruling 6925213800: C9 stays fail-closed until ONE separate integration PR, after F5/F6 code acceptance, applies accepted overlays with explicit Integration approval)",
+ "ticket": "#359 F5 / PR #363: a trade identity is never issued twice",
+ "why_separate_file": "Documentation of the exact old/new AST pin of the changed function. The signed parity contract, the F01 cohort manifest and the C260 originals stay byte-identical in this PR",
+ "rule": "sha256 of ast.get_source_segment (LF), as the contracts' pin rule",
+ "amended": {
+  "engine.py:Engine._create_lot": {
+   "from": "eb9ff2afca9194508438bd48ce6c723a4af0d5f661ada2b1a3b1c3e07ca9d5e5",
+   "to": "1356810e6f4b541368998e27afb72d2cf5c10096d6756f45745255759f117060"
+  }
+ },
+ "applies_to": [
+  "contracts/factory_f01_parity_01/factory_f01_parity_01_contract.v1.json",
+  "contracts/factory_f01_impl_01/cohort_manifest.v1.json"
+ ],
+ "change": {
+  "engine.py:Engine._create_lot": "the lot key comes from Engine._new_lot_key (unique against a persisted per-prefix high-water mark and every live / closed / waiting reference); no other line changes"
+ },
+ "unchanged": "every other pinned function"
+}
