@@ -1,0 +1,10 @@
+{
+  "source_code_head": "6e718261c3fb3d5205675c4686150adbe42a5951",
+  "tests": 57,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "duration_seconds": 5.541,
+  "recorded_cairo": "2026-11-16T19:03:24.927587+02:00",
+  "scope": "all seven lane2 targeted audit test files; no full engine suite or runtime action"
+}

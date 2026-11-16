@@ -1,0 +1,132 @@
+[
+  {
+    "path": "all_job_deltas.json.gz",
+    "bytes": 321275,
+    "sha256": "6fe23f497a3db58bc86725559d3b3a97973dd5fea507befa09a1e37bb2893ea7"
+  },
+  {
+    "path": "coverage_summary.json",
+    "bytes": 450,
+    "sha256": "02f7cbb46bf6b74d9fbcf2def0baefd63a7c28ca67c4ecde4f661ae0a2778237"
+  },
+  {
+    "path": "funding_windows.json",
+    "bytes": 281257,
+    "sha256": "9ac81ce30ac19aee63c81e82f667d7d5d89546cf80db76b34e956e6ed4b6d297"
+  },
+  {
+    "path": "independent_summary_checks.json",
+    "bytes": 1220,
+    "sha256": "09e99be63c379f7c493e4b4b89a9c65434fd52c8c0591236683ffcaecaf8351a"
+  },
+  {
+    "path": "lead_order_robustness.csv",
+    "bytes": 4779,
+    "sha256": "0eab8b6248a607162514615c8274dddf5328c3131d7c733d36411bfa10514318"
+  },
+  {
+    "path": "lead_summary.csv",
+    "bytes": 17720,
+    "sha256": "262072f0c2a23ab333dba2d01777bdcd455ad02b4ead21e7d28207cb4d47f8c7"
+  },
+  {
+    "path": "leads_recost_manifest.json",
+    "bytes": 2141,
+    "sha256": "e7cac538b51355f6a4430da591efc7c468aac77a25fd6cc43efa3e690e3c443e"
+  },
+  {
+    "path": "local_artifact_manifest.json",
+    "bytes": 3568,
+    "sha256": "b8709893147db85ec45ccf73b30a68eddc77476347985dbfc0a480f6028937a2"
+  },
+  {
+    "path": "mark_proxy_ledger.csv.gz",
+    "bytes": 1821834,
+    "sha256": "45ecd6e72ee220477b609607b626bbf293087a9a9383b14564d7c8cb1ba61fe5"
+  },
+  {
+    "path": "matrix_inventory.json",
+    "bytes": 118,
+    "sha256": "c6a10c4ab727ca491b921c54ef7325b93207a62329840e397f48b8eb53a08c73"
+  },
+  {
+    "path": "prot_all_variants.csv",
+    "bytes": 602954,
+    "sha256": "50176919214aec9a891aef1e4e7855fc00e1be707518f0ce37f47ea6ce5f94ff"
+  },
+  {
+    "path": "prot_BASE_vs_P1.csv",
+    "bytes": 61004,
+    "sha256": "b40ddb208afe803e0c6413d1ae3334ec23c4762303f6ecfe11fef6435e5bc0fe"
+  },
+  {
+    "path": "prot_recost_manifest.json",
+    "bytes": 440,
+    "sha256": "7d4df7c3cf000882b9853c8616d18417b242e54c9ede49539bd2b1b6c603c92f"
+  },
+  {
+    "path": "public_coverage.json",
+    "bytes": 87506,
+    "sha256": "746603eb154eb7f9c2aeba7eeecee6558c774577c0c5c2f983bb20915ef5387e"
+  },
+  {
+    "path": "public_funding_events.csv.gz",
+    "bytes": 8800760,
+    "sha256": "73c45e6689b3fa6fdc5b1eccb22aae3416002c28a83c88a5a995d9ae4e2bb9db"
+  },
+  {
+    "path": "public_source_manifest.json.gz",
+    "bytes": 1811730,
+    "sha256": "facfd9fbda6730e888702ba721065375060e7786185a009668d7aee2639c4241"
+  },
+  {
+    "path": "replay_parity/l24_breakaway_day_4h.json",
+    "bytes": 14778,
+    "sha256": "528d6270db7b5013d11c4324ef8865e5a46fc04e2772e7e694e5494771669c22"
+  },
+  {
+    "path": "replay_parity/l40_dual_momentum_4h.json",
+    "bytes": 14778,
+    "sha256": "afc5841d22e268891a6a3efe21d287397fb724338a8dcda25cf793164e3f5516"
+  },
+  {
+    "path": "replay_parity/prot_matrix_inventory.json",
+    "bytes": 156,
+    "sha256": "b540190aae5481d31a693d059f2f48e385b90f5a3c69e59f72dbedaeb1a2679e"
+  },
+  {
+    "path": "replay_parity/r6_regime_flip_4h.json",
+    "bytes": 14760,
+    "sha256": "76b0c09eae01be93446fab2bcc7b5b1020f4101ed68b9c7a830e67d260b4456e"
+  },
+  {
+    "path": "replay_parity/r74_prior_month_break_4h.json",
+    "bytes": 14782,
+    "sha256": "261812b243fde78966deb9c635469f2a79e877cfb5073286af74bb638924b121"
+  },
+  {
+    "path": "replay_parity/s26_weekly_close_breakdown_4h.json",
+    "bytes": 14787,
+    "sha256": "c6be761fa5950ef5775178671f75795242570b9be4f6d9e4afb90de5491f58a8"
+  },
+  {
+    "path": "replay_parity/s51_momentum_accel_4h.json",
+    "bytes": 14779,
+    "sha256": "ad001ccb5c9507088de2bf0f0b0864f19ddde135c4c8f2ef2a3ed15c095cf088"
+  },
+  {
+    "path": "replay_parity/s54_double_top_4h.json",
+    "bytes": 14775,
+    "sha256": "cf134c18c9b9e77bfb3586ec09e45ff6f2ab461482d6cd969bda4b906d5b8e70"
+  },
+  {
+    "path": "replay_parity/s76_uptrend_line_break_4h.json",
+    "bytes": 14783,
+    "sha256": "e62ce0658a1ed2cf56fd200357a9c2241338243c5787867e4bac41d97f20a6f0"
+  },
+  {
+    "path": "validation.json",
+    "bytes": 313,
+    "sha256": "999464967905455326973f269f627c6632d0d36ea341f73c01f269c2425bc930"
+  }
+]

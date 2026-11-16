@@ -1,0 +1,35 @@
+{
+  "scope": "Independent read-only accounting and summary checks by separate subagents; not event-level funding reproduction, profitability acceptance or an operational gate.",
+  "accounting": {
+    "status": "PASS",
+    "checks": [
+      "remove actual old proxy before signed native funding",
+      "fixed USD8 lead reporting versus original PROT per-trade denominator",
+      "partial/add quantities and complete fill tapes",
+      "primary versus late and scheduled-boundary timing conventions"
+    ],
+    "targeted_tests_independently_rerun": 23
+  },
+  "leads": {
+    "status": "PASS",
+    "expected_jobs": 1920,
+    "missing": 0,
+    "extra": 0,
+    "incomplete": 0,
+    "order0_baseline_CSV_matches": 8,
+    "sensitivity_brackets_checked": 1920,
+    "LUNC_event_attribution_scope": "aggregate plausibility only"
+  },
+  "prot": {
+    "status": "PASS",
+    "expected_jobs": 2574,
+    "missing": 0,
+    "extra": 0,
+    "baseline_counts_and_sumR_matches": 2574,
+    "sensitivity_brackets_checked": 2574,
+    "LUNC_proxy_jobs": 0,
+    "recommended_eight_h1_15bp_old_deltaR": 103.7398835871916,
+    "recommended_eight_h1_15bp_new_deltaR": 104.43955240739353,
+    "worst4h_L_15bp_new_deltaR": -16.401021786653274
+  }
+}

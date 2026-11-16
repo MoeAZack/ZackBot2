@@ -1,0 +1,10 @@
+{
+ "head": "42ef787f6b6e8c9363705b76df13cdb487f840f0",
+ "jobs": 585,
+ "candles_resolved": 71977,
+ "candles_unresolved": 15,
+ "start": "2022-08-26 06:00:00",
+ "data_long_1h_sha256": "94430c181c6ac15d4cc7cd5a2a90ea1b9c96611509533b7a45cb42044a04f978",
+ "data_long_4h_sha256": "b5dee944d8a3dee9238006d83fb58c67986a3395856d2e3a813929841b0c42fb",
+ "note": "data hashes added after the run (same files, unchanged checkout; Codex review 16 Nov)"
+}
