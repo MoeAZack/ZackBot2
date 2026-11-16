@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def pytest_configure(config):
     config.addinivalue_line('markers', 'slow: long engine replays - skipped by the installer (-m "not slow"), run by run_checks')
+    config.addinivalue_line('markers', 'integration_tree: a C260 test that must run on the checkout under test, never on the frozen tree')
 
 
 import pytest                                                            # noqa: E402

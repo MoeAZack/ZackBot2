@@ -3,6 +3,7 @@ from dataclasses import replace
 import hashlib
 import json
 import subprocess
+import sys
 
 import pytest
 
@@ -96,13 +97,46 @@ def test_authority_parser_rejects_ambiguous_and_nonfinite_json():
             A._strict(raw)
 
 
+ORIGINAL_ROOT = A.ROOT                                                 # the checkout under test (before any monkeypatch)
+C260_FROZEN_TREE = '42ef787f6b6e8c9363705b76df13cdb487f840f0'   # immutable master the v1 census/receipt rules were proved on
+
+
+def _code_differs_from_frozen():
+    """The C260 authority binds tools/research and feasibility.py to the frozen tree: a checkout whose code changed (the
+    accepted LANE3 F6 feasibility.round_step) can never pass it in-process - by design."""
+    r = subprocess.run(['git', '-C', str(ORIGINAL_ROOT), 'diff', '--quiet', C260_FROZEN_TREE, '--', 'tools/research', 'feasibility.py'],
+                       capture_output=True)
+    assert r.returncode in (0, 1), r.stderr.decode(errors='replace')   # 128: the frozen commit is missing - fail, never skip
+    return r.returncode == 1
+
+
+@pytest.fixture(scope='session')
+def frozen_checkout(tmp_path_factory):
+    """A full checkout of the exact frozen tree (no change to this repository's refs or worktrees)."""
+    root = tmp_path_factory.mktemp('c260-frozen') / 'repo'
+    subprocess.run(['git', 'clone', '-q', '--shared', '--no-checkout', str(ORIGINAL_ROOT), str(root)], check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(root), 'checkout', '-q', '--detach', C260_FROZEN_TREE], check=True, capture_output=True)
+    return root
+
+
+def _run_on_frozen_tree(frozen, nodeid):
+    """Positive / attack coverage of the protected path, run by the frozen tree's own test on the frozen tree's own code."""
+    out = subprocess.run([sys.executable, '-m', 'pytest', '-q', '-p', 'no:cacheprovider', nodeid], cwd=str(frozen),
+                         capture_output=True, timeout=600)
+    text = out.stdout.decode('utf-8', errors='replace')
+    assert out.returncode == 0 and ' passed' in text and 'skipped' not in text, text[-3000:]
+
+
 @pytest.fixture
-def protected_metadata_repo(tmp_path, monkeypatch):
+def protected_metadata_repo(tmp_path, monkeypatch, request):
     """Real isolated Git/ref/receipt path; only existing authority metadata.
 
     The archive store is empty. No market file, economic packet or original
     repository identity directory is accessed by this fixture.
     """
+    if _code_differs_from_frozen() and not request.node.get_closest_marker('integration_tree'):
+        _run_on_frozen_tree(request.getfixturevalue('frozen_checkout'), request.node.nodeid)
+        return None                                                   # covered on the exact frozen tree
     original = A.ROOT
     root, store = tmp_path / 'repo', tmp_path / 'empty-store'
     store.mkdir()
@@ -111,6 +145,9 @@ def protected_metadata_repo(tmp_path, monkeypatch):
         return result.stdout.decode().strip()
     subprocess.run(['git', 'clone', '--shared', '--sparse', str(original), str(root)], check=True, capture_output=True)
     git('sparse-checkout', 'set', '--no-cone', '/contracts/c260_low_idio_variance/')
+    # LANE3 F5+F6 integration (Codex #363 c6928954473): positive C260 coverage runs on the EXACT frozen tree the census was
+    # issued for (immutable master), never on a later tree whose census metadata files legitimately changed
+    git('checkout', '-q', '--detach', C260_FROZEN_TREE)
     git('config', 'user.name', 'Synthetic C260 authority test')
     git('config', 'user.email', 'synthetic@example.invalid')
     accepted = git('rev-parse', 'HEAD')
@@ -136,6 +173,7 @@ def protected_metadata_repo(tmp_path, monkeypatch):
 
 
 def test_actual_protected_metadata_authentication_then_one_spend_without_price_reads(protected_metadata_repo):
+    if protected_metadata_repo is None: return                      # ran on the exact frozen tree (fixture)
     root, store, _, _ = protected_metadata_repo
     with A.development_authority() as authority:
         A.validate_issued(authority)
@@ -151,6 +189,7 @@ def test_actual_protected_metadata_authentication_then_one_spend_without_price_r
 
 @pytest.mark.parametrize('attack', ['scope', 'code', 'source', 'review'])
 def test_actual_protected_bad_receipts_fail_before_claim(protected_metadata_repo, attack):
+    if protected_metadata_repo is None: return                      # ran on the exact frozen tree (fixture)
     root, _, receipt, git = protected_metadata_repo
     if attack == 'scope': receipt['scope'] = 'FORWARD_AND_HOLDOUT'
     if attack == 'code': receipt['research_tree_oid'] = '0' * 40
@@ -167,6 +206,7 @@ def test_actual_protected_bad_receipts_fail_before_claim(protected_metadata_repo
 
 
 def test_squash_equivalent_reviewed_code_tree_does_not_require_feature_ancestry(protected_metadata_repo):
+    if protected_metadata_repo is None: return                      # ran on the exact frozen tree (fixture)
     root, _, receipt, git = protected_metadata_repo
     # A genuinely disjoint reviewed commit models the feature source object
     # after a protected squash. It has exactly the accepted code, no parent.
@@ -185,6 +225,7 @@ def test_squash_equivalent_reviewed_code_tree_does_not_require_feature_ancestry(
 
 
 def test_annotated_tag_object_cannot_substitute_for_an_exact_reviewed_commit(protected_metadata_repo):
+    if protected_metadata_repo is None: return                      # ran on the exact frozen tree (fixture)
     root, _, receipt, git = protected_metadata_repo
     git('tag', '-a', 'synthetic-reviewed-tag', '-m', 'not a commit identity')
     receipt['accepted_implementation_head'] = git('rev-parse', 'refs/tags/synthetic-reviewed-tag')
@@ -196,3 +237,29 @@ def test_annotated_tag_object_cannot_substitute_for_an_exact_reviewed_commit(pro
         with A.development_authority():
             pytest.fail('tag object accepted as reviewed commit')
     assert not (root / '.git/c260-evaluation').exists()
+
+
+@pytest.mark.integration_tree
+def test_old_c260_authority_rejects_the_changed_integration_tree(protected_metadata_repo):
+    """LANE3 F5+F6 integration: the frozen v1 census never authorizes a tree whose census metadata changed (the F01
+    cohort manifest carries the accepted F5/F6 pins) - the old authority fails closed on the changed code/manifest."""
+    root, _, _, git = protected_metadata_repo
+    rel = 'contracts/factory_f01_impl_01/cohort_manifest.v1.json'
+    census = A._strict(A._tree('contracts/c260_low_idio_variance/c260_prior_metadata_census.v1.json'))
+    assert rel in {e['path'] for e in census['metadata_files']}
+    src = subprocess.run(['git', '-C', str(ORIGINAL_ROOT), 'show', f'HEAD:{rel}'], capture_output=True, check=True).stdout
+    frozen = subprocess.run(['git', '-C', str(root), 'show', f'{C260_FROZEN_TREE}:{rel}'], capture_output=True, check=True).stdout
+    if src == frozen:                                                    # this checkout is the frozen tree itself: change it
+        src = frozen.replace(b'"pins_expected": {', b'"pins_expected": {\n  "_synthetic_change": "x",', 1)
+    assert src != frozen
+    blob = subprocess.run(['git', '-C', str(root), 'hash-object', '-w', '--stdin'], input=src, capture_output=True,
+                          check=True).stdout.decode().strip()
+    git('update-index', '--add', '--cacheinfo', f'100644,{blob},{rel}')
+    git('update-index', '--skip-worktree', rel)                         # outside the sparse checkout: the tree stays clean
+    git('commit', '-qm', 'Synthetic changed census metadata (integration tree manifest)')
+    git('update-ref', 'refs/remotes/origin/master', git('rev-parse', 'HEAD'))
+    want = ('C260_IMPORTED_SOURCE_DIFFERS_FROM_ACCEPTED_TREE' if _code_differs_from_frozen()   # changed code: refused first
+            else 'C260_ACCEPTED_CENSUS_TREE_CHANGED')                                           # same code: the census refuses
+    with pytest.raises(A.C.C260Locked, match=want):
+        with A.development_authority():
+            pytest.fail('old C260 authority accepted a changed census tree')

@@ -425,10 +425,26 @@ def test_the_cohort_manifest_changes_only_the_candidate_guard_pin_and_the_prefli
     am = json.load(open(os.path.join(root, 'contracts', 'cand_evict_ack_01', 'pin_amendment.v1.json'), encoding='utf-8'))
     (gk, ch), = am['amended'].items()
     real = lambda d: {k: v for k, v in d.items() if not k.startswith('_')}
-    assert gk == 'engine.py:Engine.candidate_guard' and old[gk] == ch['from'] and cur[gk] == ch['to']
+    assert gk == 'engine.py:Engine.candidate_guard' and old[gk] == ch['from']
+    # LANE3 F5+F6 integration (Codex #363 c6928954473): the manifest is the e7e6550 pins with ONLY the explicitly ACCEPTED
+    # amendments applied, in order - CAND-EVICT-ACK-01, then LANE3-F5, then LANE3-F6 - each 'from' the pin then in force
+    chain = [('contracts/cand_evict_ack_01/pin_amendment.v1.json', {gk}),
+             ('contracts/lane3_f5/pin_amendment.v1.json', {'engine.py:Engine._create_lot'}),
+             ('contracts/lane3_f6/pin_amendment.v1.json', {'feasibility.py:round_step'})]
+    want = dict(real(old))
+    for rel_am, keys in chain:
+        doc = json.load(open(os.path.join(root, rel_am), encoding='utf-8'))
+        assert set(doc['amended']) == keys, rel_am
+        assert rel_am.startswith('contracts/cand_evict_ack_01/') or doc['status'].startswith('ACCEPTED'), rel_am
+        for k, c in doc['amended'].items():
+            assert want[k] == c['from'] != c['to'], (rel_am, k)
+            want[k] = c['to']
+    assert cur[gk] == ch['to']
     assert set(real(cur)) == set(real(old)) and len(real(cur)) == 34
-    assert {k for k in real(cur) if cur[k] != old[k]} == {gk}                  # (a) every other pin byte-identical
+    assert real(cur) == want                                                    # (a) every other pin byte-identical
+    assert {k for k in real(cur) if cur[k] != old[k]} == {gk, 'engine.py:Engine._create_lot', 'feasibility.py:round_step'}
     assert '6518282215' in cur['_amended_cand_evict_ack_01'] and cur['_source'] == old['_source']
+    assert 'ACCEPTED' in cur['_amended_lane3_f5'] and 'ACCEPTED' in cur['_amended_lane3_f6']
     got = FC.function_pins(cur)                                                  # (b) the bundled preflight's pin rule
     assert {k: got[k] for k in real(cur)} == real(cur)
     pins_bad = sorted(k for k, v in cur.items() if not k.startswith('_') and got.get(k) != v)   # C9's pin part
