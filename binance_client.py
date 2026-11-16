@@ -510,24 +510,29 @@ class Futures:
     def _order(self, params, adds_risk=False):
         """Idempotent order placement: a client order id is attached; on a timeout / 5xx the order is looked up
         by that id instead of being re-sent, so a lost response can never create a second position.
-        A MARKET order that cannot be confirmed as filled raises AmbiguousOrder (tag = its client id)."""
+        A MARKET order that cannot be confirmed as filled raises AmbiguousOrder (tag = its client id).
+        LANE3-F1: an ambiguous POST is NEVER sent again. "Order does not exist" right after a lost answer does not prove
+        the first request was refused (the lookup can trail the matching engine, and Binance only rejects a duplicate
+        client id while the first order is still open - a filled MARKET order's id is free again). Every lookup that
+        finds nothing keeps the order unconfirmed; after the bounded lookups it raises AmbiguousOrder, and the caller's
+        durable record (write-ahead entry, lot['pending'], owned stop / take-profit id) is settled by reconcile from
+        the order record and the position over its own evidence window - only then is a new order (new id) sent."""
         params = dict(params); params.setdefault('newClientOrderId', new_cid())
         cid, tag = params['newClientOrderId'], f"c:{params['newClientOrderId']}"
         risk = dict(adds_risk=True) if adds_risk else {}       # CLOCK-1021: an entry gets one plain -1021 retry only
         try:
             return self._req('POST', '/fapi/v1/order', params, signed=True, retry=False, **risk)
         except (requests.RequestException, AmbiguousOrder) as first:
+            notfound = 0
             for i in range(4):
                 time.sleep(1 + i)
                 try:
                     o = self.get_order(params['symbol'], cid)
                 except (requests.RequestException, BinanceError, AmbiguousOrder):
                     continue
-                if o is None:                                   # never reached Binance -> safe to send once more
-                    try:
-                        return self._req('POST', '/fapi/v1/order', params, signed=True, retry=False, **risk)
-                    except (requests.RequestException, AmbiguousOrder) as e:
-                        raise AmbiguousOrder(f'order {cid} resend unconfirmed: {e}', tag)
+                if o is None:                                   # not visible YET: never proof it was refused - look again
+                    notfound += 1
+                    continue
                 if params.get('type') == 'MARKET' and o.get('status') not in FINAL_STATUS:
                     time.sleep(1)
                     try: o = self.get_order(params['symbol'], cid) or o
@@ -535,7 +540,8 @@ class Futures:
                     if o.get('status') not in FINAL_STATUS:
                         raise AmbiguousOrder(f"market order {cid} status {o.get('status')}", tag)
                 return o                        # AUD-03: a FINAL record (also EXPIRED / CANCELED) carries the executed qty
-            raise AmbiguousOrder(f'order {cid} unconfirmed after {first}', tag)
+            raise AmbiguousOrder(f'order {cid} unconfirmed after {first}'
+                                 + (f' (not found in {notfound} lookups - not re-sent)' if notfound else ''), tag)
 
     # ---------- public ----------
     def exchange_info(self):

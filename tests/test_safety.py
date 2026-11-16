@@ -98,13 +98,15 @@ def test_order_timeout_then_found_is_not_resent(monkeypatch):
     assert calls[1][2]['origClientOrderId'] == calls[0][2]['newClientOrderId']
 
 
-def test_order_timeout_never_arrived_is_sent_once_more_with_same_id(monkeypatch):
+def test_order_timeout_not_found_is_never_sent_again(monkeypatch):
+    """LANE3-F1 (was: '...is sent once more with same id'): 'not found' after a lost answer does not prove the POST never
+    executed (a filled MARKET order's client id is free again on Binance) - unconfirmed, never a second POST."""
     monkeypatch.setattr(BC.time, 'sleep', lambda x: None)
-    c, calls = client_with([requests.ConnectionError('x'), Resp(400, {'code': -2013, 'msg': 'Order does not exist.'}),
-                            Resp(200, {'orderId': 9, 'avgPrice': '100'})])
-    assert c.open('BTCUSDT', 'LONG', '0.01')['orderId'] == 9
-    assert [x[0] for x in calls] == ['POST', 'GET', 'POST']
-    assert calls[0][2]['newClientOrderId'] == calls[2][2]['newClientOrderId']
+    nf = Resp(400, {'code': -2013, 'msg': 'Order does not exist.'})
+    c, calls = client_with([requests.ConnectionError('x'), nf, nf, nf, nf])
+    with pytest.raises(BC.AmbiguousOrder):
+        c.open('BTCUSDT', 'LONG', '0.01')
+    assert [x[0] for x in calls] == ['POST', 'GET', 'GET', 'GET', 'GET']
 
 
 def test_order_5xx_is_ambiguous_not_retried_blindly(monkeypatch):
