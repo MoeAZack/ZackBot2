@@ -13,6 +13,8 @@ Snapshots (versioned JSON, see exchange_rules.py for the file builder):
 Testnet and mainnet rules are separate snapshots and are never assumed identical. A snapshot that is missing, invalid,
 unverified, for the wrong environment or older than max_age_days gives the state 'unknown' upstream - never a green pass.
 """
+import decimal
+import functools
 import math
 
 SCHEMA = 'zackbot.exchange_rules/1'
@@ -34,10 +36,26 @@ REASON_NOT_REACHED = 'not reached: an earlier order of this sequence is skipped,
 
 
 # ------------------------------------------------------------------ rounding (the engine's _rd, moved here verbatim)
+@functools.lru_cache(maxsize=4096)
+def _step_places(step):
+    """LANE3-F6: decimal places of the step as written (0.25 -> 2, 0.001 -> 3, 1e-05 -> 5, 5 -> 0)."""
+    e = decimal.Decimal(repr(float(step))).normalize().as_tuple().exponent
+    return max(0, -e) if isinstance(e, int) else 0
+
+
 def round_step(x, step):
-    """Floor x to a multiple of step (the engine's _rd). step must be > 0."""
+    """Floor x to a multiple of step (the engine's _rd). step must be > 0.
+    LANE3-F6: the result is rounded to the step's own decimal places. The order-of-magnitude places alone (0.25 -> 1)
+    turned the floored 0.75 into 0.8 - above the input and off the step grid. For a power-of-ten step (every current
+    Binance step / tick) both counts are equal, so the result is unchanged there."""
+    return round(math.floor(x / step + 1e-9) * step, step_decimals(step))
+
+
+def step_decimals(step):
+    """Decimal places for a value on the step grid (round_step and the engine's order formatting, Engine._fmt): the
+    order-of-magnitude places, raised to the step's own places (LANE3-F6: 0.25 -> 2). Equal for a power-of-ten step."""
     dec = max(0, -int(math.floor(math.log10(step)))) if step < 1 else 0
-    return round(math.floor(x / step + 1e-9) * step, dec)
+    return max(dec, _step_places(step))
 
 
 def ceil_step(x, step):
