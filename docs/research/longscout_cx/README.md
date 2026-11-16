@@ -1,6 +1,6 @@
 # Lane 5 independent CX search
 
-Published 2026-11-16T17:23:48.745720+02:00 (Africa/Cairo). 8/8 registered trials completed, 0 screen passes.
+Published 2026-11-16T17:28:16.106311+02:00 (Africa/Cairo). 8/8 registered trials completed, 0 screen passes.
 Baseline: 281 reported trials / 11 screen passes. Completed cumulative count: 289,
 excluding concurrent lanes. Independent passes increase the multiple-testing count.
 
@@ -55,8 +55,17 @@ Reproduce each case with LONGSCOUT_CASES=longscout_cxN_cases.json and the existi
 using the frozen source data paths shown in each execution_receipt.json. Reconcile with longscout_cx_audit.py.
 Final focused test receipt is validation.json when present.
 
+Line-ending follow-up: when line_ending_audit.json is present, it records the original inherited
+core.autocrlf=true, the verified switch to local false and byte-identical canonical LF checkout.
+Every frozen alpha file matched its Git bytes throughout. Case files were originally authored CRLF;
+all eight as-run case checksums match the preserved cxN_cases_as_run.json.gz archives. Their canonical
+Git checksums differ only by line endings; no economic rerun or rule change occurred. To reproduce
+the original checksum metadata exactly, decompress the relevant archive to a scratch JSON file and
+set LONGSCOUT_CASES to that file's absolute path. Canonical LF cases have identical JSON content and
+economics, with different raw case-checksum metadata. Original round provenance describes as-run state.
+
 ROADMAP FIT: owner-authorized sustained lane-5 independent strategy economics under frozen LONGSCOUT gates.
 DEFERRED: tuning, new data, full independent execution replay, forward/PAPER activation and unrelated work.
 No accounts, keys, runtime, settings, schedulers, watchdogs, orders, other clones, merges or ready-state actions.
-LANES: Build = six new rules and cases complete; Evidence = all 640 scenario runs and eight audits complete;
-Integration = same draft PR #356, final Claude disposition only; no dependent activation.
+LANES: Build = six new rules and cases complete; Evidence = completed-case runs and audits in ledger.json;
+Integration = same draft PR #356, Claude disposition only; no dependent activation.

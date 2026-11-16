@@ -12,12 +12,12 @@
   "passed": 20,
   "failures": 0,
   "exit_code": 0,
-  "completed_cairo": "2026-11-16T17:18:46.917474+02:00",
+  "completed_cairo": "2026-11-16T17:28:22.004704+02:00",
   "test_file_sha256": {
     "test_longscout_cx1.py": "f3cbd48d9245be4f2e314db7f3cc4285eff6f12b6daf119395efaac017a01c93",
     "test_longscout_cx234.py": "7dad29be30275cea30aef99ce364202a05771773f066342d6ecabc2031f763b7"
   },
-  "log": "....................\r\n----------------------------------------------------------------------\r\nRan 20 tests in 2.852s\r\n\r\nOK\r\n",
+  "log": "....................\r\n----------------------------------------------------------------------\r\nRan 20 tests in 2.602s\r\n\r\nOK\r\n",
   "cx_trials": 8,
   "new_trials": 6,
   "total_scenario_runs": 640,
@@ -40,5 +40,9 @@
     "strategies.py",
     "backtest.py",
     "data/exchange_rules_testnet.json"
-  ]
+  ],
+  "line_ending_followup_tests": 20,
+  "line_ending_followup_failures": 0,
+  "canonical_frozen_rule_and_case_bytes_verified": true,
+  "current_local_autocrlf": false
 }
