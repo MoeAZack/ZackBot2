@@ -289,8 +289,8 @@ def test_partial_tp_fill_reduces_qty_and_resizes_the_stop():
     assert old_stop not in e.trade.stops and e.trade.stops[lot['stop_id']][2] == pytest.approx(lot['qty'])
     assert lot['stop'] == 95.0                                          # resized, never moved
     assert lot['fills'][-1][1] == 'take_profit_resting' and lot['fills'][-1][2] == pytest.approx(half)
-    e.trade.fill_tp(tag); manage(e)                                     # the rest fills: booked once, lot finished
-    assert k not in e.state['lots'] and not e.trade.stops
+    e.trade.fill_tp(tag, qty=q0 - half); manage(e)                      # the rest fills (cumulative executedQty = q0, as on
+    assert k not in e.state['lots'] and not e.trade.stops               # Binance - LANE3-F1-TP r4 rejects executedQty > placed)
     h = e.history[-1]
     assert h['exit_reason'] == 'take_profit_resting' and sum(f[2] for f in h['fills'] if f[1] == 'take_profit_resting') == pytest.approx(q0)
 
