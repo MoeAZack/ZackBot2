@@ -105,7 +105,8 @@ def test_import_is_default_off_and_frozen():
     assert S.STRATEGIES == before and m.KEY not in S.STRATEGIES
     r = m.RESEARCH
     assert r['research_only'] is True and r['fn'] is m.signal and r['reentry_lock'] is True
-    assert r['panel_symbols'] == (BTC,) + tuple(EXTRA31)
+    assert r['panel_symbols'] == (BTC,) + tuple(EXTRA31) and r['trade_symbols'] == tuple(EXTRA31) and BTC not in r['trade_symbols']
+    assert r['fn'] is m.signal
     assert (r['tf'], r['sides'], r['params'], r['mgmt']) == (REF_CASE['tf'], REF_CASE['side'], REF_CASE['params'],
                                                              REF_CASE['management'])
 
@@ -132,6 +133,7 @@ def test_registration_collision_and_management(base):
     del S.STRATEGIES[m.KEY]
     entry = m.register_for_paper('paper', base)
     assert m.register_for_paper('paper', base) is entry
+    assert entry['fn'] is m.live_signal and m.RESEARCH['fn'] is m.signal
     assert entry['research_only'] is False and m.RESEARCH['research_only'] is True
     assert entry['mgmt'] == REF_CASE['management'] and entry['params'] == REF_CASE['params'] and entry['tf'] == '1d'
     assert entry['mgmt'] is not m.RESEARCH['mgmt'] and entry['params'] is not m.RESEARCH['params']
@@ -167,6 +169,7 @@ def test_parity_with_frozen_research_function_on_real_candles():
 # ------------------------------------------------------------------ 3. engine compute_signals at 1d (unchanged code)
 def _fake(cut, cycle_syms, slot_syms, drop=(), stale=(), short=()):
     m = module(); S.STRATEGIES.pop(m.KEY, None); m.register_for_paper('paper', BASE)
+    m._now = lambda: pd.Timestamp(cut, tz='UTC') + pd.Timedelta(days=1, seconds=15)   # the cycle just after that day's close
     sl = E.sleeve('BRT', m.KEY, 1.0, .01, 3, symbols=list(slot_syms), sides='both', tf='1d')
     raw = daily_raw()
     frames = {}
@@ -267,9 +270,11 @@ def test_tf_sec_and_validate_sleeve():
     m.register_for_paper('paper', BASE)
     out = A.validate_sleeve(dict(raw), 0)
     assert out['tf'] == '1d' and out['key'] == m.KEY and out['symbols'] == list(EXTRA31)
-    assert A.validate_sleeve(dict(raw, symbols=['AAVEUSDT', 'ZROUSDT']), 0)['symbols'] == ['AAVEUSDT', 'ZROUSDT']
+    assert A.validate_sleeve(dict(raw, symbols=list(reversed(EXTRA31))), 0)['symbols'] == list(reversed(EXTRA31))
     for bad in (dict(symbols='all'), dict(symbols='core8'), dict(symbols=[]), dict(symbols=EXTRA31 + ['ETHUSDT']),
-                dict(tf='4h'), dict(tf='2d')):
+                dict(symbols=['AAVEUSDT', 'ZROUSDT']), dict(symbols=EXTRA31[:-1]),            # a subset: panel not fetched
+                dict(symbols=EXTRA31 + [BTC]), dict(symbols=EXTRA31[:-1] + [BTC]),          # BTC is context only
+                dict(symbols=EXTRA31 + ['AAVEUSDT']), dict(tf='4h'), dict(tf='2d')):
         with pytest.raises(ValueError):
             A.validate_sleeve(dict(raw, **bad), 0)
     ema = A.validate_sleeve(dict(key='ema_st', share=0.2, risk=0.02, max_pos=1, symbols='all', tf='1d'), 0)
@@ -332,3 +337,68 @@ def test_coin_frame_behind_the_panel_fails_closed():
     r = m.signal(d.iloc[:-1], m.PARAMS, ctx['AAVEUSDT'])
     assert not any(np.asarray(r[k]).any() for k in ('le', 'se'))
 
+
+
+
+# ------------------------------------------------------------------ Codex review 6874416009 (freshness, wiring, BTC)
+def test_uniformly_stale_aligned_panel_never_signals_live():
+    """Every panel coin ends on the same, signal-bearing but old candle: the PAPER entry gives nothing, while the
+    deterministic research entry still evaluates history."""
+    cut = _cuts()[0]
+    fake, m = _fake(cut, EXTRA31, EXTRA31)
+    out, al = E.Engine.compute_signals(fake, '1d', sorted(EXTRA31))
+    assert any(out[f'BRT|{s}']['le'] or out[f'BRT|{s}']['se'] for s in EXTRA31)          # fresh: signals
+    for late in (pd.Timedelta(days=2, seconds=15), pd.Timedelta(days=30)):
+        m._now = lambda late=late: pd.Timestamp(cut, tz='UTC') + late                   # same data, a later wall clock
+        out, al = E.Engine.compute_signals(fake, '1d', sorted(EXTRA31))
+        assert not any(out[f'BRT|{s}']['le'] or out[f'BRT|{s}']['se'] for s in EXTRA31), late
+        ctx = S.build_context(al, BTC)
+        assert any(np.asarray(m.signal(al[s], m.PARAMS, ctx[s])['le'])[-1] or np.asarray(m.signal(al[s], m.PARAMS, ctx[s])['se'])[-1]
+                   for s in EXTRA31)                                                    # research entry unchanged
+    m._now = lambda: pd.Timestamp(cut, tz='UTC') + pd.Timedelta(hours=23)                # the day itself not closed yet
+    out, al = E.Engine.compute_signals(fake, '1d', sorted(EXTRA31))
+    assert not any(out[f'BRT|{s}']['le'] or out[f'BRT|{s}']['se'] for s in EXTRA31)
+
+
+def test_last_closed_day():
+    m = module()
+    assert m.last_closed_day(pd.Timestamp('2026-11-14 00:00:15', tz='UTC')) == pd.Timestamp('2026-11-13')
+    assert m.last_closed_day(pd.Timestamp('2026-11-14 23:59:59', tz='UTC')) == pd.Timestamp('2026-11-13')
+    assert m.last_closed_day(pd.Timestamp('2026-11-14 01:30', tz='Africa/Cairo')) == pd.Timestamp('2026-11-12')
+
+
+def _cycle_fake(cut, rules_missing=(), off=()):
+    """A fake engine whose cycle symbol list is built by the REAL Engine.sleeve_symbols, exactly as Engine.cycle does."""
+    fake, m = _fake(cut, EXTRA31, EXTRA31)
+    raw = daily_raw()
+    fake.rules = {s: {} for s in raw if s not in rules_missing}
+    fake.S.update(UNIVERSE=sorted(raw), SYMBOLS_ON={s: False for s in off})
+    fake.state = {'lots': {}}
+    sl = fake.S['SLEEVES'][0]
+    syms = sorted({s for x in [sl] for s in E.Engine.sleeve_symbols(fake, x, include_off=True)}
+                  | {l['symbol'] for l in fake.state['lots'].values() if l.get('tf') == '1d'})
+    return fake, m, syms
+
+
+def test_cycle_wiring_fetches_the_whole_panel():
+    import inspect
+    src = inspect.getsource(E.Engine.cycle)
+    assert "syms = sorted({s for sl in sleeves for s in self.sleeve_symbols(sl, include_off=True)}" in src   # same wiring
+    assert "'BTCUSDT'] if 'BTCUSDT' in self.rules" in inspect.getsource(E.Engine.compute_signals)       # BTC added
+    cut = _cuts()[0]
+    want = full_signals()
+    fake, m, syms = _cycle_fake(cut, off=('AAVEUSDT', 'ZROUSDT'))     # switched-off coins are still fetched (panel)
+    assert syms == sorted(EXTRA31)
+    out, al = E.Engine.compute_signals(fake, '1d', syms)
+    assert set(al) == set(EXTRA31) | {BTC}
+    assert [s for s in EXTRA31 if (out[f'BRT|{s}']['le'], out[f'BRT|{s}']['se']) != want.get((s, cut), (False, False))] == []
+    assert any(out[f'BRT|{s}']['le'] or out[f'BRT|{s}']['se'] for s in EXTRA31)
+
+
+@pytest.mark.parametrize('missing', ['ZROUSDT', BTC])
+def test_cycle_coin_without_exchange_rules_fails_closed(missing):
+    cut = _cuts()[0]
+    fake, m, syms = _cycle_fake(cut, rules_missing=(missing,))
+    out, al = E.Engine.compute_signals(fake, '1d', syms)
+    assert missing not in al
+    assert not any(out[k]['le'] or out[k]['se'] for k in out if k.startswith('BRT|'))

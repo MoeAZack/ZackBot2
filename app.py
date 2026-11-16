@@ -1603,10 +1603,11 @@ def validate_sleeve(sl, i, allow_research=False):
         out['kelly'] = dict(frac=_num(k.get('frac', 0.5), 0.05, 1, 'Kelly fraction'), min=_num(k.get('min', 0.25), 0.05, 2, 'Kelly min'), max=_num(k.get('max', 2.0), 0.5, 4, 'Kelly max'))
     if out['sides'] not in ('long', 'short', 'both'): raise ValueError('direction must be long/short/both')
     if out['tf'] not in TF_SEC: raise ValueError('timeframe must be 15m, 1h, 4h or 1d')
-    panel = S.STRATEGIES[sl['key']].get('panel_symbols')          # DAILY-TF-01: a panel strategy trades only its frozen panel
-    if panel and (not isinstance(out['symbols'], list) or not out['symbols'] or set(out['symbols']) - set(panel)):
-        raise ValueError(f"{sl['key']}: coins must be an explicit list from its frozen panel ({len(panel)} coins)")
-    if panel and out['tf'] != S.STRATEGIES[sl['key']].get('tf'):
+    trade = S.STRATEGIES[sl['key']].get('trade_symbols')          # DAILY-TF-01: exactly the reviewed coins, so the cycle
+    if trade and (not isinstance(out['symbols'], list) or len(out['symbols']) != len(set(out['symbols']))   # also fetches
+                  or set(out['symbols']) != set(trade)):                                                     # the whole panel
+        raise ValueError(f"{sl['key']}: coins must be exactly its {len(trade)} reviewed coins (BTC is context only)")
+    if trade and out['tf'] != S.STRATEGIES[sl['key']].get('tf'):
         raise ValueError(f"{sl['key']}: timeframe is fixed at {S.STRATEGIES[sl['key']].get('tf')}")
     return out
 

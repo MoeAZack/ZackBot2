@@ -13,7 +13,11 @@ Panel: exactly PANEL_SYMBOLS (BTCUSDT + the 31 coins of the frozen screen), as i
 only PANEL_SYMBOLS, so other coins never move the breadth. It FAILS CLOSED (no signal at all) when the context has no
 panel, or when any panel coin is absent or has no close on the latest panel candle, or the coin's own last candle is not
 that candle (a missing / stale coin would silently shrink the breadth denominator, which the research never saw).
-A slot of this strategy may only trade panel coins (app.validate_sleeve enforces it through 'panel_symbols').
+Trading: only TRADE_SYMBOLS (the 31; BTC is context only). app.validate_sleeve requires a slot to list exactly those 31,
+so the cycle always fetches the whole panel (slot coins + BTC); a coin without exchange rules is then simply missing and
+the rule fails closed.
+Freshness (PAPER entry only): live_signal also requires the panel's latest candle to be the last CLOSED UTC day by the
+wall clock, so a uniformly stale panel never signals. The research entry (signal) stays deterministic for history.
 Evidence: PR #340 comment 6849008512 (disclosed post-hoc max 3 / 5 variant pass; thin: few distinct entry dates).
 Importing this module registers nothing; only register_for_paper adds a PAPER entry. Not a profitability claim.
 """
@@ -29,6 +33,20 @@ EXTRA31 = ('1000PEPEUSDT', 'AAVEUSDT', 'APTUSDT', 'ARBUSDT', 'ARKUSDT', 'BCHUSDT
            'ONDOUSDT', 'ONEUSDT', 'QNTUSDT', 'SANDUSDT', 'STRKUSDT', 'SUIUSDT', 'SUPERUSDT', 'TAOUSDT', 'UNIUSDT',
            'WLDUSDT', 'XLMUSDT', 'ZECUSDT', 'ZROUSDT')
 PANEL_SYMBOLS = ('BTCUSDT',) + EXTRA31          # PR #340 sieve_v1_panel: "BTC + the case's 31 coins"
+TRADE_SYMBOLS = EXTRA31                          # the reviewed transfer traded only these; BTC is breadth context only
+DAY = pd.Timedelta(days=1)
+
+
+def _now():
+    """UTC wall clock (a module function so tests can pin it)."""
+    return pd.Timestamp.now(tz='UTC')
+
+
+def last_closed_day(now=None):
+    """Open time (naive UTC, like candle t) of the last fully closed UTC daily candle."""
+    now = pd.Timestamp(now if now is not None else _now())
+    now = now.tz_convert('UTC').tz_localize(None) if now.tzinfo is not None else now
+    return now.floor('D') - DAY
 
 
 def breadth(c):
@@ -72,11 +90,22 @@ def signal(d, p, ctx):
     return dict(le=S.X(le), se=S.X(se), lx=z.copy(), sx=z.copy())
 
 
+def live_signal(d, p, ctx):
+    """PAPER runtime entry: the frozen rule, plus a freshness gate - the panel's latest candle must be the last closed
+    UTC day by the wall clock, else no signal at all (a uniformly stale but aligned panel fails closed)."""
+    c = panel_of(d, ctx)
+    if c is None or c.index[-1] != last_closed_day():
+        z = pd.Series(False, index=d.index, dtype=bool)
+        return dict(le=z.copy(), se=z.copy(), lx=z.copy(), sx=z.copy())
+    return signal(d, p, ctx)
+
+
 # Research-safe metadata and callable: registration creates a separate PAPER entry.
 RESEARCH = dict(name='[RESEARCH] CP-Y2 Breadth thrust daily',
                 desc='Breadth thrust (share of coins above EMA20 swings <=25% -> >=75% within 5 days, and the mirror) '
                      'over BTC + 31 screened coins; disclosed post-hoc variant pass. PAPER canary candidate.',
-                style='breadth', fn=signal, sides='both', tf='1d', panel_symbols=PANEL_SYMBOLS, reentry_lock=True,
+                style='breadth', fn=signal, sides='both', tf='1d', panel_symbols=PANEL_SYMBOLS,
+                trade_symbols=TRADE_SYMBOLS, reentry_lock=True,
                 research_only=True, params=dict(PARAMS), mgmt=dict(MGMT))
 _PAPER_ENTRY = None
 
@@ -93,7 +122,7 @@ def register_for_paper(mode, base):
         if _PAPER_ENTRY is not None and existing is _PAPER_ENTRY:
             return existing
         raise ValueError('breadth thrust strategy key already registered')
-    entry = dict(RESEARCH, name='[PAPER CANARY] CP-Y2 Breadth thrust daily',
+    entry = dict(RESEARCH, name='[PAPER CANARY] CP-Y2 Breadth thrust daily', fn=live_signal,
                  research_only=False, params=dict(RESEARCH['params']),
                  mgmt=dict(RESEARCH['mgmt']))
     S.STRATEGIES[KEY] = entry
