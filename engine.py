@@ -4504,7 +4504,7 @@ class Engine:
         fr = self._order_result(l['symbol'], pd_.get('cid'), pd_['qty'])
         if fr['state'] == 'final':                                       # AUD-03: Binance's own final answer decides
             got, px = fr['qty'], fr['px'] or pd_['px']
-            del l['pending']
+            del l['pending']; self.resolve(f'pending-unknown|{key}', f"{l['symbol']} {pd_['kind']}: order record found")
             if got <= 0:
                 log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} did not execute (order record) - will retry")
                 return True
@@ -4529,8 +4529,11 @@ class Engine:
                          f"({fr['state']}) - resyncing to the exchange")
                 return False
             return None                                                  # wait: the position alone could pick the wrong cause
-        # LANE3-F1: 'not found' is NOT proof that it never executed (a lookup can trail the matching engine): like a lost
-        # record it is decided by the position below - filled / unchanged after 20 s / the 5-minute resync
+        # LANE3-F1: 'not found' is NOT proof that it never executed (a lookup can trail the matching engine, and Binance
+        # documents no time after which an accepted request can no longer execute). A position that shows the fill books
+        # it; otherwise the intent stays QUARANTINED (owned, no retry, the lot keeps its stop) until Binance shows the
+        # order or the position moves - after 5 min the owner is alerted, it is never released on two negatives alone
+        quarantine = fr['state'] == 'notfound'
         # a close of the whole position includes that dust (close_lot), and a position never goes below zero
         target = max(0.0, expected - pd_['qty']) if pd_['kind'] == 'close' else expected + pd_['qty']
         near = lambda d: -tol <= d <= tol                                # whole step multiples: only float noise is tolerated
@@ -4538,7 +4541,7 @@ class Engine:
         filled = near(have - target) or (near_dust(have - target) and not near_dust(have - expected))
         never = not filled and (near(have - expected) or (near_dust(have - expected) and not near_dust(have - target)))
         if filled:                                                       # it filled
-            del l['pending']
+            del l['pending']; self.resolve(f'pending-unknown|{key}', f"{l['symbol']} {pd_['kind']}: filled (position)")
             if pd_['kind'] == 'close':
                 self._apply_close(l, pd_['qty'], pd_['px'], pd_['why'])
             else:
@@ -4554,6 +4557,9 @@ class Engine:
             if fin or l['qty'] <= 0: self._finish(key, fin or pd_['why'])
             else: self._replace_stop(l)
             return True
+        if quarantine:
+            if age > 300: self._quarantine_alert(f'pending-unknown|{key}', l['symbol'], l['side'], l['sleeve'], pd_['kind'], pd_.get('cid'), age)
+            return None
         if never and age > 20:                                           # it never filled
             del l['pending']; log.info(f"{l['symbol']} [{l['sleeve']}] unconfirmed {pd_['kind']} did not fill - will retry"); return True
         if age > 300:
@@ -7670,6 +7676,17 @@ class Engine:
                 if u.get('prov'): self._cancel_or_park(sym, u['prov'])
                 log.info(f"ENTRY {sym} {side} unconfirmed -> nothing on Binance after {int(age)} s ({fr['state']}), forgotten")
                 self.save_state()
+
+    def _quarantine_alert(self, key, sym, side, sleeve, kind, cid, age):
+        """LANE3-F1: an order whose answer was lost and that Binance does not show (not found, no position change) is kept
+        as unresolved - never released for a retry on that absence alone. One keyed alert (and one push) for the owner."""
+        if (self.health.get('incidents', {}).get(key) or {}).get('open'):
+            self.err(f'{sym} {side} [{sleeve}] {kind} {cid}: still not found on Binance', key=key); return
+        msg = (f'{sym} {side} [{sleeve}]: unconfirmed {kind} (client id {cid}) not found on Binance for {int(age // 60)} min and '
+               'the position has not changed - held as unresolved: nothing is re-sent while it could still execute. Check '
+               'the order history on Binance')
+        self.err(msg, key=key)
+        self.notify(f'⚠️ {msg}.')
 
     def _create_lot(self, plan, qty, fill, maker_qty=0.0, adopt_stop=None, cost_ref=None):
         """Record a filled entry as a lot and protect it with its exchange stop (recorded BEFORE the stop is sent)."""
