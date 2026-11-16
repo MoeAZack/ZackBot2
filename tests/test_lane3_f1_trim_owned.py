@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault('LOCALAPPDATA', tempfile.mkdtemp())
 import pytest
 from test_risk_fill01 import eng, opened, measure, adverse                # noqa: E402
+from test_safety import SL, SG                                            # noqa: E402
 
 LOOKUP = {'notfound': lambda s, cid: None,
           'pending': lambda s, cid: dict(status='NEW', executedQty='0', avgPrice='0'),
@@ -123,16 +124,81 @@ def test_r2_after_an_unrelated_exit_the_final_record_decides():
     assert d2['state'] == 'done' and lot2['qty'] == q2                        # settled; never booked a second time here
 
 
-def test_r2_the_alert_closes_when_the_lot_is_closed():
+# ---- r3: ownership outlives the lot (Codex #367 c6927872389) ----
+def _closed_with_unknown_trim(e, state='notfound'):
+    k, lot = opened(e)
+    d = _restart_shaped(e, lot); d['sent_t'] = time.time() - 3600
+    e.trade.get_order = LOOKUP[state]
+    e._risk_fill_run(k, lot, e.marks['BTCUSDT'])
+    assert e.health['incidents'][f'risk-trim-unknown|{k}']['open']
+    e.close_lot(k, 'exit_signal', e.marks['BTCUSDT'])                       # an independent exit closes the trade
+    assert k not in e.state['lots']
+    return k, d
+
+
+@pytest.mark.parametrize('state', sorted(LOOKUP))
+def test_codex_probe_a_closed_lot_does_not_release_its_still_unknown_trim(state):
+    e = eng(); k, d = _closed_with_unknown_trim(e, state)
+    seen = []; real = e._order_result
+    e._order_result = lambda s, c, q: (seen.append(c), real(s, c, q))[1]
+    for _ in range(3): e.manage(e.marks)
+    assert 'zbrfcrash' in seen, 'the original id is no longer reconciled'
+    assert e.health['incidents'][f'risk-trim-unknown|{k}']['open'], 'alert released because the parent trade closed'
+    assert 'zbrfcrash' in e.state['trim_owned']
+    blk = e.entry_block(SL, 'BTCUSDT', 'LONG', manual=True)
+    assert blk and 'zbrfcrash' in blk, blk                                   # manual admission refused
+    assert e.grids._can_add(dict(sym='BTCUSDT'), 'LONG') is False            # grid too
+    assert not e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity()) and not e.state['lots']
+
+
+def test_r3_the_final_zero_record_ends_the_closed_trades_trim():
+    e = eng(); k, d = _closed_with_unknown_trim(e)
+    e.trade.get_order = lambda s, c: dict(status='EXPIRED', executedQty='0', avgPrice='0')
+    e.manage(e.marks)
+    assert 'zbrfcrash' not in (e.state.get('trim_owned') or {})
+    assert not e.health['incidents'][f'risk-trim-unknown|{k}']['open']
+    assert e.entry_block(SL, 'BTCUSDT', 'LONG', manual=True) is None
+    assert e.open_lot(SL, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
+
+
+def test_r3_a_late_execution_of_a_closed_trades_trim_is_alerted_never_booked():
+    e = eng(); k, d = _closed_with_unknown_trim(e)
+    n_hist = len(e.history); pushed = []; e.notify = lambda m: pushed.append(m)
+    e.trade.get_order = lambda s, c: dict(status='FILLED', executedQty=str(d['send_qty']), avgPrice=str(e.marks['BTCUSDT']))
+    e.manage(e.marks)
+    assert 'zbrfcrash' not in (e.state.get('trim_owned') or {}) and len(e.history) == n_hist and not e.state['lots']
+    assert (e.health['incidents'].get('risk-trim-late|zbrfcrash') or {}).get('open')
+    assert any('CLOSED trade executed' in m for m in pushed)
+
+
+def test_r3_a_trim_settled_on_its_live_lot_is_dropped_from_the_account_record():
     e = eng(); k, lot = opened(e)
     d = _restart_shaped(e, lot); d['sent_t'] = time.time() - 3600
     e.trade.get_order = LOOKUP['notfound']
-    e._risk_fill_run(k, lot, e.marks['BTCUSDT'])
-    assert e.health['incidents'][f'risk-trim-unknown|{k}']['open']
-    e.close_lot(k, 'exit_signal', e.marks['BTCUSDT'])
-    assert k not in e.state['lots']
-    e.manage(e.marks)                                                      # the next pass ends the alert (outside pinned _finish)
-    assert not e.health['incidents'][f'risk-trim-unknown|{k}']['open']
+    e.manage(e.marks)
+    assert 'zbrfcrash' in e.state['trim_owned']
+    assert e.entry_block(SL, 'ETHUSDT', 'LONG', manual=True) is None        # another coin is never blocked
+    e.trade.get_order = lambda s, cid: dict(status='EXPIRED', executedQty='0', avgPrice='0')
+    e.manage(e.marks); e.manage(e.marks)
+    assert 'zbrfcrash' not in (e.state.get('trim_owned') or {})
+
+
+def test_r3_the_write_ahead_owns_the_id_before_the_send():
+    e = eng(); k, lot = opened(e)
+    d = measure(e, lot, adverse(lot, 0.5))
+    e._market_close = lambda *a, **kw: (_ for _ in ()).throw(RuntimeError('crash after the write-ahead'))
+    with pytest.raises(RuntimeError): e._risk_fill_run(k, lot, e.marks['BTCUSDT'])
+    o = e.state['trim_owned'][d['cid']]
+    assert o['symbol'] == 'BTCUSDT' and o['side'] == 'LONG' and o['lot'] == k
+    E_ = sys.modules['engine']; E_.validate_state(dict(e.state, schema_version=E_.STATE_SCHEMA))
+
+
+@pytest.mark.parametrize('rec', [dict(symbol=5, side='LONG'), dict(symbol='BTCUSDT', side='BOTH'), dict(symbol='BTCUSDT'), 'x'])
+def test_r3_a_malformed_ownership_record_fails_the_state_check(rec):
+    E_ = sys.modules['engine']
+    e = eng()
+    with pytest.raises(E_.SchemaError):
+        E_.validate_state(dict(e.state, schema_version=E_.STATE_SCHEMA, trim_owned={'zbrfx': rec}))
 
 
 def test_r2_the_write_ahead_records_the_booking_mark():
