@@ -4110,7 +4110,7 @@ class Engine:
         Returns True when Binance confirmed the cancel (or that it was already gone), False when it was only parked -
         parking is bookkeeping, not proof that the stop is gone (AUD-04 r3). Existing callers may ignore the result."""
         if self.dry or not tag: return True
-        holder = next((k for k, l in self.state['lots'].items() if l.get('stop_id') == tag), None)
+        holder = next((k for k, l in self.state['lots'].items() if l['symbol'] == sym and l.get('stop_id') == tag), None)   # r2: per coin
         if holder is not None:                                  # LANE3-F2 r1 (Codex #361): a stop that a LIVE lot still records
             log.warning(f'{sym} stop {tag} not cancelled: lot {holder} still records it as its protection')   # is that lot's
             return False                                        # protection (a shared carrier) - never cancelled from here
@@ -5690,7 +5690,13 @@ class Engine:
         """Entry / add block text while a lot on this coin has a recorded stop the verifier did not find on Binance; the
         text follows the most severe lot state: owner_check > restoring > checking. None = not blocked."""
         whys = {l.get('stop_miss_why') or 'checking' for l in self.state['lots'].values() if l['symbol'] == sym and l.get('stop_miss')}
-        return next((STOP_MISSING_BLOCKS[w] for w in STOP_MISS_ORDER if w in whys), None)
+        return next((STOP_MISSING_BLOCKS[w] for w in STOP_MISS_ORDER if w in whys), None) or self.stop_unconfirmed_block(sym)
+
+    def stop_unconfirmed_block(self, sym):
+        """LANE3-F2 r2 (Codex #361): entry / add block while a lot on this coin has a stop that Binance lists but does not
+        prove covers it (stop_short: short or unknown coverage). Repair, reconciliation and exits never consult it."""
+        held = sorted(k for k, l in self.state['lots'].items() if l['symbol'] == sym and l.get('stop_short'))
+        return f'stop coverage on {sym} not confirmed ({held[0]}) - no new risk until it is' if held else None
 
     def stop_missing_on(self, sym):
         return self.stop_missing_block(sym) is not None
@@ -5783,7 +5789,9 @@ class Engine:
         self.resolve(f'open-orders|{sym}', f'open orders {sym} readable again')
         tags = {r['tag'] for r in rows}
         short, unknown = self._stops_short(sym, rows, strict)   # LANE3-F2: listed but not proven -> never confirmed
-        self._stops_seen(sym, tags, short={**short, **unknown})
+        # r2 (Codex #361): a tag-only listing proves nothing about coverage - pass None so the persisted stop_short latch
+        # decides; only a detailed (strict) read or a confirmed replacement may clear it
+        self._stops_seen(sym, tags, short={**short, **unknown} if strict else None)
         now, changed, recheck = self.clock(), False, False
         owned = self._owned_stop_tags(sym)        # lot stops AND AUD-03b provisional stops: never an extra, never adopted
         orph = {t for s_, t in self.state.get('orphans') or [] if s_ == sym}   # queued for cancellation: never adopted (the

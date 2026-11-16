@@ -214,3 +214,65 @@ def test_closing_one_lot_never_cancels_a_stop_a_sibling_records(tmp_path):
     assert old in e.trade.stops and e.state['lots'][k2]['stop_id'] == old
     e._finish(k2, 'test_close')                                               # the last owner: cancelled as before
     assert old not in e.trade.stops
+
+
+# ---------------------------------------------------------------- Codex #361 round 2 (comment 6925138007)
+def _unknown(e, monkeypatch, lot):
+    real = e.trade.open_stop_orders
+    monkeypatch.setattr(e.trade, 'open_stop_orders', lambda *a, **kw: [dict(r, qty=None) for r in real(*a, **kw)])
+    e._verify_symbol('BTCUSDT', 'x')
+    assert lot['stop_short'] and not lot.get('stop_dirty') and not e.stop_view(lot)['protected']
+    return real
+
+
+def test_r2_tag_only_fallback_never_clears_an_unknown_latch(tmp_path, monkeypatch):
+    """HIGH 1: after a detailed read leaves coverage unknown, a verifier pass on a tag-only client keeps the latch."""
+    e, clk, k, lot = setup(tmp_path)
+    _unknown(e, monkeypatch, lot)
+    monkeypatch.delattr(e.trade, 'open_stop_orders')                          # the client now only lists tags
+    monkeypatch.delattr(type(e.trade), 'open_stop_orders')
+    assert e._stop_rows('BTCUSDT')[1] is False                                # really the tag-only path
+    clk[0] += 1; e._verify_symbol('BTCUSDT', 'x')
+    assert lot.get('stop_short') and not e.stop_view(lot)['protected']
+    assert (e.health.get('incidents', {}).get(f'stop-short|{k}') or {}).get('open')
+
+
+def test_r2_unknown_coverage_blocks_entries_adds_and_grid_orders_but_not_exits(tmp_path, monkeypatch):
+    """HIGH 2: unconfirmed coverage blocks new risk on the coin (manual too, both sides) without a blind replacement."""
+    e, clk, k, lot = setup(tmp_path)
+    n_stops = e.trade.n
+    _unknown(e, monkeypatch, lot)
+    for side in ('LONG', 'SHORT'):
+        assert 'not confirmed' in (e.entry_block(None, 'BTCUSDT', side, manual=True) or ''), side
+    assert 'not confirmed' in (e._add_block(lot, lot['qty'] / 2, 100.0) or '')
+    assert e.stop_missing_on('BTCUSDT')                                       # the grid's new-order gate reads this
+    assert e.entry_block(None, 'ETHUSDT', 'LONG', manual=True) is None or 'not confirmed' not in e.entry_block(None, 'ETHUSDT', 'LONG', manual=True)
+    tick(e, clk, n=2)
+    assert e.trade.n == n_stops                                               # nothing re-placed on unknown alone
+    e._finish(k, 'test_close')                                                # an exit never consults the gate
+    assert k not in e.state['lots'] and e.stop_missing_block('BTCUSDT') is None
+
+
+def test_r2_proven_coverage_lifts_the_block(tmp_path, monkeypatch):
+    e, clk, k, lot = setup(tmp_path)
+    real = _unknown(e, monkeypatch, lot)
+    monkeypatch.setattr(e.trade, 'open_stop_orders', real)
+    clk[0] += 1; e._verify_symbol('BTCUSDT', 'x')
+    assert 'stop_short' not in lot and e.stop_unconfirmed_block('BTCUSDT') is None
+
+
+def test_r2_carrier_guard_is_per_coin(tmp_path):
+    """A BTC stop tag equal to an ETH lot's (symbol-scoped) order id is still cancelled on BTC."""
+    e, clk, k, lot = setup(tmp_path)
+    tag = lot['stop_id']
+    other = dict(lot, symbol='ETHUSDT'); e.state['lots'][k + '|eth'] = other           # same tag text, other coin
+    del e.state['lots'][k]                                                    # no BTC lot records it any more
+    assert e._cancel_or_park('BTCUSDT', tag) is True and tag not in e.trade.stops
+    assert not [x for x in e.state.get('orphans') or [] if x[1] == tag]
+
+
+def test_r2_a_true_shared_carrier_on_the_same_coin_is_still_kept(tmp_path):
+    e, clk, k, lot = setup(tmp_path)
+    tag = lot['stop_id']
+    e.state['lots'][k + '|twin'] = dict(lot)
+    assert e._cancel_or_park('BTCUSDT', tag) is False and tag in e.trade.stops
