@@ -21,7 +21,8 @@ class Venue:
     algo endpoint with clientAlgoId); lose='placed' -> placed but the answer is lost, 'unplaced' -> lost before Binance."""
     def __init__(self, x, mode='classic'):
         self.x, self.mode, self.lose, self.n, self.by_id, self.st, self.max_live = x, mode, None, 0, {}, {}, 0
-        x.stop, x.stop_status, x.open_stop_orders = self.stop, self.stop_status, self.open_stop_orders
+        self.fail_cancel = set()                                        # resolved tags whose cancel raises (network)
+        x.stop, x.stop_status, x.open_stop_orders, x.stop_state = self.stop, self.stop_status, self.open_stop_orders, self.stop_state
         bk = x.cancel.__self__ if hasattr(x.cancel, '__self__') and hasattr(x.cancel.__self__, 'orders') else None
         if bk is not None: bk._cancel = self.cancel
         else: x.cancel = self.cancel
@@ -54,6 +55,7 @@ class Venue:
         return self.by_id.get(oid) if kind in ('c', 'ac') else tag
     def cancel(self, s, tag):
         self.x._f('cancel'); t = self._tag(tag)
+        if t in self.fail_cancel: raise BC.BinanceError(-1001, 'injected: cancel not answered')
         if t in self.st and self.st[t] == 'NEW': self.st[t] = 'CANCELED'; self.x.stops.pop(t, None)
         else: self.x.stops.pop(tag, None)
         return True
@@ -62,6 +64,10 @@ class Venue:
         if t is None: return None
         if t in self.st: return self.st[t]
         return 'NEW' if t in self.x.stops else None
+    def stop_state(self, s, tag):
+        st = self.stop_status(s, tag)
+        if st is None: return 'absent', None                           # the venue's explicit no-such-order
+        return {'NEW': 'live', 'CANCELED': 'gone', 'FILLED': 'fired'}.get(st, 'unknown'), st
     def open_stop_orders(self, s, strict_algo=False, retry=None):
         cid = {v: k for k, v in self.by_id.items()}
         return [dict(tag=t, type='STOP_MARKET', position_side=v[1], side='SELL' if v[1] == 'LONG' else 'BUY', qty=v[2],
@@ -141,8 +147,7 @@ def test_r9_unknown_status_sends_nothing(monkeypatch):
     e, cid, exec_q = R7._dual_owner_on_disk()
     v = Venue(e.trade)
     storage_down(monkeypatch)
-    def boom(*a, **k): raise BC.BinanceError(-1001, 'status read failed')
-    e.trade.stop_status = boom
+    e.trade.stop_state = lambda s, tag: ('unknown', None)                     # e.g. a failed read / unsupported endpoint
     for _ in range(2): one_pass(e, v, exec_q)
     assert not v.live() and 'stop' not in e.trade.calls                      # unknown -> never a stop on a guess
 
@@ -172,11 +177,12 @@ def test_r9_a_lost_answer_not_visible_yet_is_never_sent_again_in_the_same_proces
     v = Venue(e.trade)
     storage_down(monkeypatch)
     v.lose = 'placed'
-    real = v.stop_status
-    v.x.stop_status = lambda s, tag, retry=None: None                          # placed, but not visible to lookups yet
+    real, real_l = v.stop_state, v.open_stop_orders
+    v.x.stop_state = lambda s, tag: ('absent', None)                          # placed, but not visible to lookups yet
+    v.x.open_stop_orders = lambda s, strict_algo=False, retry=None: []
     e.reconcile(500); e.reconcile(500); e.reconcile(500)
     assert e.trade.calls.count('stop') == 1                                   # its outcome is unknown: nothing re-sent
-    v.x.stop_status = real
+    v.x.stop_state, v.x.open_stop_orders = real, real_l
     e.reconcile(500)
     assert len(v.live()) == 1 and e.trade.calls.count('stop') == 1            # found by its id and adopted
 

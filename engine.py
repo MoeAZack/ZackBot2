@@ -1421,6 +1421,10 @@ def validate_state(doc):
     for i, o in enumerate(orph):
         if not (isinstance(o, list) and len(o) == 2): _bad(f'orphans[{i}]', 'not a [symbol, tag] pair')
         _str(o[0], f'orphans[{i}].symbol', _SYM_RE); _str(o[1], f'orphans[{i}].tag', _TAG_RE)
+    for k, c in _dict(doc.get('emg_cleanup'), 'emg_cleanup', opt=True).items():       # CAPS-01 r10
+        _str(k, f'emg_cleanup[{k[:40]}]', _CID_RE); _dict(c, f'emg_cleanup[{k[:40]}]')
+        _str(c.get('symbol'), f'emg_cleanup[{k[:40]}].symbol', _SYM_RE); _str(c.get('side'), f'emg_cleanup[{k[:40]}].side', choices=SIDES)
+        _num(c.get('t'), f'emg_cleanup[{k[:40]}].t', lo=0)
     for f in ('short_seen', 'over_seen'):
         for k, n in _dict(doc.get(f), f, opt=True).items(): _int(n, f'{f}[{k[:40]}]')
     _bool(doc.get('halted'), 'halted', opt=True)
@@ -1651,6 +1655,8 @@ STOP_FIRED = ('FILLED', 'PARTIALLY_FILLED', 'TRIGGERING', 'TRIGGERED', 'FINISHED
 STOP_LIVE = ('NEW',)
 PROV_PENDING_S = 60          # AUD-04 r2: a provisional stop whose answer was lost: its status decides; unknown this long -> parked
 EMG_GENS = 4                 # CAPS-01 r9: deterministic emergency-stop generations per held order (classic + algo id each)
+EMG_CLEANUP_BLOCK = ('an emergency stop on this coin is still being cleaned up on Binance - no new entries or adds '
+                     'until Binance confirms it gone (exits and protection keep working)')
 STOP_TYPES = ('STOP_MARKET', 'STOP')
 BOT_STOP_CID_RE = re.compile(r'z[ab][0-9a-f]{22}')   # exact new_cid('zb'|'za') shape of the bot's own stop client ids
 #   (classic / algo); any other client id (manual, web, other bots, malformed) is never adopted or cancelled
@@ -5698,7 +5704,10 @@ class Engine:
         """Entry / add block text while a lot on this coin has a recorded stop the verifier did not find on Binance; the
         text follows the most severe lot state: owner_check > restoring > checking. None = not blocked."""
         whys = {l.get('stop_miss_why') or 'checking' for l in self.state['lots'].values() if l['symbol'] == sym and l.get('stop_miss')}
-        return next((STOP_MISSING_BLOCKS[w] for w in STOP_MISS_ORDER if w in whys), None)
+        blk = next((STOP_MISSING_BLOCKS[w] for w in STOP_MISS_ORDER if w in whys), None)
+        if blk is None and any(c.get('symbol') == sym for c in (self.state.get('emg_cleanup') or {}).values()):
+            blk = EMG_CLEANUP_BLOCK                                # CAPS-01 r10: emergency stops not confirmed gone yet
+        return blk
 
     def stop_missing_on(self, sym):
         return self.stop_missing_block(sym) is not None
@@ -6124,6 +6133,7 @@ class Engine:
         live = self.trade.positions() if live is None else live
         if fetched: self.health.setdefault('confirmed', {})['positions'] = now_utc().isoformat(timespec='seconds')
         if self.state.get('unconfirmed_entries'): self._settle_unconfirmed(live)   # AUD-03b
+        if self.state.get('emg_cleanup'): self._emg_cleanup()               # CAPS-01 r10: leftover emergency stops
         st = self.state
         groups = {}
         for k, l in st['lots'].items(): groups.setdefault((l['symbol'], l['side']), []).append(k)
@@ -7535,6 +7545,8 @@ class Engine:
             if sym in (None, u['symbol']):
                 tags.add(u.get('prov')); tags.add((u.get('prov_pending') or {}).get('tag'))   # AUD-04 r2: lost answer = still ours
                 if u.get('cid'): tags |= self._emg_tags(u['cid'])             # CAPS-01 r9: its emergency stops (fenced)
+        for cid, c in (self.state.get('emg_cleanup') or {}).items():         # r10: ... and leftovers being cleaned up
+            if sym in (None, c.get('symbol')): tags |= self._emg_tags(cid)
         return {t for t in tags if t}
 
     @staticmethod
@@ -7614,9 +7626,9 @@ class Engine:
         log.info(f"ENTRY {sym} {side} unconfirmed: {qty} on Binance protected by a provisional stop at {stop}")
 
     def _emg_mem(self, k):
-        """CAPS-01 r9: memory only - lost emergency-stop send answers ('pend': cid -> (generation, time)). A new process
-        starts empty and looks the deterministic ids up again."""
-        return vars(self).setdefault(f'_emg_{k}', {})
+        """CAPS-01 r9/r10: memory only - 'pend': cid -> (generation, time) of a send whose answer was lost or refused as a
+        duplicate id; 'fired': emergency tags already seen fired once (the next pass decides on a fresh position read)."""
+        return vars(self).setdefault(f'_emg_{k}', set() if k == 'fired' else {})
 
     @staticmethod
     def _emg_ids(cid, g):
@@ -7629,66 +7641,136 @@ class Engine:
     def _emg_tags(self, cid):
         return {t for g in range(EMG_GENS) for c, a in [self._emg_ids(cid, g)] for t in (f'c:{c}', f'ac:{a}')}
 
+    def _emg_state(self, sym, tag):
+        """CAPS-01 r10 (ruling a): typed status of one deterministic id: live / gone / fired / absent (ONLY Binance's explicit
+        no-such-order) / unknown (anything else: no typed lookup, a failed read, unsupported, missing or unrecognized)."""
+        fn = getattr(self.trade, 'stop_state', None)
+        if not callable(fn): return 'unknown'
+        try: k = fn(sym, tag)[0]
+        except Exception: return 'unknown'
+        return k if k in ('live', 'gone', 'fired', 'absent') else 'unknown'
+
     def _emg_scan(self, sym, cid):
-        """Live emergency stops of one order, by their deterministic ids (classic + algo status lookups; sizes from the
-        open-order listing) -> (live [dict(g, tag, qty|None)], first never-used generation | None). Raises when anything is
-        unknown (no status lookup, a failed read): the caller then sends nothing (never two stops on a guess)."""
-        if not hasattr(self.trade, 'stop_status'): raise RuntimeError('stop status lookups unavailable')
-        rows = self.trade.open_stop_orders(sym, strict_algo=True, retry=False) if hasattr(self.trade, 'open_stop_orders') else []
-        live, nxt = [], None
+        """CAPS-01 r10: every claim of one held order's emergency stops -> dict(ok, why, live [dict(g, tag, qty|None)],
+        fired [tag], nxt). The detailed open-order listing (classic + algo, strict) is read first and an EXACT id there is
+        live whatever a lookup says; then typed lookups per generation, classic AND algo, until a generation is explicitly
+        absent on both (nxt). Any unknown answer -> ok False (no new generation is ever unlocked by it)."""
+        out = dict(ok=False, why='', live=[], fired=[], nxt=None)
+        try: rows = list(self.trade.open_stop_orders(sym, strict_algo=True, retry=False))
+        except Exception as ex:
+            out['why'] = f'open-order listing unreadable ({type(ex).__name__})'; return out
+        by_id = {str(x.get('client_id')): x for x in rows if isinstance(x, dict) and x.get('client_id')}
+        for g in range(EMG_GENS):                                   # listed = live, every generation (a lookup gap or an
+            for kind, id_ in zip(('c', 'ac'), self._emg_ids(cid, g)):   # absent older one never hides a live newer one)
+                if id_ in by_id: out['live'].append(dict(g=g, tag=f'{kind}:{id_}', qty=by_id[id_].get('qty')))
+        listed = {x['tag'] for x in out['live']}
         for g in range(EMG_GENS):
-            c, a = self._emg_ids(cid, g)
-            sc = self.trade.stop_status(sym, f'c:{c}', retry=False)
-            sa = self.trade.stop_status(sym, f'ac:{a}', retry=False)
-            for tag, st, id_ in ((f'c:{c}', sc, c), (f'ac:{a}', sa, a)):
-                if st in STOP_LIVE:
-                    live.append(dict(g=g, tag=tag, qty=next((x.get('qty') for x in rows if x.get('client_id') == id_), None)))
-            if sc is None and sa is None: nxt = g; break                 # never reached Binance: the next free generation
-        return live, nxt
+            ks = []
+            for kind, id_ in zip(('c', 'ac'), self._emg_ids(cid, g)):
+                tag = f'{kind}:{id_}'
+                k = 'live' if tag in listed else self._emg_state(sym, tag)
+                if k == 'unknown':
+                    out['why'] = f'status of {tag} unknown'; return out
+                if k == 'live' and tag not in listed: out['live'].append(dict(g=g, tag=tag, qty=None))   # size not listed yet
+                if k == 'fired': out['fired'].append(tag)
+                ks.append(k)
+            if ks == ['absent', 'absent']: out['nxt'] = g; break
+        out['ok'] = True
+        return out
+
+    def _emg_capable(self):
+        return callable(getattr(self.trade, 'stop_state', None)) and callable(getattr(self.trade, 'open_stop_orders', None))
+
+    def _emg_own(self, u):
+        """CAPS-01 r10 (P2): durable cleanup ownership of one held order's emergency ids - kept past settlement until a scan
+        confirms none of them is live (and the coin is fenced against new risk until then: stop_missing_block)."""
+        cl = self.state.setdefault('emg_cleanup', {})
+        if u['cid'] not in cl: cl[u['cid']] = dict(symbol=u['symbol'], side=u['side'], t=round(time.time(), 3))
+
+    def _emg_unprotected(self, uk, u, qty, why):
+        """An explicit incident (never 'safe') while observed exposure of a held order has no confirmed stop."""
+        msg = (f"{u['symbol']} {u['side']}: {qty} of a held entry has NO confirmed stop ({why}) - nothing new is sent while "
+               'that is unknown; retried every pass')
+        first = not (self.health.get('incidents', {}).get(f'emg-unprotected|{uk}') or {}).get('open')
+        self.err(msg, key=f'emg-unprotected|{uk}')
+        if first: self.notify(f"🆘 {u['side']} {u['symbol']}: {qty} has NO confirmed stop ({why}). The bot keeps checking - look at it.")
 
     def _emg_adopt(self, sym, uk, u):
-        """CAPS-01 r9: once, before an entry that WAS held (emg_check: set in memory by the dual-owner handover and made
+        """CAPS-01 r9/r10: once, before an entry that WAS held (emg_check: set in memory by the dual-owner handover and made
         durable by that handover's own strict write) is settled or protected the normal way, an emergency stop sent while
-        storage was down (possibly by an earlier process, so nothing on disk names it) is adopted as
-        its provisional stop - the newest live generation; older live generations are cancelled (or parked: retried, never
-        adopted). Returns False while that is unknown (the entry then waits: no second stop, no settlement on a guess)."""
-        if not hasattr(self.trade, 'stop_status'): return True          # no deterministic stop can ever have been sent
-        try: live, _ = self._emg_scan(sym, u['cid'])
-        except Exception as ex:
-            self.err(f"{sym} {u['side']} unconfirmed entry: emergency-stop lookup failed ({type(ex).__name__}) - not settled "
-                     'this pass', key=f'prov|{uk}')
+        storage was down (possibly by an earlier process, so nothing on disk names it) is adopted as its provisional stop -
+        the newest live generation; older live ones are cancelled (or parked) and stay owned by emg_cleanup until a scan
+        confirms them gone. Returns False while that is unknown (the entry then waits: no second stop, no settlement)."""
+        if not self._emg_capable():                                   # this client can never have sent one (_prov_held
+            u.pop('emg_check', None); return True                     # needs both typed lookups and the listing)
+        sc = self._emg_scan(sym, u['cid'])
+        if not sc['ok']:
+            self.err(f"{sym} {u['side']} unconfirmed entry: emergency-stop lookup failed ({sc['why']}) - not settled this pass",
+                     key=f'prov|{uk}')
             return False
+        self._emg_own(u)
         u.pop('emg_check', None)
-        if not live: self.save_state(); return True
-        keep = max(live, key=lambda x: x['g'])
-        if u.get('prov') and u['prov'] not in self._emg_tags(u['cid']): self._cancel_or_park(sym, u['prov'])
-        u['prov'], u['prov_qty'] = keep['tag'], keep['qty'] if keep['qty'] is not None else u.get('prov_qty', 0.0)
+        keep = max(sc['live'], key=lambda x: x['g']) if sc['live'] else None
+        if keep:
+            if u.get('prov') and u['prov'] not in self._emg_tags(u['cid']): self._cancel_or_park(sym, u['prov'])
+            u['prov'], u['prov_qty'] = keep['tag'], keep['qty'] if keep['qty'] is not None else u.get('prov_qty', 0.0)
         self.save_state()
-        for x in live:
+        for x in sc['live']:
             if x is not keep: self._cancel_or_park(sym, x['tag'])
-        log.warning(f"{sym} {u['side']} unconfirmed entry: emergency stop {keep['tag']} found on Binance - adopted")
+        if keep: log.warning(f"{sym} {u['side']} unconfirmed entry: emergency stop {keep['tag']} found on Binance - adopted")
         return True
 
+    def _emg_cleanup(self):
+        """CAPS-01 r10 (P2): emergency ids whose entry is gone (settled, adopted, forgotten) are cancelled until a scan of
+        Binance confirms none is live; only then is the record (and with it the coin's new-risk fence) dropped. A lot's own
+        recorded stop is never touched. Unknown -> kept, re-checked next pass."""
+        cl = self.state.get('emg_cleanup') or {}
+        held = {u.get('cid') for u in (self.state.get('unconfirmed_entries') or {}).values()}
+        lot_tags = {l.get('stop_id') for l in self.state['lots'].values()}
+        changed = False
+        for cid, c in list(cl.items()):
+            if cid in held: continue                                  # its entry still owns and protects it
+            sc = self._emg_scan(c['symbol'], cid)
+            left = [x for x in sc['live'] if x['tag'] not in lot_tags]
+            if sc['ok'] and not left:
+                cl.pop(cid, None); changed = True
+                self.resolve(f"emg-cleanup|{cid}", f"{c['symbol']}: leftover emergency stops confirmed gone - new risk allowed again")
+                continue
+            for x in left: self._cancel_or_park(c['symbol'], x['tag'])
+            self.err(f"{c['symbol']} {c['side']}: leftover emergency stop(s) "
+                     f"{', '.join(x['tag'] for x in left) or '(status unknown: ' + sc['why'] + ')'} being cancelled - no new "
+                     'risk on this coin until Binance confirms them gone', key=f'emg-cleanup|{cid}')
+        if not cl: self.state.pop('emg_cleanup', None)
+        if changed: self.save_state()
+
     def _prov_held(self, uk, u, qty):
-        """CAPS-01 r9 (Codex #365): protection of a HELD order's observed exposure (its dual-owner handover not durable - e.g.
-        storage down). The one exception to the provisional stop's write-ahead rule, and only for exposure already seen on
-        Binance: the stop's identity is deterministic (_emg_ids) instead of durable, and every pass re-derives the truth
-        from Binance by those ids - so a restart or a lost answer finds the same stop and never sends a second one.
-        - unknown (a lookup failed, a size not listed yet, a send not answered) -> nothing new is sent;
-        - a live stop at the size -> kept (extra generations cancelled or parked: fenced, retried, never adopted);
-        - none, or a wrong size -> the next free generation is sent FIRST; only once Binance accepted it are older ones
-          cancelled - the only confirmed stop is never dropped before its replacement is confirmed (an oversized one stays
-          and is alerted until the replacement exists)."""
+        """CAPS-01 r9/r10 (Codex #365): protection of a HELD order's observed exposure (its dual-owner handover not durable -
+        e.g. storage down). The one exception to the provisional stop's write-ahead rule, and only for exposure already seen
+        on Binance: the stop's identity is deterministic (_emg_ids) instead of durable, and every pass re-derives the truth
+        from Binance by those ids (_emg_scan) - so a restart or a lost answer finds the same stop and never sends a second.
+        - unknown (a lookup, the listing), a size not listed yet, a send not answered or refused as a duplicate id -> nothing
+          new is sent, and uncovered exposure is an explicit incident;
+        - a claim that FIRED -> nothing is decided on this pass's (possibly stale) position: the next pass's fresh read does;
+        - a live stop at the size -> kept (extra generations cancelled or parked, owned by emg_cleanup until gone);
+        - none, or a wrong size -> the next explicitly absent generation is sent FIRST; only once Binance accepted it are
+          older ones cancelled - the only confirmed stop is never dropped before its replacement is confirmed."""
         sym, side, r, plan = u['symbol'], u['side'], self.rules[u['symbol']], u['plan']
         if u.get('prov_pending') and not self._prov_pending_settled(sym, u): return   # a normal pending stop decides first
-        try: live, nxt = self._emg_scan(sym, u['cid'])
-        except Exception as ex:
-            self.err(f"{sym} {side} held entry: emergency-stop status unknown ({type(ex).__name__}) - no stop sent this pass",
-                     key=f'prov|{uk}')
-            return
-        claims = list(live)
+        self._emg_own(u)
+        sc = self._emg_scan(sym, u['cid'])
+        claims = list(sc['live'])
         if u.get('prov') and u['prov'] not in self._emg_tags(u['cid']):
             claims.append(dict(g=-1, tag=u['prov'], qty=u.get('prov_qty')))          # an earlier normal provisional stop
+        covered = any(x['qty'] is not None and x['qty'] >= qty - 1e-12 for x in claims)
+        def hold_off(why):
+            if qty > 0 and not covered: self._emg_unprotected(uk, u, qty, why)
+            else: self.err(f"{sym} {side} held entry: {why} - nothing new sent", key=f'prov|{uk}')
+        if not sc['ok']: return hold_off(sc['why'])
+        seen = self._emg_mem('fired')
+        new_fired = [t for t in sc['fired'] if t not in seen]
+        if new_fired:
+            seen.update(new_fired)
+            return hold_off(f"emergency stop {', '.join(new_fired)} fired - decided on the next fresh position read")
         def drop(xs):
             for x in xs: self._cancel_or_park(sym, x['tag'])
         if qty <= 0:
@@ -7700,36 +7782,34 @@ class Engine:
             keep = max(good, key=lambda x: x['g'])
             u['prov'], u['prov_qty'] = keep['tag'], qty; self.save_state()
             drop([x for x in claims if x is not keep])
+            self.resolve(f'emg-unprotected|{uk}', f'{sym} {side}: held entry protected by {keep["tag"]}')
             return
-        if any(x['qty'] is None for x in claims):
-            self.err(f"{sym} {side} held entry: a live stop's size is not listed yet - no second stop sent", key=f'prov|{uk}')
-            return
+        if any(x['qty'] is None for x in claims): return hold_off("a live stop's size is not listed yet")
         pend = self._emg_mem('pend').get(u['cid'])
-        if pend and pend[0] == nxt and time.time() - pend[1] < PROV_PENDING_S:
-            return                                                     # its answer was lost: Binance's status decides first
-        if nxt is None:
-            self.err(f"{sym} {side} held entry: no free emergency-stop id left - nothing new sent", key=f'prov|{uk}')
-            return
+        if pend and pend[0] == sc['nxt'] and time.time() - pend[1] < PROV_PENDING_S:
+            return hold_off('the answer of its last send is not known yet')
+        if sc['nxt'] is None: return hold_off('no explicitly unused emergency-stop id left')
         sd = 1 if side == 'LONG' else -1
         stop = self._rd(plan['px'] - sd * plan['stop_dist'], r['tick'])
-        c, a = self._emg_ids(u['cid'], nxt)
+        g = sc['nxt']; c, a = self._emg_ids(u['cid'], g)
         try:
             tag = self._send(self.trade.stop, sym, side, self._fmt(qty, r['step']), self._fmt(stop, r['tick']), cid=c, acid=a)
         except AmbiguousOrder:
-            self._emg_mem('pend')[u['cid']] = (nxt, time.time())
-            self.err(f"{sym} {side} held entry: emergency stop answer lost - found by its id {c} / {a}, never sent twice",
-                     key=f'prov|{uk}')
-            return
-        except Exception as ex:
+            self._emg_mem('pend')[u['cid']] = (g, time.time())
+            return hold_off(f'emergency stop answer lost - recovered by its id {c} / {a}, never sent under another id')
+        except BinanceError as ex:
+            if ex.code == -4116:                                       # ruling b: that id already exists - recover it,
+                self._emg_mem('pend')[u['cid']] = (g, time.time())     # never advance to another generation
+                return hold_off(f'id {c} / {a} already exists on Binance - recovered by its status, never re-sent')
             self._clock_alert(f'emergency stop {sym}', ex)
-            self.err(f"{sym} {side} held entry: emergency stop for {qty} refused ({str(ex)[:120]}) - "
-                     + ('the larger stop stays until a replacement exists' if claims else f'{qty} UNPROTECTED, retried next pass'),
-                     key=f'prov|{uk}')
-            return
+            return hold_off(f'emergency stop for {qty} refused ({str(ex)[:120]})')
+        except Exception as ex:
+            return hold_off(f'emergency stop for {qty} failed ({type(ex).__name__})')
         self._emg_mem('pend').pop(u['cid'], None)
         u['prov'], u['prov_qty'], u['prov_stop'] = (f'ac:{a}' if str(tag).startswith('a') else f'c:{c}'), qty, stop
         self.save_state()                                              # best effort: nothing depends on it
         drop(claims)
+        self.resolve(f'emg-unprotected|{uk}', f'{sym} {side}: held entry protected by {u["prov"]}')
         self.err(f"{sym} {side} held entry: {qty} on Binance protected by emergency stop {u['prov']} at {stop} (its order's "
                  'handover is not durable yet)', key=f'prov|{uk}')
 
