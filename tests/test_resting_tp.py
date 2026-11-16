@@ -173,7 +173,13 @@ def test_tp_fill_seen_by_the_verifier():
 def test_tp_fill_without_order_record_decided_by_position_while_stop_listed(monkeypatch):
     e, _ = mk(); k = open_(e); tag = e.state['lots'][k]['tp_id']
     e.trade.fill_tp(tag)
+    orig = e.trade.get_order
     monkeypatch.setattr(e.trade, 'get_order', lambda s, cid: (_ for _ in ()).throw(requests.Timeout('x')))
+    manage(e)
+    # LANE3-F1-TP r3 (Codex #368 case 1, stricter): a KNOWN client id is never credited with an aggregate shortfall while
+    # its record is unreadable - the TP is held (lot + stop kept, nothing booked); its own record then decides
+    assert k in e.state['lots'] and not e.history and e.state['lots'][k]['stop_id'] in e.trade.stops
+    monkeypatch.setattr(e.trade, 'get_order', orig)
     manage(e)
     assert k not in e.state['lots'] and e.history[-1]['exit_reason'] == 'take_profit_resting' and not e.trade.stops
 

@@ -1271,6 +1271,17 @@ def _validate_resting(k, r_):
     _dict(r_.get('plan'), w + '.plan')
 
 
+def _validate_tpq(k, q):
+    """LANE3-F1-TP r3: a held resting take-profit whose ownership outlives its lot (state['tp_quarantine'])."""
+    w = f'tp_quarantine[{k[:40]}]'
+    _dict(q, w)
+    _str(q.get('symbol'), w + '.symbol', _SYM_RE); _str(q.get('side'), w + '.side', choices=SIDES)
+    _str(q.get('tag'), w + '.tag', _TAG_RE)
+    _str(q.get('cid'), w + '.cid', _CID_RE, opt=True); _str(q.get('acid'), w + '.acid', _CID_RE, opt=True)
+    if not (q.get('cid') or q.get('acid')): _bad(w, 'a held take-profit needs its client id')
+    _str(q.get('lot'), w + '.lot'); _num(q.get('t'), w + '.t', lo=0)
+
+
 def _validate_trail(k, p):
     w = f'pending_entries[{k[:40]}]'
     _dict(p, w)
@@ -1279,7 +1290,7 @@ def _validate_trail(k, p):
     for f in ('ext', 'atr', 'dev', 'until'): _num(p.get(f), f'{w}.{f}')
 
 
-OWNERSHIP_FAMILIES = ('lots', 'unconfirmed_entries', 'resting_entries', 'pending_entries', 'grids', 'orphans')
+OWNERSHIP_FAMILIES = ('lots', 'unconfirmed_entries', 'resting_entries', 'pending_entries', 'grids', 'orphans', 'tp_quarantine')
 
 
 def ownership_present(state):
@@ -1399,6 +1410,7 @@ def validate_state(doc):
     for k, u in _dict(doc.get('unconfirmed_entries'), 'unconfirmed_entries', opt=True).items(): _validate_ue(k, u)
     for k, r_ in _dict(doc.get('resting_entries'), 'resting_entries', opt=True).items(): _validate_resting(k, r_)
     for k, p_ in _dict(doc.get('pending_entries'), 'pending_entries', opt=True).items(): _validate_trail(k, p_)
+    for k, q_ in _dict(doc.get('tp_quarantine'), 'tp_quarantine', opt=True).items(): _validate_tpq(k, q_)
     orph = doc.get('orphans') or []
     if not isinstance(orph, list): _bad('orphans', 'not a list')
     for i, o in enumerate(orph):
@@ -4192,6 +4204,8 @@ class Engine:
         return q
 
     def _tp_clear(self, lot):
+        for f in ('tp_cid', 'tp_acid'):                    # LANE3-F1-TP r3: only called once the TP's fate is proven
+            if lot.get(f): (self.state.get('tp_quarantine') or {}).pop(lot[f], None)
         k = next((k for k, l in self.state['lots'].items() if l is lot), None)
         if k: self.resolve(f'tp-unknown|{k}', f"{lot['symbol']}: take-profit settled")
         for f in self._TP_FIELDS: lot.pop(f, None)
@@ -4295,8 +4309,10 @@ class Engine:
         except Exception:
             return dict(state='unknown')
         if not o: return dict(state='notfound')
-        try: ex = float(o.get('executedQty') or 0)
+        if o.get('executedQty') in (None, ''): return dict(state='unknown')   # LANE3-F1-TP r3: no execution evidence
+        try: ex = float(o.get('executedQty'))                                  # is never read as 'nothing executed'
         except (TypeError, ValueError): return dict(state='unknown')
+        if not math.isfinite(ex) or ex < 0: return dict(state='unknown')
         ex = min(self._rd(ex, self.rules[lot['symbol']]['step']), lot.get('tp_qty') or lot['qty'])
         return dict(state='ok', exec=ex, px=self._fill_px(o) or lot.get('tp_px'), oid=o.get('orderId'),
                     final=str(o.get('status') or '').upper() in ORDER_FINAL)
@@ -4313,11 +4329,16 @@ class Engine:
         rec = self._tp_record(l)
         if rec['state'] == 'ok':
             self.resolve(f'tp-unknown|{k}', f'{sym}: take-profit order record found')      # LANE3-F1-TP
-            l.pop('tp_held', None)
+            if l.pop('tp_held', None): self._tpq_release(l)
             new, px, final = self._rd(max(0.0, rec['exec'] - (l.get('tp_done') or 0.0)), step), rec['px'], rec['final']
             if tag.startswith('c:') and rec.get('oid') and not final: l['tp_id'] = f"o:{rec['oid']}"   # lost answer: it exists
-        elif short is not None and not listed and l.get('stop_id') in tags:
+        elif short is not None and not listed and l.get('stop_id') in tags and not self._tp_owned_id(l):
+            # only a TP whose identity cannot be asked about: a KNOWN client id is never credited with an aggregate
+            # shortfall (an unrelated reduction can match) - its own record decides (LANE3-F1-TP r3, Codex #368 case 1)
             new, px, final = min(self._rd(short, step), l['qty']), l.get('tp_px'), True
+        elif short is not None and not listed and self._tp_owned_id(l):
+            self._tp_hold(k, l, 'not listed; a position shortfall is not attributed to it')
+            return 'held'
         elif rec['state'] == 'notfound' and not listed:
             # LANE3-F1-TP (Codex #360 ruling 3): 'not found' and not listed is not proof that this known client id never
             # existed or cannot still execute - clearing it and placing a new TP could close the lot twice. Ownership is
@@ -4348,6 +4369,11 @@ class Engine:
             self.save_state(); return 'gone'
         return 'none'
 
+    def _tp_owned_id(self, l):
+        """LANE3-F1-TP r3: a resting TP the bot can name on Binance - a classic client id it can look up, or an algo TP
+        (a:/ac:) with its clientAlgoId. Such a TP is never cleared, replaced or credited on indirect evidence."""
+        return self._tp_known_cid(l) or (bool(l.get('tp_acid')) and str(l.get('tp_id') or '').startswith(('a:', 'ac:')))
+
     def _tp_known_cid(self, l):
         """A classic resting TP whose client id Binance can be asked about (an algo TP / a client without get_order: no)."""
         return bool(l.get('tp_cid')) and callable(getattr(self.trade, 'get_order', None)) and str(l.get('tp_id') or '').startswith(('o:', 'c:'))
@@ -4355,7 +4381,14 @@ class Engine:
     def _tp_hold(self, k, l, what):
         """LANE3-F1-TP: keep an unproven TP owned; one keyed alert (and one push) once it has been placed 5 min."""
         key = f'tp-unknown|{k}'
-        l['tp_held'] = True                                # _tp_sync / a stop resize never replaces it while held
+        q = self.state.setdefault('tp_quarantine', {})
+        algo = str(l.get('tp_id') or '').startswith(('a:', 'ac:'))
+        qk = (l.get('tp_acid') or l.get('tp_cid')) if algo else (l.get('tp_cid') or l.get('tp_acid'))
+        if not l.get('tp_held') or qk not in q:            # LANE3-F1-TP r3: the hold outlives the lot (durable, saved now)
+            l['tp_held'] = True                            # _tp_sync / a stop resize never replaces it while held
+            if qk: q[qk] = dict(symbol=l['symbol'], side=l['side'], tag=str(l.get('tp_id')), cid=l.get('tp_cid'),
+                                acid=l.get('tp_acid'), lot=k, t=time.time())
+            self.save_state()
         if self.clock() - (l.get('tp_placed_t') or self.clock()) <= 300: return
         if (self.health.get('incidents', {}).get(key) or {}).get('open'):
             self.err(f"{l['symbol']} {l['side']} [{l['sleeve']}] take-profit {l.get('tp_cid')}: still {what}", key=key); return
@@ -4374,7 +4407,7 @@ class Engine:
         have = live.get((sym, side), 0.0)
         expected = sum(x['qty'] for x in self.state['lots'].values() if x['symbol'] == sym and x['side'] == side)
         if have >= expected - self._qty_tol(self.rules[sym]['step']):
-            if self._tp_known_cid(l):                       # LANE3-F1-TP: an intact position does not prove a KNOWN TP id
+            if self._tp_owned_id(l):                        # LANE3-F1-TP: an intact position does not prove a KNOWN TP id
                 self._tp_hold(k, l, 'order record unreadable and not listed')   # can no longer execute - kept, never replaced
                 return 'unknown'
             self._tp_clear(l); self._place_tp(l); self.save_state(); return 'gone'
@@ -4409,15 +4442,16 @@ class Engine:
                 if row: l['tp_id'] = tag = row['tag']; changed = True       # a lost answer: listed under its client id
             if tag in tags:
                 self.resolve(f'tp-unknown|{k}', f'{sym}: take-profit listed again')        # LANE3-F1-TP
-                l.pop('tp_held', None)
+                if l.pop('tp_held', None): self._tpq_release(l); changed = True
                 changed = self._tp_sync(l) or changed
                 continue
             if now - (l.get('tp_placed_t') or -1e18) < STOP_LIST_GRACE_S:
                 self._stopv_due(sym, now + STOP_RECHECK_S); continue        # just placed: not listed yet is not a miss
+            was_held = bool(l.get('tp_held'))
             res = self._tp_settle(k, tags)
             if res == 'unknown': res = self._tp_by_position(k, tags)
             if res in ('unknown', 'held'): self._stopv_due(sym, now + STOP_RECHECK_S)
-            changed = changed or res not in ('none', 'unknown', 'held')
+            changed = changed or res not in ('none', 'unknown', 'held') or (bool(l.get('tp_held')) and not was_held)
         return changed
 
     @staticmethod
@@ -5424,19 +5458,72 @@ class Engine:
         log.info(f"{why.upper()} {lot['symbol']} {lot['side']} [{lot['sleeve']}] +{q} @ {px} (avg {lot['avg']:.6g})")
 
     # ------------------------------------------------------------ fast loop: soft management on mark price
-    def _close_gone_tp_alerts(self):
-        """LANE3-F1 r2: an open 'tp-unknown' alert whose lot is gone (closed by any path) is resolved - kept out of the pinned
-        _finish so the F01 cohort pins are untouched."""
+    def _tpq_release(self, l):
+        for f in ('tp_cid', 'tp_acid'):
+            if l.get(f): (self.state.get('tp_quarantine') or {}).pop(l[f], None)
+        self.save_state()
+
+    TPQ_ALGO_NONE = ('CANCELED', 'CANCELLED', 'EXPIRED', 'REJECTED')       # algo TP ended without triggering
+    TPQ_ALGO_RAN = ('TRIGGERED', 'FINISHED')                              # algo TP triggered: its order ran
+
+    def tp_quarantine_block(self, sym):
+        """LANE3-F1-TP r3: entry / add block while a held take-profit of a CLOSED trade on this coin may still be live on
+        Binance (a reduce-only order that could act on a new position). None = not blocked."""
         lots = self.state.get('lots') or {}
-        for k, inc in list((self.health.get('incidents') or {}).items()):
-            if k.startswith('tp-unknown|') and (inc or {}).get('open') and k.split('|', 1)[1] not in lots:
-                self.resolve(k, f"take-profit: trade closed - take-profit check ended")
+        for q in (self.state.get('tp_quarantine') or {}).values():
+            if q.get('symbol') == sym and q.get('lot') not in lots:
+                return (f"a take-profit ({q.get('cid') or q.get('acid')}) of a closed {q.get('side')} trade on {sym} is not "
+                        'proven gone on Binance - no new risk on this coin until its order record settles it')
+        return None
+
+    def _tp_quarantine_pass(self):
+        """LANE3-F1-TP r3 (Codex #368 case 2): a held TP whose lot closed stays owned until Binance's record of THAT order
+        is terminal - a cancel answer or a negative lookup is never proof. A live one is cancelled (and re-read); an
+        executed one is reported (reconcile owns the position); an unreadable / not-found one is kept and alerted."""
+        q = self.state.get('tp_quarantine') or {}
+        if not q or self.dry: return
+        lots = self.state.get('lots') or {}
+        for qk, rec in list(q.items()):
+            lot = lots.get(rec.get('lot'))
+            if lot is not None and qk in (lot.get('tp_cid'), lot.get('tp_acid')): continue   # its lot still decides
+            sym, tag, ik = rec['symbol'], rec['tag'], f"tp-unknown|{rec.get('lot')}"
+            done, ran, live = False, False, False
+            try:
+                if tag.startswith(('o:', 'c:')) and rec.get('cid') and callable(getattr(self.trade, 'get_order', None)):
+                    o = self.trade.get_order(sym, rec['cid'])
+                    if o:
+                        st_ = str(o.get('status') or '').upper()
+                        exq = o.get('executedQty')
+                        if st_ in ORDER_FINAL and exq not in (None, ''):
+                            done, ran = True, float(exq) > 0
+                        elif st_ and st_ not in ORDER_FINAL:
+                            live = True
+                elif tag.startswith(('a:', 'ac:')) and rec.get('acid') and callable(getattr(self.trade, 'stop_status', None)):
+                    st_ = self.trade.stop_status(sym, f"ac:{rec['acid']}")
+                    if st_ in self.TPQ_ALGO_NONE: done = True
+                    elif st_ in self.TPQ_ALGO_RAN: done, ran = True, True
+                    elif st_: live = True
+            except Exception as ex:
+                log.info(f'{sym} held take-profit {qk}: record unreadable ({type(ex).__name__}) - kept')
+            if done:
+                q.pop(qk, None); self.save_state()
+                if ran:
+                    self.err(f"{sym} {rec['side']}: take-profit {qk} of a closed trade EXECUTED on Binance - reconcile checks "
+                             'the position', key=f'tp-ran|{qk}')
+                    self.notify(f"⚠️ {sym} {rec['side']}: a take-profit of a closed trade executed on Binance - check the position.")
+                self.resolve(ik, f'{sym}: take-profit of the closed trade settled by its order record')
+                continue
+            if live:
+                try: self.trade.cancel(sym, tag)              # its fate is read again next pass (never assumed)
+                except Exception as ex: log.info(f'{sym} held take-profit {qk}: cancel failed ({type(ex).__name__}) - retried')
+            self.err(f"{sym} {rec['side']}: take-profit {qk} of a closed trade not proven gone on Binance - kept owned, "
+                     'no new risk on this coin until its order record settles it', key=ik)
 
     def manage(self, marks):
         with self.lock:
             self.marks, self.marks_t = dict(marks), time.time()
             self._shadow_flush()                               # TRUE-BOOK-02: queued candidates take this post-close mark
-            self._close_gone_tp_alerts()                     # LANE3-F1 r2: a held-take-profit alert ends with its lot
+            self._tp_quarantine_pass()                     # LANE3-F1-TP r3: a held TP stays owned beyond its lot
             changed = False
             if self.state.get('orphans') and not self.dry:          # stale stops whose cancel failed earlier
                 keep = []
@@ -5717,7 +5804,8 @@ class Engine:
         """Entry / add block text while a lot on this coin has a recorded stop the verifier did not find on Binance; the
         text follows the most severe lot state: owner_check > restoring > checking. None = not blocked."""
         whys = {l.get('stop_miss_why') or 'checking' for l in self.state['lots'].values() if l['symbol'] == sym and l.get('stop_miss')}
-        return next((STOP_MISSING_BLOCKS[w] for w in STOP_MISS_ORDER if w in whys), None)
+        return (next((STOP_MISSING_BLOCKS[w] for w in STOP_MISS_ORDER if w in whys), None)
+                or self.tp_quarantine_block(sym))      # LANE3-F1-TP r3: routed here (entry_block is pinned; adds + grid too)
 
     def stop_missing_on(self, sym):
         return self.stop_missing_block(sym) is not None

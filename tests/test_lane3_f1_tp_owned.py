@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault('LOCALAPPDATA', tempfile.mkdtemp())
 import pytest
 import requests
-from test_resting_tp import mk, open_, verify                              # noqa: E402
+from test_resting_tp import mk, open_, verify, sl_, ON                              # noqa: E402
 
 
 def _vanish(e, lot, keep_record=False):
@@ -62,10 +62,22 @@ def test_a_record_that_ended_without_a_fill_still_gets_a_new_tp():
     assert lot['tp_id'] != old and lot['tp_id'] in e.trade.tps
 
 
-def test_shortfall_while_the_stop_is_listed_is_still_the_tp_fill():
+def test_shortfall_while_the_stop_is_listed_is_never_credited_to_a_known_tp():
+    """r3 (Codex #368 case 1; stricter than r1, which credited it): an unrelated reduction can match."""
+    e, _ = mk(); k = open_(e); lot = e.state['lots'][k]
+    q = lot['qty']; tag, cid = _vanish(e, lot)
+    e.trade.pos[('BTCUSDT', 'LONG')] -= q / 2                          # an unrelated 50% reduction
+    n_tp = e.trade.calls.count('tp')
+    assert e._tp_settle(k, e.trade.open_stop_tags('BTCUSDT'), short=q / 2) == 'held'
+    assert k in e.state['lots'] and lot['tp_id'] == tag and lot['tp_cid'] == cid and e.trade.calls.count('tp') == n_tp
+    assert not e.history and lot['tp_held'] and cid in e.state['tp_quarantine']
+
+
+def test_shortfall_is_still_the_tp_fill_when_the_tp_cannot_be_asked_about(monkeypatch):
     e, _ = mk(); k = open_(e); lot = e.state['lots'][k]
     q = lot['qty']; _vanish(e, lot)
-    e.trade.pos[('BTCUSDT', 'LONG')] -= q                              # the position shows it executed
+    monkeypatch.delattr(type(e.trade), 'get_order')
+    e.trade.pos[('BTCUSDT', 'LONG')] -= q
     assert e._tp_settle(k, e.trade.open_stop_tags('BTCUSDT'), short=q) == 'filled'
     assert k not in e.state['lots']
 
@@ -117,15 +129,87 @@ def test_r2_a_listed_tp_is_resized_again_once_the_hold_ends():
     assert e.trade.calls.count('tp') == n_tp + 1, 'a proven TP must still follow the lot size'
 
 
-def test_r2_the_alert_closes_when_the_lot_is_closed():
+def test_r3_a_held_tp_stays_owned_after_its_lot_closes_until_its_record_settles_it():
+    """Codex #368 case 2: a cancel answer / a negative lookup is not proof - a new position must not meet an old reducer."""
+    e, _ = mk(); k = open_(e); lot = e.state['lots'][k]
+    tag, cid = _vanish(e, lot)
+    verify(e, later=3600)
+    assert e.health['incidents'][f'tp-unknown|{k}']['open'] and cid in e.state['tp_quarantine']
+    e.close_lot(k, 'exit_signal', e.trade.marks()['BTCUSDT'])            # the fake cancel answers True (normalized)
+    assert k not in e.state['lots']
+    for _ in range(2): e.manage(e.trade.marks())
+    assert cid in e.state['tp_quarantine'] and e.health['incidents'][f'tp-unknown|{k}']['open']
+    blk = e.entry_block(sl_(**ON), 'BTCUSDT', 'LONG', manual=True)
+    assert blk and 'take-profit' in blk                                    # no new risk on that coin
+    assert e.grids._can_add(dict(sym='BTCUSDT'), 'LONG') is False
+    assert e.entry_block(sl_(**ON), 'ETHUSDT', 'LONG', manual=True) is None or 'take-profit' not in e.entry_block(sl_(**ON), 'ETHUSDT', 'LONG', manual=True)
+    e.trade.recs[cid] = dict(orderId=9, status='CANCELED', executedQty='0', avgPrice='0', tag=tag)   # its record: ended
+    e.manage(e.trade.marks())
+    assert cid not in e.state['tp_quarantine'] and not e.health['incidents'][f'tp-unknown|{k}']['open']
+    assert e.entry_block(sl_(**ON), 'BTCUSDT', 'LONG', manual=True) is None or 'take-profit' not in (e.entry_block(sl_(**ON), 'BTCUSDT', 'LONG', manual=True) or '')
+
+
+def test_r3_a_live_held_tp_of_a_closed_lot_is_cancelled_and_released_only_on_its_record():
+    e, _ = mk(); k = open_(e); lot = e.state['lots'][k]
+    tag, cid = lot['tp_id'], lot['tp_cid']
+    row = e.trade.tps.pop(tag)                                             # unlisted, record NEW (hidden but live)
+    rec = e.trade.recs.pop(cid)
+    verify(e, later=3600)
+    e.trade.recs[cid] = rec; e.trade.tps[tag] = row
+    e.trade.cancel = lambda s, t: True                                    # cancel normalized to True, order still live
+    e.close_lot(k, 'exit_signal', e.trade.marks()['BTCUSDT'])
+    e.manage(e.trade.marks())
+    assert cid in e.state['tp_quarantine'], 'released on a cancel answer while the record still says NEW'
+    rec['status'] = 'CANCELED'
+    e.manage(e.trade.marks())
+    assert cid not in e.state['tp_quarantine']
+
+
+def test_r3_an_executed_held_tp_of_a_closed_lot_is_reported():
+    e, _ = mk(); k = open_(e); lot = e.state['lots'][k]
+    tag, cid = _vanish(e, lot)
+    verify(e, later=3600)
+    e.close_lot(k, 'exit_signal', e.trade.marks()['BTCUSDT'])
+    e.trade.recs[cid] = dict(orderId=9, status='FILLED', executedQty='1', avgPrice='120', tag=tag)
+    pushed = []; e.notify = lambda m: pushed.append(m)
+    e.manage(e.trade.marks())
+    assert cid not in e.state['tp_quarantine'] and e.health['incidents'][f'tp-ran|{cid}']['open']
+    assert any('executed' in m for m in pushed)
+
+
+def test_r3_a_final_record_without_executed_qty_is_unknown_never_replaced():
+    """Codex #368 case 3: missing execution evidence is not 'nothing executed'."""
+    e, _ = mk(); k = open_(e); lot = e.state['lots'][k]
+    tag, cid = lot['tp_id'], lot['tp_cid']
+    e.trade.tps.pop(tag)
+    e.trade.recs[cid] = dict(orderId=9, status='EXPIRED', avgPrice='0', tag=tag)          # no executedQty
+    n_tp = e.trade.calls.count('tp')
+    verify(e, later=3600)
+    assert lot['tp_id'] == tag and lot['tp_cid'] == cid and e.trade.calls.count('tp') == n_tp
+    assert e._tp_record(lot)['state'] == 'unknown'
+
+
+def test_r3_an_unlisted_algo_tp_with_an_intact_position_is_held_not_replaced():
+    """Codex #368 case 4: the hold covers the algo route (a:/ac: + clientAlgoId) too."""
+    e, _ = mk(); k = open_(e); lot = e.state['lots'][k]
+    old = lot['tp_id']; e.trade.tps.pop(old)
+    lot['tp_id'] = 'a:4242'                                               # placed through the algo fallback
+    n_tp = e.trade.calls.count('tp')
+    verify(e, later=3600)
+    assert lot['tp_id'] == 'a:4242' and lot['tp_acid'] and e.trade.calls.count('tp') == n_tp
+    assert lot.get('tp_held') and lot['tp_acid'] in e.state['tp_quarantine']
+
+
+def test_r3_the_verifier_reports_a_new_hold_as_a_change_and_it_is_durable():
+    """Codex #368 case 5: the ownership transition is saved now, not by some later unrelated save."""
     e, _ = mk(); k = open_(e); lot = e.state['lots'][k]
     _vanish(e, lot)
-    verify(e, later=3600)
-    assert e.health['incidents'][f'tp-unknown|{k}']['open']
-    e.close_lot(k, 'exit_signal', e.trade.marks()['BTCUSDT'])
-    assert k not in e.state['lots']
-    e.manage(e.trade.marks())                                              # the next pass ends the alert (outside pinned _finish)
-    assert not e.health['incidents'][f'tp-unknown|{k}']['open']
+    e.clock = lambda: time.time() + 3600
+    tags = e.trade.open_stop_tags('BTCUSDT'); rows = e.trade.open_stop_orders('BTCUSDT')
+    assert e._verify_tps('BTCUSDT', rows, tags) is True
+    import json
+    doc = json.load(open(e.F['state'], encoding='utf-8'))
+    assert doc['lots'][k].get('tp_held') and lot['tp_cid'] in doc.get('tp_quarantine', {})
 
 
 def test_r2_a_not_found_tp_alert_says_not_found_not_unreadable():
