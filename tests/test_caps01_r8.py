@@ -11,6 +11,7 @@ os.environ.setdefault('LOCALAPPDATA', tempfile.mkdtemp())
 import pytest
 import engine as E
 import test_caps01_r7 as R7                                                 # noqa: E402
+import test_caps01_r9 as R9                                                 # noqa: E402  (r9: a venue with client ids / status lookups)
 
 
 def _storage_down(monkeypatch):
@@ -24,7 +25,7 @@ def _storage_down(monkeypatch):
 
 
 def _stops(e):
-    return [v for v in e.trade.stops.values() if v[0] == 'BTCUSDT' and v[1] == 'LONG']
+    return [v for t, v in e.trade.stops.items() if v[0] == 'BTCUSDT' and v[1] == 'LONG' and e.trade.stop_status('BTCUSDT', t) == 'NEW']
 
 
 def _held(e, cid):
@@ -32,7 +33,7 @@ def _held(e, cid):
 
 
 def test_r8_codex_protection_survives_a_persistent_failed_transfer_then_settles_once(monkeypatch):
-    e, cid, exec_q = R7._dual_owner_on_disk()
+    e, cid, exec_q = R7._dual_owner_on_disk(); R9.Venue(e.trade)
     (u,) = e.state['unconfirmed_entries'].values()
     assert not u.get('prov') and not _stops(e)                                # Codex's shape: no provisional stop yet
     down, hits = _storage_down(monkeypatch)
@@ -58,7 +59,7 @@ def test_r8_codex_protection_survives_a_persistent_failed_transfer_then_settles_
 
 
 def test_r8_held_order_with_no_exposure_places_no_stop(monkeypatch):
-    e, cid, exec_q = R7._dual_owner_on_disk()
+    e, cid, exec_q = R7._dual_owner_on_disk(); R9.Venue(e.trade)
     e.trade.pos.pop(('BTCUSDT', 'LONG'), None)                               # nothing executed on Binance (yet)
     _storage_down(monkeypatch)
     e.reconcile(500)
@@ -66,7 +67,7 @@ def test_r8_held_order_with_no_exposure_places_no_stop(monkeypatch):
 
 
 def test_r8_held_order_stop_covers_all_the_order_produced_not_only_the_entry_size(monkeypatch):
-    e, cid, exec_q = R7._dual_owner_on_disk()
+    e, cid, exec_q = R7._dual_owner_on_disk(); R9.Venue(e.trade)
     (u,) = e.state['unconfirmed_entries'].values()
     u['qty'] = round(exec_q / 4, 6)                     # older shape: the entry was written for a remainder only, but the
     down, _ = _storage_down(monkeypatch)                # resting record's order (same client id) produced the whole position
