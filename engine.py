@@ -5922,13 +5922,18 @@ class Engine:
                 out[k] = f'is a {typ} order, not a stop'; continue
             if ps and ps not in (l['side'], 'BOTH'):            # a supplied positionSide is judged on its own
                 out[k] = f"belongs to the {ps} side, not {l['side']}"; continue
-            if row.get('side') is not None and not self._protects(row, l['side']):
-                out[k] = f"does not close the {l['side']} side ({row.get('side')} / {row.get('position_side')})"; continue
+            if row.get('side') is not None:
+                close = 'SELL' if l['side'] == 'LONG' else 'BUY'
+                if str(row['side']).upper() != close or (ps and not self._protects(row, l['side'])):
+                    out[k] = f"does not close the {l['side']} side ({row.get('side')} / {row.get('position_side')})"; continue
+                # r3 (Codex #361 P2): the right closing direction with NO positionSide is unknown hedge identity, not a
+                # contradiction - judged 'unknown' below (latch + new-risk block), never a dirty repair that churns stops
             sp = row.get('stop_price')
             if sp is not None and l.get('stop') is not None and abs(float(sp) - float(l['stop'])) > r_['tick'] / 2 + 1e-12:
                 out[k] = f"triggers at {sp}, the lot's stop is {l['stop']}"; continue
             cp, q = row.get('close_position') is True, row.get('qty')
             missing = [n for n, v in (('type', typ), ('side', row.get('side')), ('trigger', sp)) if v is None]
+            if not ps: missing.append('positionSide')
             if q is None and not cp: missing.append('quantity')
             if missing:
                 unknown[k] = 'its listing lacks ' + ', '.join(missing); continue

@@ -276,3 +276,34 @@ def test_r2_a_true_shared_carrier_on_the_same_coin_is_still_kept(tmp_path):
     tag = lot['stop_id']
     e.state['lots'][k + '|twin'] = dict(lot)
     assert e._cancel_or_park('BTCUSDT', tag) is False and tag in e.trade.stops
+
+
+# ---------------------------------------------------------------- Codex #361 round 3 P2 (6925504505)
+def test_r3_missing_position_side_is_unknown_and_never_churns_stops(tmp_path, monkeypatch):
+    """A detailed row with the right closing side but positionSide=None is unknown hedge identity: latched and blocking
+    new risk, but never dirty - two verifier + manage passes place and cancel nothing."""
+    e, clk, k, lot = setup(tmp_path)
+    real = e.trade.open_stop_orders
+    monkeypatch.setattr(e.trade, 'open_stop_orders', lambda *a, **kw: [dict(r, position_side=None) for r in real(*a, **kw)])
+    stop0, n0 = lot['stop_id'], e.trade.n
+    for _ in range(2):
+        clk[0] += 1; e._verify_symbol('BTCUSDT', 'x'); tick(e, clk, n=2)
+    assert lot['stop_id'] == stop0 and e.trade.n == n0 and stop0 in e.trade.stops
+    assert not lot.get('stop_dirty') and 'positionSide' in lot['stop_short'] and not e.stop_view(lot)['protected']
+    assert 'not confirmed' in (e.entry_block(None, 'BTCUSDT', 'LONG', manual=True) or '')
+
+
+def test_r3_wrong_direction_without_position_side_is_still_a_definite_mismatch(tmp_path, monkeypatch):
+    e, clk, k, lot = setup(tmp_path)
+    real = e.trade.open_stop_orders
+    monkeypatch.setattr(e.trade, 'open_stop_orders', lambda *a, **kw: [dict(r, position_side=None, side='BUY') for r in real(*a, **kw)])
+    e._verify_symbol('BTCUSDT', 'x')
+    assert lot['stop_dirty'] and 'does not close' in lot['stop_short']
+
+
+def test_r3_both_without_reduce_only_is_still_a_definite_mismatch(tmp_path, monkeypatch):
+    e, clk, k, lot = setup(tmp_path)
+    real = e.trade.open_stop_orders
+    monkeypatch.setattr(e.trade, 'open_stop_orders', lambda *a, **kw: [dict(r, position_side='BOTH', reduce_only=False, close_position=False) for r in real(*a, **kw)])
+    e._verify_symbol('BTCUSDT', 'x')
+    assert lot['stop_dirty']
