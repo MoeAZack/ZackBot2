@@ -1,7 +1,7 @@
 # Lane 5 independent CX search
 
-Published 2026-11-16T17:21:16.817865+02:00 (Africa/Cairo). 6/8 registered trials completed, 0 screen passes.
-Baseline: 281 reported trials / 11 screen passes. Completed cumulative count: 287,
+Published 2026-11-16T17:23:48.745720+02:00 (Africa/Cairo). 8/8 registered trials completed, 0 screen passes.
+Baseline: 281 reported trials / 11 screen passes. Completed cumulative count: 289,
 excluding concurrent lanes. Independent passes increase the multiple-testing count.
 
 | trial | status | median n | R15 | fresh134 | extra31 |
@@ -12,6 +12,8 @@ excluding concurrent lanes. Independent passes increase the multiple-testing cou
 | cx004_cusum_short_4h | FAIL | 47.0 | +0.100963 | +0.048271 | +0.346438 |
 | cx005_energy_concentration_long_4h | FAIL | 288.5 | -0.032251 | -0.042037 | -0.018785 |
 | cx006_energy_concentration_short_4h | FAIL | 271.0 | -0.019625 | -0.025596 | +0.011648 |
+| cx007_volatility_coupling_long_4h | FAIL | 57.0 | -0.026833 | -0.126675 | +0.249747 |
+| cx008_volatility_coupling_short_4h | FAIL | 71.0 | +0.007658 | +0.028718 | -0.064532 |
 
 
 R15 and subset returns are mean per-trade R at 15 bp per side, medians across 40 seeded coin orders.
@@ -56,5 +58,5 @@ Final focused test receipt is validation.json when present.
 ROADMAP FIT: owner-authorized sustained lane-5 independent strategy economics under frozen LONGSCOUT gates.
 DEFERRED: tuning, new data, full independent execution replay, forward/PAPER activation and unrelated work.
 No accounts, keys, runtime, settings, schedulers, watchdogs, orders, other clones, merges or ready-state actions.
-LANES: Build = six new rules frozen; Evidence = sequential research runs and completed-case audits;
-Integration = same draft PR #356, Claude disposition only.
+LANES: Build = six new rules and cases complete; Evidence = all 640 scenario runs and eight audits complete;
+Integration = same draft PR #356, final Claude disposition only; no dependent activation.

@@ -1,0 +1,57 @@
+[
+  {
+    "id": "cx007_volatility_coupling_long_4h",
+    "status": "FAIL",
+    "n": 57.0,
+    "meanR7": -0.011032358698258759,
+    "meanR15": -0.026832760951559887,
+    "meanR23": -0.042633163204861046,
+    "meanR15_early": 0.13775251022113633,
+    "meanR15_late": -0.3049733526311204,
+    "meanR15_ex_best": -0.08726203136117738,
+    "fresh134": -0.1266750040779781,
+    "extra31": 0.2497473461449452,
+    "subset_n": {
+      "fresh134": 42.0,
+      "extra31": 15.0
+    },
+    "order0_early": 38,
+    "order0_late": 19,
+    "failed": [
+      "trades",
+      "meanR15",
+      "late",
+      "ex_best_coin",
+      "meanR23",
+      "order0_30_per_half",
+      "fresh134"
+    ]
+  },
+  {
+    "id": "cx008_volatility_coupling_short_4h",
+    "status": "FAIL",
+    "n": 71.0,
+    "meanR7": 0.0335425315831715,
+    "meanR15": 0.007658057263049946,
+    "meanR23": -0.01822877551565854,
+    "meanR15_early": -0.11176625607649719,
+    "meanR15_late": 0.18154325233476595,
+    "meanR15_ex_best": -0.030278258045901504,
+    "fresh134": 0.028717772846322556,
+    "extra31": -0.06453192735258552,
+    "subset_n": {
+      "fresh134": 54.0,
+      "extra31": 17.0
+    },
+    "order0_early": 43,
+    "order0_late": 29,
+    "failed": [
+      "trades",
+      "early",
+      "ex_best_coin",
+      "meanR23",
+      "order0_30_per_half",
+      "extra31"
+    ]
+  }
+]

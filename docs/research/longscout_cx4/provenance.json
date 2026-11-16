@@ -1,0 +1,12 @@
+{
+  "freeze": {
+    "rules": "c7bce19b7ffb66858dd156060863ef16b8bd118f",
+    "cases": "469d752f17fe33e94cd4e407359f524f1244a9cf",
+    "git_sha256": {
+      "research/longscout_cx4.py": "73b83932321bbf79a38459be47d0d419597ec7d68e3a86e9e3dc8050265a4259",
+      "research/extra31_screen/longscout_cx4_cases.json": "66bd7243fd12fb1fa1743bfc4872dbbdc68010df2184a9da4bbb3b838a4a20ac"
+    }
+  },
+  "published_cairo": "2026-11-16T17:23:48.745720+02:00",
+  "note": "Unchanged V2 worker, rule-v1 gates and 40 seeded orders; exact-blob transport. No tuning."
+}
