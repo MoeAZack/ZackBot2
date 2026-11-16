@@ -7680,23 +7680,47 @@ class Engine:
         Rule (durable, saved with the lot in the same state write): a persisted high-water mark per sleeve|symbol|side,
         state['lot_key_seq'][prefix] = {t: latest second issued, n: suffix counter that never goes back}. A second later
         than t gets the plain key;
-        any second <= t (same second, clock rollback) gets base-<n+1>. On top, any id still referenced (live lots,
-        measured_wait, the history and cohort rows) is skipped - covering a state restored from an older copy.
+        any second <= t (same second, clock rollback) gets base-<n+1>. On top, any id still referenced (_lot_ids_referenced:
+        the audited list of persistent consumers) is skipped, and a prefix without a mark (legacy / restored state) seeds
+        it from those ids - covering a state restored from an older copy.
         The symbol stays field [1], the format other code splits on."""
         st = self.state
         prefix, ts = base.rsplit('|', 1); ts = int(ts)
         allseq = st['lot_key_seq'] = st.get('lot_key_seq') if isinstance(st.get('lot_key_seq'), dict) else {}
         seq = allseq.get(prefix) if isinstance(allseq.get(prefix), dict) else {}
+        taken = self._lot_ids_referenced()
+        if not seq:                     # r2 migration (legacy / restored state without a mark): seed it from every referenced
+            for t_ in taken:            # id of this prefix, so a rollback to or below their latest second is suffixed
+                p_, _, rest = t_.rpartition('|')
+                if p_ == prefix:
+                    try: seq = dict(t=max(int(seq.get('t', -1)), int(rest.split('-', 1)[0])), n=int(seq.get('n', 0)))
+                    except ValueError: pass
         last_t, n = int(seq.get('t', -1)), int(seq.get('n', 0))
-        taken = set(st.get('lots') or {}) | set(st.get('measured_wait') or {})
-        taken |= {h.get('id') for h in list(getattr(self, 'history', None) or []) + list(getattr(self, 'cohort_rows', None) or ())
-                  if isinstance(h, dict)}
         key = base
         if ts <= last_t or key in taken:
             n += 1; key = f'{base}-{n}'
             while key in taken: n += 1; key = f'{base}-{n}'
         allseq[prefix] = dict(t=max(ts, last_t), n=n)
         return key
+
+    def _lot_ids_referenced(self):
+        """LANE3-F5 r2 (Codex #363 6925177679): every persistent consumer of a trade id, audited - an id any of them still
+        answers to is never issued again (the high-water mark covers new ids; this covers legacy / restored state):
+          lots, measured_wait (outstanding cost evidence), the closed-trade history and cohort rows, the FACTORY-CAND-02
+          durable pending-cost index (kept after history eviction) and its Integration acknowledgements, and the
+          trade-audit excursion cache when it is loaded (display only, read from trade_audit.jsonl).
+        Keys of other stores (pending/resting entries, grids, orphans, unconfirmed entries) are not trade ids."""
+        st = self.state
+        out = set()
+        for name in ('lots', 'measured_wait', CANDIDATE_PENDING_KEY, CEA.ACK_KEY):
+            v = st.get(name)
+            if isinstance(v, dict): out |= {k for k in v if isinstance(k, str)}
+        out |= {h.get('id') for h in list(getattr(self, 'history', None) or []) + list(getattr(self, 'cohort_rows', None) or ())
+                if isinstance(h, dict)}
+        exc = vars(self).get('_tb_exc')
+        if isinstance(exc, dict) and isinstance(exc.get('ids'), dict): out |= set(exc['ids'])
+        out.discard(None)
+        return out
 
     def _create_lot(self, plan, qty, fill, maker_qty=0.0, adopt_stop=None, cost_ref=None):
         """Record a filled entry as a lot and protect it with its exchange stop (recorded BEFORE the stop is sent)."""

@@ -149,3 +149,55 @@ def test_an_outstanding_measured_cost_wait_alone_blocks_the_id(monkeypatch):
     e.state['measured_wait'] = {base: dict(symbol='BTCUSDT')}
     e._create_lot(dict(PLAN), 1., 100.)
     assert e._last_lot_key == base + '-1'
+
+
+# ---------------------------------------------------------------- Codex #363 round 2 (6925177679)
+def test_r2_codex_probe_an_outstanding_candidate_cost_id_is_never_reissued(monkeypatch):
+    """No lot_key_seq / history / measured_wait - only the durable pending-cost index (kept after history eviction)."""
+    e, clock = bare(monkeypatch)
+    base = 'MAN|BTCUSDT|LONG|1799000000'
+    e.state[E.CANDIDATE_PENDING_KEY] = {base: dict(sleeve='C-F01', symbol='BTCUSDT', closed='2026-11-16T00:00:00+00:00')}
+    e._create_lot(dict(PLAN), 1., 100.)
+    assert e._last_lot_key != base and e.state[E.CANDIDATE_PENDING_KEY] == {base: e.state[E.CANDIDATE_PENDING_KEY][base]}
+
+
+def test_r2_an_acknowledged_candidate_cost_id_is_never_reissued(monkeypatch):
+    e, clock = bare(monkeypatch)
+    base = 'MAN|BTCUSDT|LONG|1799000000'
+    e.state[E.CEA.ACK_KEY] = {base: dict(row_id=base)}
+    e._create_lot(dict(PLAN), 1., 100.)
+    assert e._last_lot_key != base
+
+
+def test_r2_the_audit_excursion_cache_ids_are_never_reissued(monkeypatch):
+    e, clock = bare(monkeypatch)
+    base = 'MAN|BTCUSDT|LONG|1799000000'
+    e._tb_exc = dict(off={}, ids={base: {}}, at={}, fid=None)
+    e._create_lot(dict(PLAN), 1., 100.)
+    assert e._last_lot_key != base
+
+
+def test_r2_legacy_state_seeds_the_mark_from_referenced_ids_so_rollback_below_them_is_suffixed(monkeypatch):
+    e, clock = bare(monkeypatch)
+    later = 'MAN|BTCUSDT|LONG|1799000100'                                     # an outstanding id 100 s after "now"
+    e.state[E.CANDIDATE_PENDING_KEY] = {later: dict(sleeve='C-F01', symbol='BTCUSDT', closed='2026-11-16T00:00:00+00:00')}
+    e._create_lot(dict(PLAN), 1., 100.)                                       # clock is behind that id
+    assert e._last_lot_key.startswith('MAN|BTCUSDT|LONG|1799000000-')
+    assert e.state['lot_key_seq']['MAN|BTCUSDT|LONG']['t'] == 1799000100
+
+
+def test_r2_every_audited_store_is_in_the_referenced_set(monkeypatch):
+    e, _ = bare(monkeypatch)
+    ids = {n: f'MAN|BTCUSDT|LONG|{i}' for i, n in enumerate(('lots', 'measured_wait', E.CANDIDATE_PENDING_KEY, E.CEA.ACK_KEY), 1)}
+    for n, i in ids.items(): e.state[n] = {i: {}}
+    e.history = [dict(id='h|BTCUSDT|LONG|9')]; e.cohort_rows = [dict(id='c|BTCUSDT|LONG|9')]
+    got = e._lot_ids_referenced()
+    assert set(ids.values()) | {'h|BTCUSDT|LONG|9', 'c|BTCUSDT|LONG|9'} <= got
+
+
+def test_r2_the_seeded_mark_is_the_latest_referenced_second(monkeypatch):
+    e, clock = bare(monkeypatch)
+    ids = {f'MAN|BTCUSDT|LONG|{1799000000 + 10 * i}': dict(sleeve='C-F01', symbol='BTCUSDT', closed='x') for i in range(1, 31)}
+    e.state[E.CANDIDATE_PENDING_KEY] = ids
+    e._create_lot(dict(PLAN), 1., 100.)
+    assert e.state['lot_key_seq']['MAN|BTCUSDT|LONG']['t'] == 1799000300
