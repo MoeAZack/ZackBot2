@@ -5630,15 +5630,19 @@ class Engine:
         if var or 'retry' in ps: kw['retry'] = False
         return fn(*a, **kw)
 
-    def _stops_seen(self, sym, tags, push=False):
+    def _stops_seen(self, sym, tags, push=False, short=()):
         """Positive evidence from ANY successful open-order read of `sym` (verifier, reconcile, T05b recovery): every lot
         whose recorded stop is listed is confirmed now (miss state cleared, its stop-missing incident closed).
         push=True (the T05b recovery read): when every lot's stop there is listed, the routine verification of the coin
-        moves a full period on - the same symbol is not read twice in one pass."""
+        moves a full period on - the same symbol is not read twice in one pass.
+        short (LANE3-F2): lot keys whose recorded stop IS listed but whose detailed row does not protect the lot (wrong
+        side / type / trigger, or not enough quantity) - listed is not confirmed: those lots are never refreshed here."""
         now = self.clock(); self._stopv_last[sym] = now
         for k, l in self.state['lots'].items():
             if l['symbol'] != sym or not l.get('stop_id') or l['stop_id'] not in tags: continue
+            if k in short: continue
             l['stop_confirmed_t'] = now
+            self.resolve(f'stop-short|{k}', f"{sym} {l['side']} [{l['sleeve']}]: protective stop {l['stop_id']} covers the lot")
             if l.get('stop_miss') or l.get('stop_miss_why'):
                 l['stop_miss'] = 0; l.pop('stop_miss_t', None); l.pop('stop_miss_why', None); l.pop('stop_foreign', None)
             self.resolve(f'stop-missing|{k}', f"{sym} {l['side']} [{l['sleeve']}]: protective stop {l['stop_id']} seen on Binance")
@@ -5769,7 +5773,8 @@ class Engine:
         self.health.setdefault('confirmed', {}).setdefault('stops', {})[sym] = now_utc().isoformat(timespec='seconds')
         self.resolve(f'open-orders|{sym}', f'open orders {sym} readable again')
         tags = {r['tag'] for r in rows}
-        self._stops_seen(sym, tags)
+        short = self._stops_short(sym, rows)                 # LANE3-F2: listed but not protecting -> never confirmed
+        self._stops_seen(sym, tags, short=short)
         now, changed, recheck = self.clock(), False, False
         owned = self._owned_stop_tags(sym)        # lot stops AND AUD-03b provisional stops: never an extra, never adopted
         orph = {t for s_, t in self.state.get('orphans') or [] if s_ == sym}   # queued for cancellation: never adopted (the
@@ -5785,6 +5790,9 @@ class Engine:
             if l['symbol'] != sym or l.get('pending') or k not in self.state['lots']: continue
             if not l.get('stop_id'):                              # no recorded stop: adopt a matching bot stop if one exists
                 if self._adopt_stop(k, l, extras): changed = True
+                continue
+            if k in short:                                        # LANE3-F2: listed, but it does not protect this lot
+                if self._stop_short_found(k, l, short[k]): changed = True
                 continue
             if l['stop_id'] in tags: continue                     # confirmed above
             if l.get('stop_dirty') and l.get('stop_miss_why') != 'owner_check': continue   # being replaced by manage already
@@ -5869,6 +5877,51 @@ class Engine:
         ps = str(row.get('position_side') or '').upper()
         if ps == side: return True
         return ps == 'BOTH' and bool(row.get('reduce_only') or row.get('close_position'))
+
+    def _stops_short(self, sym, rows):
+        """LANE3-F2: {lot key: reason} for every lot on `sym` whose recorded stop id IS listed in `rows` but whose row does
+        not protect that lot. An id alone is not protection: the row must be a stop order (STOP_TYPES) that CLOSES the
+        lot's side (_protects), trigger at the lot's recorded stop (within half a tick), and hold enough quantity for the
+        lot - a closePosition row covers the whole side; one row recorded by several lots is a shared ledger (its
+        quantity is counted once, never per lot). A detail that the row does not carry (None: a detail-less listing)
+        is not judged - such a row confirms its id exactly as before; a detail that IS present and wrong is never
+        confirmation. Pending lots are skipped (reconcile owns them)."""
+        by_tag = {r['tag']: r for r in rows}
+        r_ = self.rules.get(sym) or dict(step=1e-9, tick=1e-9)
+        left, out = {}, {}
+        lots = sorted(((k, l) for k, l in self.state['lots'].items()
+                       if l['symbol'] == sym and not l.get('pending') and l.get('stop_id') in by_tag), key=lambda kl: kl[0])
+        for k, l in lots:
+            row = by_tag[l['stop_id']]
+            typ = row.get('type')
+            if typ is not None and str(typ).upper() not in STOP_TYPES:
+                out[k] = f'is a {typ} order, not a stop'; continue
+            if row.get('side') is not None:                   # direction known: it must CLOSE this lot's side
+                if not self._protects(row, l['side']):
+                    out[k] = f"does not close the {l['side']} side ({row.get('side')} / {row.get('position_side')})"; continue
+            sp = row.get('stop_price')
+            if sp is not None and l.get('stop') is not None and abs(float(sp) - float(l['stop'])) > r_['tick'] / 2 + 1e-12:
+                out[k] = f"triggers at {sp}, the lot's stop is {l['stop']}"; continue
+            if row.get('close_position') is True: continue
+            q = row.get('qty')
+            if q is None: continue
+            have = left.get(row['tag'], float(q))
+            if have < l['qty'] - r_['step'] / 2:
+                out[k] = f"covers {have:g} of the lot's {l['qty']:g}"; continue
+            left[row['tag']] = have - l['qty']
+        return out
+
+    def _stop_short_found(self, k, l, why):
+        """LANE3-F2: the lot's recorded stop is listed but does not protect it. Fail closed: never 'protected'; the lot is
+        marked stop_dirty, so manage re-places its stop the normal way (new full stop FIRST, then the old one cancelled -
+        never zero stops), and entries / adds on the coin wait (stop_dirty blocks them). Returns True when state changed."""
+        first = not l.get('stop_dirty')
+        l['stop_dirty'] = True; l['stop_confirmed_t'] = None
+        self.stopv_stats['short'] = self.stopv_stats.get('short', 0) + 1
+        self.err(f"{l['symbol']} {l['side']} [{l['sleeve']}]: protective stop {l['stop_id']} is on Binance but {why} - "
+                 'not counted as protection; a correct stop is placed first, then the old one is cancelled',
+                 key=f'stop-short|{k}')
+        return first
 
     def _adopt_stop(self, k, l, extras):
         """A bot stop nothing owns, on this lot's side, with this lot's quantity and stop price, IS this lot's stop (e.g.
