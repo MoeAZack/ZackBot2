@@ -1,0 +1,9 @@
+{
+  "url": "https://fapi.binance.com/fapi/v1/markPriceKlines?symbol=1000LUNCUSDT&interval=1m&startTime=1673164800000&endTime=1673164859999&limit=2",
+  "http_status": 200,
+  "fetched_cairo": "2026-11-16T16:58:00.222921+02:00",
+  "fetched_utc": "2026-11-16T14:58:00.222921+00:00",
+  "sha256": "281f46b1b1ac89f0fa948ee0bef8d0869c2a0d44cd39ab214cd617b5b58e4c60",
+  "bytes": 106,
+  "weight_used": "1"
+}

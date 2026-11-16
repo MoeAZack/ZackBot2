@@ -1,0 +1,9 @@
+{
+  "url": "https://fapi.binance.com/fapi/v1/fundingRate?symbol=1000LUNCUSDT&startTime=1673136000000&endTime=1673236800000&limit=1000",
+  "http_status": 200,
+  "fetched_cairo": "2026-11-16T16:57:51.948492+02:00",
+  "fetched_utc": "2026-11-16T14:57:51.948492+00:00",
+  "sha256": "832875df605a2c8675c565474e174891e4388b42685af5e40190931a480affda",
+  "bytes": 469,
+  "weight_used": null
+}

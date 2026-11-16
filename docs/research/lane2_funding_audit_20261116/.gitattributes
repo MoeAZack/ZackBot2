@@ -1,0 +1,3 @@
+inputs/** -text
+public_cache/** -text
+public_cache/*.meta.json text eol=lf

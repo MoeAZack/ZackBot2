@@ -1,0 +1,86 @@
+[
+  {
+    "head": "4189908d08c559421bdfd270c02de3f8dd6d97e9",
+    "path": "docs/research/longscout_v24/l24_breakaway_day_4h/l24_breakaway_day_4h_order0_path_trades.csv",
+    "local": "inputs/l24_breakaway_day_4h_order0_path_trades.csv",
+    "sha256": "3f3a91e5b03004514bb0e2392b26180ebf4560df7deb2c7d4b0a5b38784c4cc6"
+  },
+  {
+    "head": "4189908d08c559421bdfd270c02de3f8dd6d97e9",
+    "path": "docs/research/longscout_v26/s26_weekly_close_breakdown_4h/s26_weekly_close_breakdown_4h_order0_path_trades.csv",
+    "local": "inputs/s26_weekly_close_breakdown_4h_order0_path_trades.csv",
+    "sha256": "398242628e057d287f7fe576fe45c38e4d563d586c433ea569a88631043768bd"
+  },
+  {
+    "head": "4189908d08c559421bdfd270c02de3f8dd6d97e9",
+    "path": "docs/research/longscout_v40/l40_dual_momentum_4h/l40_dual_momentum_4h_order0_path_trades.csv",
+    "local": "inputs/l40_dual_momentum_4h_order0_path_trades.csv",
+    "sha256": "2e3566869db991a12f2442a0b1975f61f6e774139437b8b3a6c49ceae99e7e18"
+  },
+  {
+    "head": "4189908d08c559421bdfd270c02de3f8dd6d97e9",
+    "path": "docs/research/longscout_v51/s51_momentum_accel_4h/s51_momentum_accel_4h_order0_path_trades.csv",
+    "local": "inputs/s51_momentum_accel_4h_order0_path_trades.csv",
+    "sha256": "61ff558a7cab117dd2ca96ed7fa8ca71e6ec70c8de23bf5bcac8c6932d0c8956"
+  },
+  {
+    "head": "4189908d08c559421bdfd270c02de3f8dd6d97e9",
+    "path": "docs/research/longscout_v54/s54_double_top_4h/s54_double_top_4h_order0_path_trades.csv",
+    "local": "inputs/s54_double_top_4h_order0_path_trades.csv",
+    "sha256": "c20b11579225a754a62adc79e4923ec30cf4cfe43368f56f37a1f8652cac4b26"
+  },
+  {
+    "head": "4189908d08c559421bdfd270c02de3f8dd6d97e9",
+    "path": "docs/research/longscout_v6/r6_regime_flip_4h/r6_regime_flip_4h_order0_path_trades.csv",
+    "local": "inputs/r6_regime_flip_4h_order0_path_trades.csv",
+    "sha256": "3a6014adcec5324835127d4bd79a74985bbf5b6ebfd9fc31103600bf524ce227"
+  },
+  {
+    "head": "4189908d08c559421bdfd270c02de3f8dd6d97e9",
+    "path": "docs/research/longscout_v74/r74_prior_month_break_4h/r74_prior_month_break_4h_order0_path_trades.csv",
+    "local": "inputs/r74_prior_month_break_4h_order0_path_trades.csv",
+    "sha256": "adffb5518048480721a447bae3179f55ad7563f7342a56a3631bd609533cb11d"
+  },
+  {
+    "head": "4189908d08c559421bdfd270c02de3f8dd6d97e9",
+    "path": "docs/research/longscout_v76/s76_uptrend_line_break_4h/s76_uptrend_line_break_4h_order0_path_trades.csv",
+    "local": "inputs/s76_uptrend_line_break_4h_order0_path_trades.csv",
+    "sha256": "0ab37f663a9134e7801f284203084b2c2f38922848c966ae54d454a046d15923"
+  },
+  {
+    "head": "53753968c52ba2bbe8a6f3c54acb86bdb1bfc8d5",
+    "path": "research_evidence/runs/prot_cmp_01/path4h/rows.csv",
+    "local": "inputs/prot_path4h_rows.csv",
+    "sha256": "a04c09514716322c0ba42853d20b3165e24de79bb837d05b234ffdc3a63e8387"
+  },
+  {
+    "head": "53753968c52ba2bbe8a6f3c54acb86bdb1bfc8d5",
+    "path": "research_evidence/runs/prot_cmp_01/path4h/meta.json",
+    "local": "inputs/prot_path4h_meta.json",
+    "sha256": "8c1134c709a78642f3dddfd11247a4dd1b4bc28f1e0230971b7dfd7896d9cb45"
+  },
+  {
+    "head": "53753968c52ba2bbe8a6f3c54acb86bdb1bfc8d5",
+    "path": "research_evidence/runs/prot_cmp_01/worst4h/rows.csv",
+    "local": "inputs/prot_worst4h_rows.csv",
+    "sha256": "f136ee2548d1fbb11080c282fa5452459921fb4b8a9292db1cc92478ae3dc62f"
+  },
+  {
+    "head": "53753968c52ba2bbe8a6f3c54acb86bdb1bfc8d5",
+    "path": "research_evidence/runs/prot_cmp_01/worst4h/meta.json",
+    "local": "inputs/prot_worst4h_meta.json",
+    "sha256": "200ba6e64a2316e73fb219e234095582ac09980281e5c8de589bcb78453f823d"
+  },
+  {
+    "head": "53753968c52ba2bbe8a6f3c54acb86bdb1bfc8d5",
+    "path": "research_evidence/runs/prot_cmp_01/h1/rows.csv",
+    "local": "inputs/prot_h1_rows.csv",
+    "sha256": "b204e40c45a1a7e9bae7d83ed5831ea6b89b7b684e0337165cb43b1d97d124ed"
+  },
+  {
+    "head": "53753968c52ba2bbe8a6f3c54acb86bdb1bfc8d5",
+    "path": "research_evidence/runs/prot_cmp_01/h1/meta.json",
+    "local": "inputs/prot_h1_meta.json",
+    "sha256": "dad96cc6113b2d32407e38df05749783983e97be8e594ea61656fa2117c1989d"
+  }
+]

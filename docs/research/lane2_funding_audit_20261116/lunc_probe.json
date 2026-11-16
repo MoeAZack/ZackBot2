@@ -1,0 +1,107 @@
+{
+  "status": "INCOMPLETE",
+  "scope": "early LUNC window only; not full-strategy coverage",
+  "requests": [
+    {
+      "url": "https://fapi.binance.com/fapi/v1/fundingRate?symbol=1000LUNCUSDT&startTime=1673136000000&endTime=1673236800000&limit=1000",
+      "http_status": 200,
+      "fetched_cairo": "2026-11-16T16:57:51.948492+02:00",
+      "fetched_utc": "2026-11-16T14:57:51.948492+00:00",
+      "sha256": "832875df605a2c8675c565474e174891e4388b42685af5e40190931a480affda",
+      "bytes": 469,
+      "weight_used": null
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/markPriceKlines?symbol=1000LUNCUSDT&interval=1m&startTime=1673136000000&endTime=1673136059999&limit=2",
+      "http_status": 200,
+      "fetched_cairo": "2026-11-16T16:57:55.800124+02:00",
+      "fetched_utc": "2026-11-16T14:57:55.800124+00:00",
+      "sha256": "183486c6961b8366a78e8d8167f9306a7c44bac80f6b719180acb408a2425454",
+      "bytes": 106,
+      "weight_used": "253"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/markPriceKlines?symbol=1000LUNCUSDT&interval=1m&startTime=1673164800000&endTime=1673164859999&limit=2",
+      "http_status": 200,
+      "fetched_cairo": "2026-11-16T16:58:00.222921+02:00",
+      "fetched_utc": "2026-11-16T14:58:00.222921+00:00",
+      "sha256": "281f46b1b1ac89f0fa948ee0bef8d0869c2a0d44cd39ab214cd617b5b58e4c60",
+      "bytes": 106,
+      "weight_used": "1"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/markPriceKlines?symbol=1000LUNCUSDT&interval=1m&startTime=1673193600000&endTime=1673193659999&limit=2",
+      "http_status": 200,
+      "fetched_cairo": "2026-11-16T16:58:03.809391+02:00",
+      "fetched_utc": "2026-11-16T14:58:03.809391+00:00",
+      "sha256": "d455ea114d3d5796b3ec67468eae41d908b3c926c63be9bda6cb6fd0c0d850d1",
+      "bytes": 106,
+      "weight_used": "12"
+    },
+    {
+      "url": "https://fapi.binance.com/fapi/v1/markPriceKlines?symbol=1000LUNCUSDT&interval=1m&startTime=1673222400000&endTime=1673222459999&limit=2",
+      "http_status": 200,
+      "fetched_cairo": "2026-11-16T16:58:07.891315+02:00",
+      "fetched_utc": "2026-11-16T14:58:07.891315+00:00",
+      "sha256": "9c1d81d85bd6f626cb5bb7ea2def9777b3c1efa5281b426d583bf7fb0c465e3c",
+      "bytes": 106,
+      "weight_used": "43"
+    }
+  ],
+  "events": [
+    {
+      "funding_time_ms": 1673136000015,
+      "rate": "0.00010000",
+      "settlement_mark": null,
+      "status": "INCOMPLETE_SETTLEMENT_MARK",
+      "containing_minute_ohlc": {
+        "open": "0.15323921",
+        "high": "0.15350000",
+        "low": "0.15323477",
+        "close": "0.15340000"
+      },
+      "handling": "OHLC retained as source evidence only; no substitution and no funding cash computed"
+    },
+    {
+      "funding_time_ms": 1673164800000,
+      "rate": "0.00010000",
+      "settlement_mark": null,
+      "status": "INCOMPLETE_SETTLEMENT_MARK",
+      "containing_minute_ohlc": {
+        "open": "0.15374002",
+        "high": "0.15394258",
+        "low": "0.15371946",
+        "close": "0.15393510"
+      },
+      "handling": "OHLC retained as source evidence only; no substitution and no funding cash computed"
+    },
+    {
+      "funding_time_ms": 1673193600010,
+      "rate": "0.00010000",
+      "settlement_mark": null,
+      "status": "INCOMPLETE_SETTLEMENT_MARK",
+      "containing_minute_ohlc": {
+        "open": "0.15495283",
+        "high": "0.15513434",
+        "low": "0.15492966",
+        "close": "0.15507168"
+      },
+      "handling": "OHLC retained as source evidence only; no substitution and no funding cash computed"
+    },
+    {
+      "funding_time_ms": 1673222400003,
+      "rate": "0.00010000",
+      "settlement_mark": null,
+      "status": "INCOMPLETE_SETTLEMENT_MARK",
+      "containing_minute_ohlc": {
+        "open": "0.15840000",
+        "high": "0.15886954",
+        "low": "0.15840000",
+        "close": "0.15881652"
+      },
+      "handling": "OHLC retained as source evidence only; no substitution and no funding cash computed"
+    }
+  ],
+  "funding_cash": null,
+  "strategy_deltas": null
+}
