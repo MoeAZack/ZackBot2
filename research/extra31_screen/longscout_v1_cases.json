@@ -1,0 +1,213 @@
+{
+ "id": "LONGSCOUT-V1",
+ "status": "FROZEN before any backtest outcome of the eight new candidates and before any regime split of exp_trend",
+ "approval": "moe 2026-11-14 ('go' to: regime check of Trend L/S 4h + new 4h/daily scouting, long side first); scope relayed by the coordinator",
+ "sources": {
+  "longscout": {
+   "commit": "a4e3b7591dcb7538ff9eb5aeeb1a07d82b6276e2",
+   "modules": [
+    "longscout_v1"
+   ],
+   "note": "research/longscout_v1.py frozen at this commit; master strategies.py/backtest.py of #340 base"
+  }
+ },
+ "rule": "Codex catalog-and-sieve rule v1 exactly as in sieve_v1.py / sieve_v1_panel.py (max one position, $8 risk on a $3,333.33 notional cap = the $4,000-account proxy, 40 coin orders, path scenario decides, worst path is a diagnostic). Gates (medians over 40 orders): n >= 100 closes, meanR15 > 0, meanR23 >= 0, both halves (split 2025-01-01) meanR15 > 0, meanR15 without the best coin > 0, order 0 >= 30 closes per half. Status TRANSFER_SCREEN_PASS only when all hold.",
+ "secondary": "post-hoc max 3 / max 5 only as labelled secondary evidence, never a pass",
+ "universe": "extra31 (the 31 coins outside the original nine); BTC is context only",
+ "data": "C:/Dev/ZackBot_research_cache/h5_wide_d01_20261112/clean, manifest sha256 99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95",
+ "multiple_testing": "8 new candidates are run at once; about one false pass in that many is plausible, so a pass is a lead for Codex reproduction and a forward test, never an activation",
+ "never": "no gate weakened, no parameter tuned, no coin dropped to rescue a candidate; a changed rule is a new candidate",
+ "regime_check": {
+  "question": "owner: is exp_trend's short bias real market-structure reading or luck?",
+  "rule": "R1 as defined in research/longscout_v1.py (100-day SMA of completed daily closes and its 20-day slope; rising / falling / sideways / unknown), read at each trade decision time (the entry bar open = the signal bar close), for BTC (market) and for the traded coin (own)",
+  "runs": "exp_trend rule v1 (max one, 40 orders) on extra31, and on the original nine (incl. BTC traded) with the same rule; all-order path trades saved",
+  "report": "per regime x side: closes, mean R15, sum R15 (order 0 and the median over 40 orders); share of time each regime holds; halves",
+  "reading_frozen": "structure reading = shorts earn mainly in falling regimes AND longs earn in rising ones (or at least do not lose); luck/one-regime dependence = the edge sits in one regime/period or one coin and the other side loses where it should win"
+ },
+ "cases": {
+  "lc_dual_regime_breakout_1d": {
+   "source": "longscout",
+   "commit": "a4e3b7591dcb7538ff9eb5aeeb1a07d82b6276e2",
+   "key": "lc_dual_regime_breakout_1d",
+   "tf": "1d",
+   "side": "long",
+   "management": {
+    "stop_atr": 2.0,
+    "max_bars": 60
+   },
+   "params": {
+    "entry": 20,
+    "exit": 10
+   },
+   "eligible_coins": "extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1 (fresh rule, extra31 coins; same calendar window as earlier development)"
+  },
+  "lc_rs_rsi2_dip_4h": {
+   "source": "longscout",
+   "commit": "a4e3b7591dcb7538ff9eb5aeeb1a07d82b6276e2",
+   "key": "lc_rs_rsi2_dip_4h",
+   "tf": "4h",
+   "side": "long",
+   "management": {
+    "stop_atr": 2.5,
+    "max_bars": 18
+   },
+   "params": {
+    "rsi_in": 10.0,
+    "rsi_out": 70.0,
+    "rs_days": 30
+   },
+   "eligible_coins": "extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1 (fresh rule, extra31 coins; same calendar window as earlier development)"
+  },
+  "lc_washout_reclaim_1d": {
+   "source": "longscout",
+   "commit": "a4e3b7591dcb7538ff9eb5aeeb1a07d82b6276e2",
+   "key": "lc_washout_reclaim_1d",
+   "tf": "1d",
+   "side": "long",
+   "management": {
+    "stop_atr": 1.0,
+    "tp_r": 2.0,
+    "max_bars": 10
+   },
+   "params": {
+    "look": 20,
+    "buf_atr": 0.25,
+    "min_atr": 1.0
+   },
+   "eligible_coins": "extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1 (fresh rule, extra31 coins; same calendar window as earlier development)"
+  },
+  "lc_mss_higher_low_4h": {
+   "source": "longscout",
+   "commit": "a4e3b7591dcb7538ff9eb5aeeb1a07d82b6276e2",
+   "key": "lc_mss_higher_low_4h",
+   "tf": "4h",
+   "side": "long",
+   "management": {
+    "stop_atr": 1.0,
+    "tp_r": 2.5,
+    "max_bars": 60
+   },
+   "params": {
+    "k": 3,
+    "buf_atr": 0.25,
+    "min_atr": 1.0,
+    "max_atr": 4.0
+   },
+   "eligible_coins": "extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1 (fresh rule, extra31 coins; same calendar window as earlier development)"
+  },
+  "lc_volume_accum_1d": {
+   "source": "longscout",
+   "commit": "a4e3b7591dcb7538ff9eb5aeeb1a07d82b6276e2",
+   "key": "lc_volume_accum_1d",
+   "tf": "1d",
+   "side": "long",
+   "management": {
+    "stop_atr": 2.0,
+    "tp_r": 3.0,
+    "max_bars": 15
+   },
+   "params": {
+    "vol_n": 50,
+    "vol_mult": 2.5,
+    "close_pos": 0.75
+   },
+   "eligible_coins": "extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1 (fresh rule, extra31 coins; same calendar window as earlier development)"
+  },
+  "lc_trend_pullback_1d": {
+   "source": "longscout",
+   "commit": "a4e3b7591dcb7538ff9eb5aeeb1a07d82b6276e2",
+   "key": "lc_trend_pullback_1d",
+   "tf": "1d",
+   "side": "long",
+   "management": {
+    "stop_atr": 2.0,
+    "tp_r": 3.0,
+    "max_bars": 30
+   },
+   "params": {
+    "slope": 5
+   },
+   "eligible_coins": "extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1 (fresh rule, extra31 coins; same calendar window as earlier development)"
+  },
+  "rs_regime_gated_trend_4h": {
+   "source": "longscout",
+   "commit": "a4e3b7591dcb7538ff9eb5aeeb1a07d82b6276e2",
+   "key": "rs_regime_gated_trend_4h",
+   "tf": "4h",
+   "side": "both",
+   "management": {
+    "stop_atr": 2.5,
+    "tp_r": 3.0,
+    "max_bars": 180
+   },
+   "params": {},
+   "eligible_coins": "extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1 (fresh rule, extra31 coins; same calendar window as earlier development)"
+  },
+  "ss_ma_rejection_short_1d": {
+   "source": "longscout",
+   "commit": "a4e3b7591dcb7538ff9eb5aeeb1a07d82b6276e2",
+   "key": "ss_ma_rejection_short_1d",
+   "tf": "1d",
+   "side": "short",
+   "management": {
+    "stop_atr": 1.0,
+    "tp_r": 2.0,
+    "max_bars": 15
+   },
+   "params": {
+    "buf_atr": 0.25,
+    "min_atr": 1.0,
+    "max_atr": 3.0
+   },
+   "eligible_coins": "extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1 (fresh rule, extra31 coins; same calendar window as earlier development)"
+  },
+  "exp_trend_regime_x31": {
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "key": "exp_trend",
+   "tf": "4h",
+   "side": "both",
+   "management": {
+    "stop_atr": 2.5,
+    "tp_r": 3.0,
+    "max_bars": 180
+   },
+   "params": {},
+   "eligible_coins": "extra31",
+   "prior_exposure": "testnet cohort / FWD-01 use on the original nine; broader history unresolved",
+   "label": "REGIME_CHECK (existing exp_trend, rule v1 re-run to save all-order trades; outcome already known)"
+  },
+  "exp_trend_regime_orig9": {
+   "source": "master",
+   "commit": "9cb4341f2d94c21434492515b8e85f2b42c148ce",
+   "key": "exp_trend",
+   "tf": "4h",
+   "side": "both",
+   "management": {
+    "stop_atr": 2.5,
+    "tp_r": 3.0,
+    "max_bars": 180
+   },
+   "params": {},
+   "eligible_coins": "original9 via --universe",
+   "prior_exposure": "testnet cohort / FWD-01 use on the original nine; broader history unresolved",
+   "label": "REGIME_CHECK on the original nine (development coins; diagnostic only)"
+  }
+ }
+}

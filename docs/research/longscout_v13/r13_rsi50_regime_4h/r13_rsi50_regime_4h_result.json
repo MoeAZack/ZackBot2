@@ -1,0 +1,2765 @@
+{
+ "case": "r13_rsi50_regime_4h",
+ "frozen_case": {
+  "source": "longscout13",
+  "commit": "08117befaf5fe934b7406439f52b7f2f240665f9",
+  "key": "r13_rsi50_regime_4h",
+  "tf": "4h",
+  "side": "both",
+  "management": {
+   "stop_atr": 2.5,
+   "max_bars": 120
+  },
+  "params": {},
+  "eligible_coins": "fresh134+extra31",
+  "prior_exposure": "none: new rule, never run on any coin before this freeze",
+  "label": "NEW_CANDIDATE_RULE_V1_WIDE165"
+ },
+ "coins": [
+  "1000BONKUSDT",
+  "1000FLOKIUSDT",
+  "1000LUNCUSDT",
+  "1000PEPEUSDT",
+  "1000RATSUSDT",
+  "1000SATSUSDT",
+  "1000SHIBUSDT",
+  "1000XECUSDT",
+  "1INCHUSDT",
+  "AAVEUSDT",
+  "ACEUSDT",
+  "ACHUSDT",
+  "AGLDUSDT",
+  "ALGOUSDT",
+  "ALICEUSDT",
+  "ANKRUSDT",
+  "APEUSDT",
+  "API3USDT",
+  "APTUSDT",
+  "ARBUSDT",
+  "ARKMUSDT",
+  "ARKUSDT",
+  "ARPAUSDT",
+  "ARUSDT",
+  "ASTRUSDT",
+  "ATOMUSDT",
+  "AUCTIONUSDT",
+  "AXSUSDT",
+  "BANDUSDT",
+  "BATUSDT",
+  "BCHUSDT",
+  "BEAMXUSDT",
+  "BELUSDT",
+  "BICOUSDT",
+  "BIGTIMEUSDT",
+  "BLURUSDT",
+  "BNTUSDT",
+  "BSVUSDT",
+  "C98USDT",
+  "CAKEUSDT",
+  "CELOUSDT",
+  "CELRUSDT",
+  "CFXUSDT",
+  "CHRUSDT",
+  "CHZUSDT",
+  "CKBUSDT",
+  "COMPUSDT",
+  "COTIUSDT",
+  "CRVUSDT",
+  "CTSIUSDT",
+  "CYBERUSDT",
+  "DASHUSDT",
+  "DODOXUSDT",
+  "DOTUSDT",
+  "DUSKUSDT",
+  "DYDXUSDT",
+  "EDUUSDT",
+  "EGLDUSDT",
+  "ENAUSDT",
+  "ENJUSDT",
+  "ENSUSDT",
+  "ETCUSDT",
+  "ETHWUSDT",
+  "FETUSDT",
+  "FILUSDT",
+  "FLOWUSDT",
+  "GALAUSDT",
+  "GASUSDT",
+  "GMTUSDT",
+  "GMXUSDT",
+  "GRTUSDT",
+  "GTCUSDT",
+  "HBARUSDT",
+  "HOTUSDT",
+  "ICPUSDT",
+  "IDUSDT",
+  "ILVUSDT",
+  "IMXUSDT",
+  "INJUSDT",
+  "IOSTUSDT",
+  "IOTAUSDT",
+  "IOTXUSDT",
+  "JASMYUSDT",
+  "JOEUSDT",
+  "JTOUSDT",
+  "KASUSDT",
+  "KAVAUSDT",
+  "KNCUSDT",
+  "KSMUSDT",
+  "LDOUSDT",
+  "LPTUSDT",
+  "LQTYUSDT",
+  "LTCUSDT",
+  "LUNA2USDT",
+  "MAGICUSDT",
+  "MANAUSDT",
+  "MASKUSDT",
+  "MAVUSDT",
+  "MEMEUSDT",
+  "MINAUSDT",
+  "MOVRUSDT",
+  "MTLUSDT",
+  "NEARUSDT",
+  "NEOUSDT",
+  "NMRUSDT",
+  "OGNUSDT",
+  "ONDOUSDT",
+  "ONEUSDT",
+  "ONGUSDT",
+  "ONTUSDT",
+  "OPUSDT",
+  "ORDIUSDT",
+  "PENDLEUSDT",
+  "PEOPLEUSDT",
+  "POLYXUSDT",
+  "POWRUSDT",
+  "PYTHUSDT",
+  "QNTUSDT",
+  "QTUMUSDT",
+  "RIFUSDT",
+  "RLCUSDT",
+  "ROSEUSDT",
+  "RSRUSDT",
+  "RUNEUSDT",
+  "RVNUSDT",
+  "SANDUSDT",
+  "SEIUSDT",
+  "SFPUSDT",
+  "SKLUSDT",
+  "SNXUSDT",
+  "SPELLUSDT",
+  "SSVUSDT",
+  "STEEMUSDT",
+  "STRKUSDT",
+  "STXUSDT",
+  "SUIUSDT",
+  "SUPERUSDT",
+  "SUSHIUSDT",
+  "TAOUSDT",
+  "THETAUSDT",
+  "TIAUSDT",
+  "TLMUSDT",
+  "TRBUSDT",
+  "TRXUSDT",
+  "TUSDT",
+  "TWTUSDT",
+  "UMAUSDT",
+  "UNIUSDT",
+  "USTCUSDT",
+  "VETUSDT",
+  "WAXPUSDT",
+  "WLDUSDT",
+  "WOOUSDT",
+  "XLMUSDT",
+  "XMRUSDT",
+  "XTZUSDT",
+  "XVGUSDT",
+  "XVSUSDT",
+  "YFIUSDT",
+  "YGGUSDT",
+  "ZECUSDT",
+  "ZENUSDT",
+  "ZILUSDT",
+  "ZROUSDT",
+  "ZRXUSDT"
+ ],
+ "n_coins": 165,
+ "orders": 40,
+ "universe": "smoke",
+ "max_pos": 1,
+ "status": "FAIL",
+ "label": "NEW_CANDIDATE_RULE_V1_WIDE165",
+ "gates": {
+  "trades": true,
+  "meanR15": false,
+  "early": false,
+  "late": false,
+  "ex_best_coin": false,
+  "meanR23": false,
+  "order0_30_per_half": true
+ },
+ "medians": {
+  "n": 953.5,
+  "meanR7": -0.03365829131663235,
+  "meanR15": -0.058213703297876104,
+  "meanR23": -0.0826770470824063,
+  "meanR15_early": -0.03389408481285468,
+  "meanR15_late": -0.08199611440432393,
+  "meanR15_ex_best": -0.06958294920005181
+ },
+ "meanR15_p10": -0.07715759255573326,
+ "meanR15_min": -0.08780103743198986,
+ "meanR15_max": -0.02028305437666773,
+ "orders_passing_all_but_order0_gate": 0,
+ "worst_path_diagnostic": {
+  "medians": {
+   "n": 953.5,
+   "meanR7": -0.03365829131663235,
+   "meanR15": -0.058213703297876104,
+   "meanR23": -0.0826770470824063,
+   "meanR15_early": -0.03389408481285468,
+   "meanR15_late": -0.08199611440432393,
+   "meanR15_ex_best": -0.06958294920005181
+  },
+  "gates": {
+   "trades": true,
+   "meanR15": false,
+   "early": false,
+   "late": false,
+   "ex_best_coin": false,
+   "meanR23": false,
+   "order0_30_per_half": true
+  }
+ },
+ "order0": {
+  "n": 961,
+  "n_early": 539,
+  "n_late": 422,
+  "meanR7": -0.046036808411724944,
+  "meanR15": -0.06977104408365048,
+  "meanR23": -0.093505279755576,
+  "meanR15_early": -0.0500781190222288,
+  "meanR15_late": -0.09492385595120091,
+  "best_coin": "INJUSDT",
+  "n_ex_best": 947,
+  "meanR15_ex_best": -0.07933604038822663,
+  "sumR15": -67.04997336438811,
+  "meanR_actual": -0.04603739050477037,
+  "coins_traded": 133,
+  "coins_positive": 33,
+  "order": 0,
+  "feasibility": {
+   "attempts": 961,
+   "executed": 961,
+   "rule_blocked": 0,
+   "skipped": {}
+  },
+  "max_concurrent_closed_trades": 1,
+  "maxdd_R15_closed": 73.89452678369342,
+  "why": {
+   "signal": 937,
+   "stop": 24
+  },
+  "long_n": 468,
+  "short_n": 493,
+  "long_sumR15": -43.35599577854161,
+  "short_sumR15": -23.693977585846493,
+  "per_coin": {
+   "1000BONKUSDT": {
+    "n": 46,
+    "sumR15": -2.831
+   },
+   "1000FLOKIUSDT": {
+    "n": 35,
+    "sumR15": -0.935
+   },
+   "1000LUNCUSDT": {
+    "n": 47,
+    "sumR15": -8.209
+   },
+   "1000PEPEUSDT": {
+    "n": 28,
+    "sumR15": -0.931
+   },
+   "1000RATSUSDT": {
+    "n": 10,
+    "sumR15": -1.237
+   },
+   "1000SATSUSDT": {
+    "n": 24,
+    "sumR15": 3.861
+   },
+   "1000SHIBUSDT": {
+    "n": 33,
+    "sumR15": 2.856
+   },
+   "1000XECUSDT": {
+    "n": 4,
+    "sumR15": 0.201
+   },
+   "1INCHUSDT": {
+    "n": 28,
+    "sumR15": -4.745
+   },
+   "AAVEUSDT": {
+    "n": 47,
+    "sumR15": -0.023
+   },
+   "ACEUSDT": {
+    "n": 8,
+    "sumR15": -2.017
+   },
+   "ACHUSDT": {
+    "n": 13,
+    "sumR15": -2.556
+   },
+   "AGLDUSDT": {
+    "n": 5,
+    "sumR15": -0.272
+   },
+   "ALGOUSDT": {
+    "n": 17,
+    "sumR15": -4.304
+   },
+   "ALICEUSDT": {
+    "n": 7,
+    "sumR15": -2.213
+   },
+   "ANKRUSDT": {
+    "n": 9,
+    "sumR15": 5.858
+   },
+   "APEUSDT": {
+    "n": 14,
+    "sumR15": 0.126
+   },
+   "API3USDT": {
+    "n": 9,
+    "sumR15": -3.174
+   },
+   "APTUSDT": {
+    "n": 22,
+    "sumR15": -2.637
+   },
+   "ARBUSDT": {
+    "n": 18,
+    "sumR15": 1.668
+   },
+   "ARKMUSDT": {
+    "n": 8,
+    "sumR15": -3.212
+   },
+   "ARKUSDT": {
+    "n": 3,
+    "sumR15": -0.645
+   },
+   "ARPAUSDT": {
+    "n": 6,
+    "sumR15": -0.925
+   },
+   "ARUSDT": {
+    "n": 19,
+    "sumR15": -5.649
+   },
+   "ASTRUSDT": {
+    "n": 7,
+    "sumR15": -2.311
+   },
+   "ATOMUSDT": {
+    "n": 17,
+    "sumR15": 3.504
+   },
+   "AUCTIONUSDT": {
+    "n": 3,
+    "sumR15": -0.71
+   },
+   "AXSUSDT": {
+    "n": 6,
+    "sumR15": 1.872
+   },
+   "BANDUSDT": {
+    "n": 7,
+    "sumR15": 0.219
+   },
+   "BATUSDT": {
+    "n": 7,
+    "sumR15": -1.982
+   },
+   "BCHUSDT": {
+    "n": 19,
+    "sumR15": -3.108
+   },
+   "BEAMXUSDT": {
+    "n": 2,
+    "sumR15": -0.262
+   },
+   "BELUSDT": {
+    "n": 4,
+    "sumR15": -1.805
+   },
+   "BICOUSDT": {
+    "n": 2,
+    "sumR15": -0.731
+   },
+   "BIGTIMEUSDT": {
+    "n": 7,
+    "sumR15": 0.901
+   },
+   "BLURUSDT": {
+    "n": 7,
+    "sumR15": 4.844
+   },
+   "BSVUSDT": {
+    "n": 1,
+    "sumR15": 0.241
+   },
+   "C98USDT": {
+    "n": 3,
+    "sumR15": -1.215
+   },
+   "CAKEUSDT": {
+    "n": 5,
+    "sumR15": -1.688
+   },
+   "CELOUSDT": {
+    "n": 7,
+    "sumR15": -0.144
+   },
+   "CELRUSDT": {
+    "n": 4,
+    "sumR15": -1.252
+   },
+   "CFXUSDT": {
+    "n": 5,
+    "sumR15": 1.324
+   },
+   "CHRUSDT": {
+    "n": 1,
+    "sumR15": -0.115
+   },
+   "CHZUSDT": {
+    "n": 11,
+    "sumR15": -0.518
+   },
+   "CKBUSDT": {
+    "n": 5,
+    "sumR15": 3.526
+   },
+   "COMPUSDT": {
+    "n": 10,
+    "sumR15": -3.031
+   },
+   "COTIUSDT": {
+    "n": 5,
+    "sumR15": -1.452
+   },
+   "CRVUSDT": {
+    "n": 14,
+    "sumR15": -2.627
+   },
+   "CTSIUSDT": {
+    "n": 3,
+    "sumR15": -1.007
+   },
+   "DASHUSDT": {
+    "n": 9,
+    "sumR15": -1.589
+   },
+   "DOTUSDT": {
+    "n": 7,
+    "sumR15": 0.434
+   },
+   "DUSKUSDT": {
+    "n": 12,
+    "sumR15": -3.569
+   },
+   "DYDXUSDT": {
+    "n": 10,
+    "sumR15": -3.52
+   },
+   "EDUUSDT": {
+    "n": 6,
+    "sumR15": -2.041
+   },
+   "EGLDUSDT": {
+    "n": 2,
+    "sumR15": -0.382
+   },
+   "ENAUSDT": {
+    "n": 6,
+    "sumR15": -1.008
+   },
+   "ENJUSDT": {
+    "n": 1,
+    "sumR15": -0.319
+   },
+   "ENSUSDT": {
+    "n": 3,
+    "sumR15": -0.077
+   },
+   "ETCUSDT": {
+    "n": 3,
+    "sumR15": 2.786
+   },
+   "FETUSDT": {
+    "n": 16,
+    "sumR15": -1.03
+   },
+   "FILUSDT": {
+    "n": 8,
+    "sumR15": -1.705
+   },
+   "FLOWUSDT": {
+    "n": 4,
+    "sumR15": 0.071
+   },
+   "GALAUSDT": {
+    "n": 5,
+    "sumR15": -0.519
+   },
+   "GASUSDT": {
+    "n": 2,
+    "sumR15": 0.066
+   },
+   "GMTUSDT": {
+    "n": 4,
+    "sumR15": 0.885
+   },
+   "GMXUSDT": {
+    "n": 1,
+    "sumR15": -1.027
+   },
+   "GRTUSDT": {
+    "n": 2,
+    "sumR15": -0.057
+   },
+   "HBARUSDT": {
+    "n": 11,
+    "sumR15": -2.629
+   },
+   "HOTUSDT": {
+    "n": 3,
+    "sumR15": -0.665
+   },
+   "ICPUSDT": {
+    "n": 2,
+    "sumR15": 3.506
+   },
+   "IMXUSDT": {
+    "n": 5,
+    "sumR15": -0.828
+   },
+   "INJUSDT": {
+    "n": 14,
+    "sumR15": 8.081
+   },
+   "IOSTUSDT": {
+    "n": 1,
+    "sumR15": -1.036
+   },
+   "IOTAUSDT": {
+    "n": 1,
+    "sumR15": -0.222
+   },
+   "IOTXUSDT": {
+    "n": 2,
+    "sumR15": -0.141
+   },
+   "JASMYUSDT": {
+    "n": 6,
+    "sumR15": -1.65
+   },
+   "JTOUSDT": {
+    "n": 2,
+    "sumR15": -0.545
+   },
+   "KASUSDT": {
+    "n": 1,
+    "sumR15": -0.2
+   },
+   "KAVAUSDT": {
+    "n": 3,
+    "sumR15": -0.748
+   },
+   "KNCUSDT": {
+    "n": 2,
+    "sumR15": -1.076
+   },
+   "LDOUSDT": {
+    "n": 7,
+    "sumR15": -2.155
+   },
+   "LPTUSDT": {
+    "n": 6,
+    "sumR15": -2.638
+   },
+   "LQTYUSDT": {
+    "n": 3,
+    "sumR15": -0.693
+   },
+   "LTCUSDT": {
+    "n": 12,
+    "sumR15": 3.07
+   },
+   "LUNA2USDT": {
+    "n": 3,
+    "sumR15": 3.288
+   },
+   "MAGICUSDT": {
+    "n": 4,
+    "sumR15": -1.587
+   },
+   "MASKUSDT": {
+    "n": 2,
+    "sumR15": -0.519
+   },
+   "MAVUSDT": {
+    "n": 1,
+    "sumR15": -0.271
+   },
+   "MEMEUSDT": {
+    "n": 3,
+    "sumR15": -0.215
+   },
+   "MINAUSDT": {
+    "n": 2,
+    "sumR15": -0.161
+   },
+   "MTLUSDT": {
+    "n": 5,
+    "sumR15": -2.038
+   },
+   "NEARUSDT": {
+    "n": 5,
+    "sumR15": -0.212
+   },
+   "NEOUSDT": {
+    "n": 3,
+    "sumR15": -1.048
+   },
+   "NMRUSDT": {
+    "n": 1,
+    "sumR15": -0.239
+   },
+   "OGNUSDT": {
+    "n": 2,
+    "sumR15": 0.137
+   },
+   "ONDOUSDT": {
+    "n": 5,
+    "sumR15": -1.719
+   },
+   "ONGUSDT": {
+    "n": 2,
+    "sumR15": -0.434
+   },
+   "ONTUSDT": {
+    "n": 1,
+    "sumR15": -0.15
+   },
+   "OPUSDT": {
+    "n": 1,
+    "sumR15": -0.212
+   },
+   "ORDIUSDT": {
+    "n": 2,
+    "sumR15": -0.454
+   },
+   "PENDLEUSDT": {
+    "n": 3,
+    "sumR15": -0.715
+   },
+   "PEOPLEUSDT": {
+    "n": 5,
+    "sumR15": -1.338
+   },
+   "PYTHUSDT": {
+    "n": 2,
+    "sumR15": 1.088
+   },
+   "QNTUSDT": {
+    "n": 1,
+    "sumR15": -0.093
+   },
+   "RIFUSDT": {
+    "n": 1,
+    "sumR15": -0.177
+   },
+   "RLCUSDT": {
+    "n": 1,
+    "sumR15": 0.193
+   },
+   "RSRUSDT": {
+    "n": 2,
+    "sumR15": -0.938
+   },
+   "RUNEUSDT": {
+    "n": 2,
+    "sumR15": -0.952
+   },
+   "SFPUSDT": {
+    "n": 1,
+    "sumR15": -0.271
+   },
+   "SKLUSDT": {
+    "n": 3,
+    "sumR15": 3.217
+   },
+   "SNXUSDT": {
+    "n": 5,
+    "sumR15": -2.007
+   },
+   "SPELLUSDT": {
+    "n": 1,
+    "sumR15": -0.725
+   },
+   "SSVUSDT": {
+    "n": 1,
+    "sumR15": -0.197
+   },
+   "STXUSDT": {
+    "n": 6,
+    "sumR15": 0.072
+   },
+   "SUIUSDT": {
+    "n": 3,
+    "sumR15": -0.395
+   },
+   "TAOUSDT": {
+    "n": 7,
+    "sumR15": -0.785
+   },
+   "THETAUSDT": {
+    "n": 3,
+    "sumR15": -1.089
+   },
+   "TIAUSDT": {
+    "n": 5,
+    "sumR15": 0.969
+   },
+   "TRBUSDT": {
+    "n": 5,
+    "sumR15": -1.06
+   },
+   "TRXUSDT": {
+    "n": 15,
+    "sumR15": -1.911
+   },
+   "TUSDT": {
+    "n": 1,
+    "sumR15": 1.137
+   },
+   "UNIUSDT": {
+    "n": 3,
+    "sumR15": -0.613
+   },
+   "USTCUSDT": {
+    "n": 1,
+    "sumR15": -0.903
+   },
+   "WOOUSDT": {
+    "n": 1,
+    "sumR15": -0.18
+   },
+   "XLMUSDT": {
+    "n": 3,
+    "sumR15": -0.48
+   },
+   "XMRUSDT": {
+    "n": 16,
+    "sumR15": -6.294
+   },
+   "XTZUSDT": {
+    "n": 1,
+    "sumR15": -0.111
+   },
+   "XVSUSDT": {
+    "n": 1,
+    "sumR15": -0.243
+   },
+   "ZECUSDT": {
+    "n": 6,
+    "sumR15": 0.096
+   },
+   "ZENUSDT": {
+    "n": 4,
+    "sumR15": 6.472
+   },
+   "ZILUSDT": {
+    "n": 2,
+    "sumR15": -0.244
+   },
+   "ZROUSDT": {
+    "n": 3,
+    "sumR15": 0.947
+   },
+   "ZRXUSDT": {
+    "n": 1,
+    "sumR15": -1.045
+   }
+  },
+  "closes_per_week": 4.487658438959306
+ },
+ "signals": {
+  "raw": 52134,
+  "eligible": 30056
+ },
+ "per_order": {
+  "path": [
+   {
+    "n": 961,
+    "n_early": 539,
+    "n_late": 422,
+    "meanR7": -0.046036808411724944,
+    "meanR15": -0.06977104408365048,
+    "meanR23": -0.093505279755576,
+    "meanR15_early": -0.0500781190222288,
+    "meanR15_late": -0.09492385595120091,
+    "best_coin": "INJUSDT",
+    "n_ex_best": 947,
+    "meanR15_ex_best": -0.07933604038822663,
+    "sumR15": -67.04997336438811,
+    "meanR_actual": -0.04603739050477037,
+    "coins_traded": 133,
+    "coins_positive": 33,
+    "order": 0,
+    "feasibility": {
+     "attempts": 961,
+     "executed": 961,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 966,
+    "n_early": 561,
+    "n_late": 405,
+    "meanR7": -0.03730620696771367,
+    "meanR15": -0.06302615346397494,
+    "meanR23": -0.08874609996023623,
+    "meanR15_early": -0.054545822462106014,
+    "meanR15_late": -0.07477298233323044,
+    "best_coin": "GMTUSDT",
+    "n_ex_best": 960,
+    "meanR15_ex_best": -0.06882270653687779,
+    "sumR15": -60.8832642461998,
+    "meanR_actual": -0.03730651444953372,
+    "coins_traded": 137,
+    "coins_positive": 38,
+    "order": 1,
+    "feasibility": {
+     "attempts": 967,
+     "executed": 967,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 978,
+    "n_early": 543,
+    "n_late": 435,
+    "meanR7": -0.06182880286485958,
+    "meanR15": -0.08562038151761224,
+    "meanR23": -0.10941196017036492,
+    "meanR15_early": -0.08253723239286133,
+    "meanR15_late": -0.0894690021491979,
+    "best_coin": "ETCUSDT",
+    "n_ex_best": 975,
+    "meanR15_ex_best": -0.0937469856168198,
+    "sumR15": -83.73673312422477,
+    "meanR_actual": -0.061830065309546704,
+    "coins_traded": 135,
+    "coins_positive": 28,
+    "order": 2,
+    "feasibility": {
+     "attempts": 979,
+     "executed": 979,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 968,
+    "n_early": 553,
+    "n_late": 415,
+    "meanR7": -0.05705278843677891,
+    "meanR15": -0.08169748703649365,
+    "meanR23": -0.1063421856362084,
+    "meanR15_early": -0.08218271681040448,
+    "meanR15_late": -0.08105090374740283,
+    "best_coin": "ZENUSDT",
+    "n_ex_best": 957,
+    "meanR15_ex_best": -0.09265682450914538,
+    "sumR15": -79.08316745132586,
+    "meanR_actual": -0.057053816680972626,
+    "coins_traded": 130,
+    "coins_positive": 23,
+    "order": 3,
+    "feasibility": {
+     "attempts": 969,
+     "executed": 969,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 1015,
+    "n_early": 556,
+    "n_late": 459,
+    "meanR7": -0.05255892912708426,
+    "meanR15": -0.07565237681446106,
+    "meanR23": -0.09874582450183787,
+    "meanR15_early": -0.049687231519945176,
+    "meanR15_late": -0.1071047096766633,
+    "best_coin": "FLOWUSDT",
+    "n_ex_best": 988,
+    "meanR15_ex_best": -0.09304845668333864,
+    "sumR15": -76.78716246667798,
+    "meanR_actual": -0.05255977401877805,
+    "coins_traded": 145,
+    "coins_positive": 33,
+    "order": 4,
+    "feasibility": {
+     "attempts": 1016,
+     "executed": 1016,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 996,
+    "n_early": 526,
+    "n_late": 470,
+    "meanR7": -0.045497763513655615,
+    "meanR15": -0.06934824895127728,
+    "meanR23": -0.09319873438889895,
+    "meanR15_early": -0.03955727868619995,
+    "meanR15_late": -0.10268878163091699,
+    "best_coin": "IOTAUSDT",
+    "n_ex_best": 984,
+    "meanR15_ex_best": -0.0774400910303993,
+    "sumR15": -69.07085595547217,
+    "meanR_actual": -0.04549836206039106,
+    "coins_traded": 140,
+    "coins_positive": 35,
+    "order": 5,
+    "feasibility": {
+     "attempts": 997,
+     "executed": 997,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 919,
+    "n_early": 526,
+    "n_late": 393,
+    "meanR7": -0.050007594302248444,
+    "meanR15": -0.07483754689382487,
+    "meanR23": -0.09966749948540131,
+    "meanR15_early": -0.10038300988609782,
+    "meanR15_late": -0.04064692721459952,
+    "best_coin": "BCHUSDT",
+    "n_ex_best": 900,
+    "meanR15_ex_best": -0.08721274976893649,
+    "sumR15": -68.77570559542505,
+    "meanR_actual": -0.05000827423519649,
+    "coins_traded": 128,
+    "coins_positive": 34,
+    "order": 6,
+    "feasibility": {
+     "attempts": 919,
+     "executed": 919,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 930,
+    "n_early": 528,
+    "n_late": 402,
+    "meanR7": -0.0036678245001948687,
+    "meanR15": -0.028731201514196187,
+    "meanR23": -0.05379457852819751,
+    "meanR15_early": -0.013304443929605362,
+    "meanR15_late": -0.04899321147604681,
+    "best_coin": "FILUSDT",
+    "n_ex_best": 897,
+    "meanR15_ex_best": -0.04475964773121269,
+    "sumR15": -26.720017408202455,
+    "meanR_actual": -0.0036674811041641584,
+    "coins_traded": 142,
+    "coins_positive": 36,
+    "order": 7,
+    "feasibility": {
+     "attempts": 931,
+     "executed": 931,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 994,
+    "n_early": 543,
+    "n_late": 451,
+    "meanR7": -0.04140835507045326,
+    "meanR15": -0.06560390321167384,
+    "meanR23": -0.0897994513528944,
+    "meanR15_early": -0.03554064454381889,
+    "meanR15_late": -0.10179980001133068,
+    "best_coin": "TRBUSDT",
+    "n_ex_best": 972,
+    "meanR15_ex_best": -0.08106958625302477,
+    "sumR15": -65.2102797924038,
+    "meanR_actual": -0.04140872186881282,
+    "coins_traded": 136,
+    "coins_positive": 33,
+    "order": 8,
+    "feasibility": {
+     "attempts": 995,
+     "executed": 995,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 941,
+    "n_early": 508,
+    "n_late": 433,
+    "meanR7": -0.0009450011655305715,
+    "meanR15": -0.025837031706439247,
+    "meanR23": -0.050729062247347925,
+    "meanR15_early": 0.006649805385115095,
+    "meanR15_late": -0.06395091910253534,
+    "best_coin": "RUNEUSDT",
+    "n_ex_best": 933,
+    "meanR15_ex_best": -0.04351694251760665,
+    "sumR15": -24.31264683575933,
+    "meanR_actual": -0.0009446064673648035,
+    "coins_traded": 125,
+    "coins_positive": 30,
+    "order": 9,
+    "feasibility": {
+     "attempts": 942,
+     "executed": 942,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 973,
+    "n_early": 550,
+    "n_late": 423,
+    "meanR7": -0.043517836664902554,
+    "meanR15": -0.06898845985864113,
+    "meanR23": -0.0944590830523797,
+    "meanR15_early": -0.06609978749567752,
+    "meanR15_late": -0.07274441683176165,
+    "best_coin": "ZENUSDT",
+    "n_ex_best": 952,
+    "meanR15_ex_best": -0.07794333015462351,
+    "sumR15": -67.12577144245782,
+    "meanR_actual": -0.04351832942216874,
+    "coins_traded": 142,
+    "coins_positive": 33,
+    "order": 10,
+    "feasibility": {
+     "attempts": 974,
+     "executed": 974,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 1002,
+    "n_early": 571,
+    "n_late": 431,
+    "meanR7": -0.04297808725641039,
+    "meanR15": -0.06808470126722532,
+    "meanR23": -0.09319131527804028,
+    "meanR15_early": -0.05297534286145837,
+    "meanR15_late": -0.08810197191616484,
+    "best_coin": "CAKEUSDT",
+    "n_ex_best": 995,
+    "meanR15_ex_best": -0.07855771068238296,
+    "sumR15": -68.22087066975978,
+    "meanR_actual": -0.04297846665845649,
+    "coins_traded": 135,
+    "coins_positive": 30,
+    "order": 11,
+    "feasibility": {
+     "attempts": 1002,
+     "executed": 1002,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 1008,
+    "n_early": 543,
+    "n_late": 465,
+    "meanR7": -0.05026153630875452,
+    "meanR15": -0.07486361243780729,
+    "meanR23": -0.09946568856686003,
+    "meanR15_early": -0.03324517577436545,
+    "meanR15_late": -0.12346320621898768,
+    "best_coin": "ROSEUSDT",
+    "n_ex_best": 997,
+    "meanR15_ex_best": -0.0825585960411561,
+    "sumR15": -75.46252133730974,
+    "meanR_actual": -0.0502622939680087,
+    "coins_traded": 138,
+    "coins_positive": 30,
+    "order": 12,
+    "feasibility": {
+     "attempts": 1008,
+     "executed": 1008,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 955,
+    "n_early": 518,
+    "n_late": 437,
+    "meanR7": -0.037490343361140835,
+    "meanR15": -0.061475754267687324,
+    "meanR23": -0.08546116517423383,
+    "meanR15_early": -0.05225947796313832,
+    "meanR15_late": -0.0724003106195326,
+    "best_coin": "STXUSDT",
+    "n_ex_best": 925,
+    "meanR15_ex_best": -0.07034319186322584,
+    "sumR15": -58.709345325641394,
+    "meanR_actual": -0.03749064943571207,
+    "coins_traded": 135,
+    "coins_positive": 35,
+    "order": 13,
+    "feasibility": {
+     "attempts": 955,
+     "executed": 955,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 962,
+    "n_early": 512,
+    "n_late": 450,
+    "meanR7": -0.03001037566555103,
+    "meanR15": -0.05495165232806489,
+    "meanR23": -0.07989292899057876,
+    "meanR15_early": -0.010896635522457706,
+    "meanR15_late": -0.10507647144911128,
+    "best_coin": "TRXUSDT",
+    "n_ex_best": 931,
+    "meanR15_ex_best": -0.07080116482249234,
+    "sumR15": -52.863489539598426,
+    "meanR_actual": -0.030010330955881372,
+    "coins_traded": 139,
+    "coins_positive": 32,
+    "order": 14,
+    "feasibility": {
+     "attempts": 963,
+     "executed": 963,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 934,
+    "n_early": 518,
+    "n_late": 416,
+    "meanR7": -0.025246429910030645,
+    "meanR15": -0.04921405714912005,
+    "meanR23": -0.07318168438820942,
+    "meanR15_early": -0.025821494501326245,
+    "meanR15_late": -0.07834229621536327,
+    "best_coin": "GALAUSDT",
+    "n_ex_best": 858,
+    "meanR15_ex_best": -0.06708264464137703,
+    "sumR15": -45.96592937727812,
+    "meanR_actual": -0.025246315057273674,
+    "coins_traded": 132,
+    "coins_positive": 35,
+    "order": 15,
+    "feasibility": {
+     "attempts": 935,
+     "executed": 935,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 948,
+    "n_early": 511,
+    "n_late": 437,
+    "meanR7": -0.038754051978643796,
+    "meanR15": -0.06429863137877469,
+    "meanR23": -0.08984321077890554,
+    "meanR15_early": -0.035822371921654494,
+    "meanR15_late": -0.09759695765472068,
+    "best_coin": "EGLDUSDT",
+    "n_ex_best": 941,
+    "meanR15_ex_best": -0.0736720490496423,
+    "sumR15": -60.9551025470784,
+    "meanR_actual": -0.03875438448746613,
+    "coins_traded": 139,
+    "coins_positive": 35,
+    "order": 16,
+    "feasibility": {
+     "attempts": 949,
+     "executed": 949,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 922,
+    "n_early": 510,
+    "n_late": 412,
+    "meanR7": -0.013907602001871322,
+    "meanR15": -0.03838715561644526,
+    "meanR23": -0.06286670923101922,
+    "meanR15_early": -0.016526524271226334,
+    "meanR15_late": -0.06544764587387647,
+    "best_coin": "ZILUSDT",
+    "n_ex_best": 905,
+    "meanR15_ex_best": -0.05160799192110419,
+    "sumR15": -35.39295747836253,
+    "meanR_actual": -0.01390736951098566,
+    "coins_traded": 134,
+    "coins_positive": 35,
+    "order": 17,
+    "feasibility": {
+     "attempts": 922,
+     "executed": 922,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 927,
+    "n_early": 505,
+    "n_late": 422,
+    "meanR7": -0.046479975982027494,
+    "meanR15": -0.07138314245713999,
+    "meanR23": -0.09628630893225253,
+    "meanR15_early": -0.034542993851343906,
+    "meanR15_late": -0.11546910228161165,
+    "best_coin": "TRXUSDT",
+    "n_ex_best": 897,
+    "meanR15_ex_best": -0.08656175096043783,
+    "sumR15": -66.17217305776877,
+    "meanR_actual": -0.04648052920256564,
+    "coins_traded": 129,
+    "coins_positive": 37,
+    "order": 18,
+    "feasibility": {
+     "attempts": 928,
+     "executed": 928,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 968,
+    "n_early": 514,
+    "n_late": 454,
+    "meanR7": -0.05260902787337939,
+    "meanR15": -0.07744305496658976,
+    "meanR23": -0.10227708205980011,
+    "meanR15_early": -0.03579077087440771,
+    "meanR15_late": -0.12460004620751833,
+    "best_coin": "ZENUSDT",
+    "n_ex_best": 967,
+    "meanR15_ex_best": -0.0852749252152005,
+    "sumR15": -74.96487720765889,
+    "meanR_actual": -0.05260989242213922,
+    "coins_traded": 141,
+    "coins_positive": 26,
+    "order": 19,
+    "feasibility": {
+     "attempts": 968,
+     "executed": 968,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 965,
+    "n_early": 518,
+    "n_late": 447,
+    "meanR7": -0.009742991702046863,
+    "meanR15": -0.033598429011928346,
+    "meanR23": -0.0574538663218098,
+    "meanR15_early": 0.029449046612367226,
+    "meanR15_late": -0.106660156916593,
+    "best_coin": "LPTUSDT",
+    "n_ex_best": 954,
+    "meanR15_ex_best": -0.05507946545157453,
+    "sumR15": -32.422483996510856,
+    "meanR_actual": -0.009742577709013215,
+    "coins_traded": 140,
+    "coins_positive": 41,
+    "order": 20,
+    "feasibility": {
+     "attempts": 965,
+     "executed": 965,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 912,
+    "n_early": 498,
+    "n_late": 414,
+    "meanR7": -0.029916051306158115,
+    "meanR15": -0.05453300931150817,
+    "meanR23": -0.07914996731685822,
+    "meanR15_early": -0.04188271414690742,
+    "meanR15_late": -0.06975003103124526,
+    "best_coin": "BCHUSDT",
+    "n_ex_best": 902,
+    "meanR15_ex_best": -0.06670233709359792,
+    "sumR15": -49.73410449209545,
+    "meanR_actual": -0.029916122233479954,
+    "coins_traded": 141,
+    "coins_positive": 42,
+    "order": 21,
+    "feasibility": {
+     "attempts": 913,
+     "executed": 913,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 962,
+    "n_early": 519,
+    "n_late": 443,
+    "meanR7": -0.05251938858787802,
+    "meanR15": -0.07712587451008254,
+    "meanR23": -0.10173236043228709,
+    "meanR15_early": -0.04471078816131543,
+    "meanR15_late": -0.1151020140473515,
+    "best_coin": "CELOUSDT",
+    "n_ex_best": 956,
+    "meanR15_ex_best": -0.08346769458150434,
+    "sumR15": -74.19509127869941,
+    "meanR_actual": -0.05252020551590675,
+    "coins_traded": 132,
+    "coins_positive": 36,
+    "order": 22,
+    "feasibility": {
+     "attempts": 963,
+     "executed": 963,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 933,
+    "n_early": 500,
+    "n_late": 433,
+    "meanR7": -0.008878185202362748,
+    "meanR15": -0.0337290161562974,
+    "meanR23": -0.05857984711023207,
+    "meanR15_early": -0.004605745977056438,
+    "meanR15_late": -0.0673586583956057,
+    "best_coin": "TRXUSDT",
+    "n_ex_best": 902,
+    "meanR15_ex_best": -0.045176889719194174,
+    "sumR15": -31.469172073825476,
+    "meanR_actual": -0.008877906857911667,
+    "coins_traded": 136,
+    "coins_positive": 39,
+    "order": 23,
+    "feasibility": {
+     "attempts": 934,
+     "executed": 934,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 963,
+    "n_early": 518,
+    "n_late": 445,
+    "meanR7": -0.023566095806534137,
+    "meanR15": -0.0483020722634252,
+    "meanR23": -0.07303804872031625,
+    "meanR15_early": 0.015972776777123703,
+    "meanR15_late": -0.12312088530388436,
+    "best_coin": "RUNEUSDT",
+    "n_ex_best": 960,
+    "meanR15_ex_best": -0.06461104340789962,
+    "sumR15": -46.51489558967847,
+    "meanR_actual": -0.023565920736433217,
+    "coins_traded": 135,
+    "coins_positive": 32,
+    "order": 24,
+    "feasibility": {
+     "attempts": 964,
+     "executed": 964,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 931,
+    "n_early": 510,
+    "n_late": 421,
+    "meanR7": -0.013966982464912028,
+    "meanR15": -0.03864988686071653,
+    "meanR23": -0.06333279125652104,
+    "meanR15_early": -0.00958189285213395,
+    "meanR15_late": -0.07386289622978333,
+    "best_coin": "BLURUSDT",
+    "n_ex_best": 925,
+    "meanR15_ex_best": -0.04910193266872065,
+    "sumR15": -35.983044667327086,
+    "meanR_actual": -0.013966799650353816,
+    "coins_traded": 128,
+    "coins_positive": 39,
+    "order": 25,
+    "feasibility": {
+     "attempts": 932,
+     "executed": 932,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 944,
+    "n_early": 519,
+    "n_late": 425,
+    "meanR7": -0.021410569980604865,
+    "meanR15": -0.04568634342352686,
+    "meanR23": -0.06996211686644885,
+    "meanR15_early": -0.00922125311914513,
+    "meanR15_late": -0.090216653701113,
+    "best_coin": "EGLDUSDT",
+    "n_ex_best": 921,
+    "meanR15_ex_best": -0.06216904914612851,
+    "sumR15": -43.127908191809354,
+    "meanR_actual": -0.021410376461930003,
+    "coins_traded": 135,
+    "coins_positive": 29,
+    "order": 26,
+    "feasibility": {
+     "attempts": 945,
+     "executed": 945,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 924,
+    "n_early": 530,
+    "n_late": 394,
+    "meanR7": -0.008611026270676092,
+    "meanR15": -0.03378341765030422,
+    "meanR23": -0.05895580902993237,
+    "meanR15_early": -0.01776878255900397,
+    "meanR15_late": -0.05532594708784013,
+    "best_coin": "TRXUSDT",
+    "n_ex_best": 904,
+    "meanR15_ex_best": -0.044391789675402984,
+    "sumR15": -31.215877908881104,
+    "meanR_actual": -0.00861076826048613,
+    "coins_traded": 134,
+    "coins_positive": 38,
+    "order": 27,
+    "feasibility": {
+     "attempts": 925,
+     "executed": 925,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 952,
+    "n_early": 527,
+    "n_late": 425,
+    "meanR7": 0.00026060216071741846,
+    "meanR15": -0.024980359561683426,
+    "meanR23": -0.05022132128408427,
+    "meanR15_early": -0.005693199299300592,
+    "meanR15_late": -0.048896438287038144,
+    "best_coin": "LPTUSDT",
+    "n_ex_best": 916,
+    "meanR15_ex_best": -0.041373495456231424,
+    "sumR15": -23.781302302722622,
+    "meanR_actual": 0.0002611237005329285,
+    "coins_traded": 134,
+    "coins_positive": 40,
+    "order": 28,
+    "feasibility": {
+     "attempts": 953,
+     "executed": 953,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 972,
+    "n_early": 531,
+    "n_late": 441,
+    "meanR7": -0.04664884981477131,
+    "meanR15": -0.07230044880123145,
+    "meanR23": -0.09795204778769159,
+    "meanR15_early": -0.06446435546292713,
+    "meanR15_late": -0.08173574486163869,
+    "best_coin": "EGLDUSDT",
+    "n_ex_best": 953,
+    "meanR15_ex_best": -0.0845987478745653,
+    "sumR15": -70.27603623479696,
+    "meanR_actual": -0.04664945794291469,
+    "coins_traded": 134,
+    "coins_positive": 29,
+    "order": 29,
+    "feasibility": {
+     "attempts": 972,
+     "executed": 972,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 940,
+    "n_early": 527,
+    "n_late": 413,
+    "meanR7": -0.04667404206958964,
+    "meanR15": -0.0707449722284643,
+    "meanR23": -0.094815902387339,
+    "meanR15_early": -0.04611312682611548,
+    "meanR15_late": -0.10217592265712734,
+    "best_coin": "GMTUSDT",
+    "n_ex_best": 917,
+    "meanR15_ex_best": -0.07945345325660069,
+    "sumR15": -66.50027389475645,
+    "meanR_actual": -0.04667464327685784,
+    "coins_traded": 135,
+    "coins_positive": 33,
+    "order": 30,
+    "feasibility": {
+     "attempts": 941,
+     "executed": 941,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 957,
+    "n_early": 518,
+    "n_late": 439,
+    "meanR7": -0.06287827252039005,
+    "meanR15": -0.08780103743198986,
+    "meanR23": -0.11272380234358965,
+    "meanR15_early": -0.07231991007080149,
+    "meanR15_late": -0.10606806242765174,
+    "best_coin": "ZENUSDT",
+    "n_ex_best": 955,
+    "meanR15_ex_best": -0.09518671039626105,
+    "sumR15": -84.0255928224143,
+    "meanR_actual": -0.0628795784121652,
+    "coins_traded": 134,
+    "coins_positive": 28,
+    "order": 31,
+    "feasibility": {
+     "attempts": 958,
+     "executed": 958,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 945,
+    "n_early": 530,
+    "n_late": 415,
+    "meanR7": 0.003842366681265339,
+    "meanR15": -0.02028305437666773,
+    "meanR23": -0.044408475434600796,
+    "meanR15_early": 0.004851923613006112,
+    "meanR15_late": -0.05238314674902229,
+    "best_coin": "ARKMUSDT",
+    "n_ex_best": 931,
+    "meanR15_ex_best": -0.0536535703215878,
+    "sumR15": -19.167486385951005,
+    "meanR_actual": 0.003843245979756718,
+    "coins_traded": 141,
+    "coins_positive": 32,
+    "order": 32,
+    "feasibility": {
+     "attempts": 946,
+     "executed": 946,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 967,
+    "n_early": 561,
+    "n_late": 406,
+    "meanR7": -0.0062816916235138055,
+    "meanR15": -0.030483007061352096,
+    "meanR23": -0.05468432249919042,
+    "meanR15_early": -0.0006120124308085603,
+    "meanR15_late": -0.07175795284395046,
+    "best_coin": "TRBUSDT",
+    "n_ex_best": 947,
+    "meanR15_ex_best": -0.051553354834635697,
+    "sumR15": -29.477067828327478,
+    "meanR_actual": -0.006281138297736031,
+    "coins_traded": 136,
+    "coins_positive": 29,
+    "order": 33,
+    "feasibility": {
+     "attempts": 968,
+     "executed": 968,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 928,
+    "n_early": 538,
+    "n_late": 390,
+    "meanR7": -0.013098669441417484,
+    "meanR15": -0.03802266680340059,
+    "meanR23": -0.0629466641653837,
+    "meanR15_early": -0.042188877785989634,
+    "meanR15_late": -0.03227543216588034,
+    "best_coin": "PYTHUSDT",
+    "n_ex_best": 888,
+    "meanR15_ex_best": -0.053165332628613345,
+    "sumR15": -35.28503479355575,
+    "meanR_actual": -0.013098429788103065,
+    "coins_traded": 138,
+    "coins_positive": 38,
+    "order": 34,
+    "feasibility": {
+     "attempts": 929,
+     "executed": 929,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 968,
+    "n_early": 547,
+    "n_late": 421,
+    "meanR7": -0.020791380944900503,
+    "meanR15": -0.0448054704712158,
+    "meanR23": -0.06881955999753106,
+    "meanR15_early": -0.0223129241830508,
+    "meanR15_late": -0.07402975270310712,
+    "best_coin": "RUNEUSDT",
+    "n_ex_best": 962,
+    "meanR15_ex_best": -0.06310200832461493,
+    "sumR15": -43.371695416136895,
+    "meanR_actual": -0.020791132664494866,
+    "coins_traded": 138,
+    "coins_positive": 28,
+    "order": 35,
+    "feasibility": {
+     "attempts": 969,
+     "executed": 969,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 942,
+    "n_early": 506,
+    "n_late": 436,
+    "meanR7": -0.04191833049120953,
+    "meanR15": -0.06684742624755767,
+    "meanR23": -0.0917765220039058,
+    "meanR15_early": -0.027216102124653124,
+    "meanR15_late": -0.11284157763790102,
+    "best_coin": "TRXUSDT",
+    "n_ex_best": 916,
+    "meanR15_ex_best": -0.0777311871245335,
+    "sumR15": -62.97027552519933,
+    "meanR_actual": -0.04191875657231256,
+    "coins_traded": 133,
+    "coins_positive": 37,
+    "order": 36,
+    "feasibility": {
+     "attempts": 943,
+     "executed": 943,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 931,
+    "n_early": 518,
+    "n_late": 413,
+    "meanR7": -0.02208624926741824,
+    "meanR15": -0.04690442843778785,
+    "meanR23": -0.07172260760815746,
+    "meanR15_early": -0.032494815087727634,
+    "meanR15_late": -0.06497750280904982,
+    "best_coin": "TRXUSDT",
+    "n_ex_best": 911,
+    "meanR15_ex_best": -0.06188774029482644,
+    "sumR15": -43.66802287558049,
+    "meanR_actual": -0.022086117867787226,
+    "coins_traded": 133,
+    "coins_positive": 28,
+    "order": 37,
+    "feasibility": {
+     "attempts": 932,
+     "executed": 932,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 913,
+    "n_early": 487,
+    "n_late": 426,
+    "meanR7": -0.0010525689418219776,
+    "meanR15": -0.025348275293113533,
+    "meanR23": -0.04964398164440507,
+    "meanR15_early": 0.024431800449308524,
+    "meanR15_late": -0.08225648394700917,
+    "best_coin": "IDUSDT",
+    "n_ex_best": 909,
+    "meanR15_ex_best": -0.03806291283162695,
+    "sumR15": -23.142975342612655,
+    "meanR_actual": -0.0010521722464416588,
+    "coins_traded": 131,
+    "coins_positive": 33,
+    "order": 38,
+    "feasibility": {
+     "attempts": 914,
+     "executed": 914,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 870,
+    "n_early": 474,
+    "n_late": 396,
+    "meanR7": 0.0013040183063982077,
+    "meanR15": -0.022955103743339658,
+    "meanR23": -0.047214225793077526,
+    "meanR15_early": 0.028972620980951297,
+    "meanR15_late": -0.08511101667090006,
+    "best_coin": "TRBUSDT",
+    "n_ex_best": 847,
+    "meanR15_ex_best": -0.0336307583564528,
+    "sumR15": -19.970940256705504,
+    "meanR_actual": 0.0013043769116772702,
+    "coins_traded": 133,
+    "coins_positive": 44,
+    "order": 39,
+    "feasibility": {
+     "attempts": 871,
+     "executed": 871,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   }
+  ],
+  "worst": [
+   {
+    "n": 961,
+    "n_early": 539,
+    "n_late": 422,
+    "meanR7": -0.046036808411724944,
+    "meanR15": -0.06977104408365048,
+    "meanR23": -0.093505279755576,
+    "meanR15_early": -0.0500781190222288,
+    "meanR15_late": -0.09492385595120091,
+    "best_coin": "INJUSDT",
+    "n_ex_best": 947,
+    "meanR15_ex_best": -0.07933604038822663,
+    "sumR15": -67.04997336438811,
+    "meanR_actual": -0.04603739050477037,
+    "coins_traded": 133,
+    "coins_positive": 33,
+    "order": 0,
+    "feasibility": {
+     "attempts": 961,
+     "executed": 961,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 966,
+    "n_early": 561,
+    "n_late": 405,
+    "meanR7": -0.03730620696771367,
+    "meanR15": -0.06302615346397494,
+    "meanR23": -0.08874609996023623,
+    "meanR15_early": -0.054545822462106014,
+    "meanR15_late": -0.07477298233323044,
+    "best_coin": "GMTUSDT",
+    "n_ex_best": 960,
+    "meanR15_ex_best": -0.06882270653687779,
+    "sumR15": -60.8832642461998,
+    "meanR_actual": -0.03730651444953372,
+    "coins_traded": 137,
+    "coins_positive": 38,
+    "order": 1,
+    "feasibility": {
+     "attempts": 967,
+     "executed": 967,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 978,
+    "n_early": 543,
+    "n_late": 435,
+    "meanR7": -0.06182880286485958,
+    "meanR15": -0.08562038151761224,
+    "meanR23": -0.10941196017036492,
+    "meanR15_early": -0.08253723239286133,
+    "meanR15_late": -0.0894690021491979,
+    "best_coin": "ETCUSDT",
+    "n_ex_best": 975,
+    "meanR15_ex_best": -0.0937469856168198,
+    "sumR15": -83.73673312422477,
+    "meanR_actual": -0.061830065309546704,
+    "coins_traded": 135,
+    "coins_positive": 28,
+    "order": 2,
+    "feasibility": {
+     "attempts": 979,
+     "executed": 979,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 968,
+    "n_early": 553,
+    "n_late": 415,
+    "meanR7": -0.05705278843677891,
+    "meanR15": -0.08169748703649365,
+    "meanR23": -0.1063421856362084,
+    "meanR15_early": -0.08218271681040448,
+    "meanR15_late": -0.08105090374740283,
+    "best_coin": "ZENUSDT",
+    "n_ex_best": 957,
+    "meanR15_ex_best": -0.09265682450914538,
+    "sumR15": -79.08316745132586,
+    "meanR_actual": -0.057053816680972626,
+    "coins_traded": 130,
+    "coins_positive": 23,
+    "order": 3,
+    "feasibility": {
+     "attempts": 969,
+     "executed": 969,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 1015,
+    "n_early": 556,
+    "n_late": 459,
+    "meanR7": -0.05255892912708426,
+    "meanR15": -0.07565237681446106,
+    "meanR23": -0.09874582450183787,
+    "meanR15_early": -0.049687231519945176,
+    "meanR15_late": -0.1071047096766633,
+    "best_coin": "FLOWUSDT",
+    "n_ex_best": 988,
+    "meanR15_ex_best": -0.09304845668333864,
+    "sumR15": -76.78716246667798,
+    "meanR_actual": -0.05255977401877805,
+    "coins_traded": 145,
+    "coins_positive": 33,
+    "order": 4,
+    "feasibility": {
+     "attempts": 1016,
+     "executed": 1016,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 996,
+    "n_early": 526,
+    "n_late": 470,
+    "meanR7": -0.045497763513655615,
+    "meanR15": -0.06934824895127728,
+    "meanR23": -0.09319873438889895,
+    "meanR15_early": -0.03955727868619995,
+    "meanR15_late": -0.10268878163091699,
+    "best_coin": "IOTAUSDT",
+    "n_ex_best": 984,
+    "meanR15_ex_best": -0.0774400910303993,
+    "sumR15": -69.07085595547217,
+    "meanR_actual": -0.04549836206039106,
+    "coins_traded": 140,
+    "coins_positive": 35,
+    "order": 5,
+    "feasibility": {
+     "attempts": 997,
+     "executed": 997,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 919,
+    "n_early": 526,
+    "n_late": 393,
+    "meanR7": -0.050007594302248444,
+    "meanR15": -0.07483754689382487,
+    "meanR23": -0.09966749948540131,
+    "meanR15_early": -0.10038300988609782,
+    "meanR15_late": -0.04064692721459952,
+    "best_coin": "BCHUSDT",
+    "n_ex_best": 900,
+    "meanR15_ex_best": -0.08721274976893649,
+    "sumR15": -68.77570559542505,
+    "meanR_actual": -0.05000827423519649,
+    "coins_traded": 128,
+    "coins_positive": 34,
+    "order": 6,
+    "feasibility": {
+     "attempts": 919,
+     "executed": 919,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 930,
+    "n_early": 528,
+    "n_late": 402,
+    "meanR7": -0.0036678245001948687,
+    "meanR15": -0.028731201514196187,
+    "meanR23": -0.05379457852819751,
+    "meanR15_early": -0.013304443929605362,
+    "meanR15_late": -0.04899321147604681,
+    "best_coin": "FILUSDT",
+    "n_ex_best": 897,
+    "meanR15_ex_best": -0.04475964773121269,
+    "sumR15": -26.720017408202455,
+    "meanR_actual": -0.0036674811041641584,
+    "coins_traded": 142,
+    "coins_positive": 36,
+    "order": 7,
+    "feasibility": {
+     "attempts": 931,
+     "executed": 931,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 994,
+    "n_early": 543,
+    "n_late": 451,
+    "meanR7": -0.04140835507045326,
+    "meanR15": -0.06560390321167384,
+    "meanR23": -0.0897994513528944,
+    "meanR15_early": -0.03554064454381889,
+    "meanR15_late": -0.10179980001133068,
+    "best_coin": "TRBUSDT",
+    "n_ex_best": 972,
+    "meanR15_ex_best": -0.08106958625302477,
+    "sumR15": -65.2102797924038,
+    "meanR_actual": -0.04140872186881282,
+    "coins_traded": 136,
+    "coins_positive": 33,
+    "order": 8,
+    "feasibility": {
+     "attempts": 995,
+     "executed": 995,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 941,
+    "n_early": 508,
+    "n_late": 433,
+    "meanR7": -0.0009450011655305715,
+    "meanR15": -0.025837031706439247,
+    "meanR23": -0.050729062247347925,
+    "meanR15_early": 0.006649805385115095,
+    "meanR15_late": -0.06395091910253534,
+    "best_coin": "RUNEUSDT",
+    "n_ex_best": 933,
+    "meanR15_ex_best": -0.04351694251760665,
+    "sumR15": -24.31264683575933,
+    "meanR_actual": -0.0009446064673648035,
+    "coins_traded": 125,
+    "coins_positive": 30,
+    "order": 9,
+    "feasibility": {
+     "attempts": 942,
+     "executed": 942,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 973,
+    "n_early": 550,
+    "n_late": 423,
+    "meanR7": -0.043517836664902554,
+    "meanR15": -0.06898845985864113,
+    "meanR23": -0.0944590830523797,
+    "meanR15_early": -0.06609978749567752,
+    "meanR15_late": -0.07274441683176165,
+    "best_coin": "ZENUSDT",
+    "n_ex_best": 952,
+    "meanR15_ex_best": -0.07794333015462351,
+    "sumR15": -67.12577144245782,
+    "meanR_actual": -0.04351832942216874,
+    "coins_traded": 142,
+    "coins_positive": 33,
+    "order": 10,
+    "feasibility": {
+     "attempts": 974,
+     "executed": 974,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 1002,
+    "n_early": 571,
+    "n_late": 431,
+    "meanR7": -0.04297808725641039,
+    "meanR15": -0.06808470126722532,
+    "meanR23": -0.09319131527804028,
+    "meanR15_early": -0.05297534286145837,
+    "meanR15_late": -0.08810197191616484,
+    "best_coin": "CAKEUSDT",
+    "n_ex_best": 995,
+    "meanR15_ex_best": -0.07855771068238296,
+    "sumR15": -68.22087066975978,
+    "meanR_actual": -0.04297846665845649,
+    "coins_traded": 135,
+    "coins_positive": 30,
+    "order": 11,
+    "feasibility": {
+     "attempts": 1002,
+     "executed": 1002,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 1008,
+    "n_early": 543,
+    "n_late": 465,
+    "meanR7": -0.05026153630875452,
+    "meanR15": -0.07486361243780729,
+    "meanR23": -0.09946568856686003,
+    "meanR15_early": -0.03324517577436545,
+    "meanR15_late": -0.12346320621898768,
+    "best_coin": "ROSEUSDT",
+    "n_ex_best": 997,
+    "meanR15_ex_best": -0.0825585960411561,
+    "sumR15": -75.46252133730974,
+    "meanR_actual": -0.0502622939680087,
+    "coins_traded": 138,
+    "coins_positive": 30,
+    "order": 12,
+    "feasibility": {
+     "attempts": 1008,
+     "executed": 1008,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 955,
+    "n_early": 518,
+    "n_late": 437,
+    "meanR7": -0.037490343361140835,
+    "meanR15": -0.061475754267687324,
+    "meanR23": -0.08546116517423383,
+    "meanR15_early": -0.05225947796313832,
+    "meanR15_late": -0.0724003106195326,
+    "best_coin": "STXUSDT",
+    "n_ex_best": 925,
+    "meanR15_ex_best": -0.07034319186322584,
+    "sumR15": -58.709345325641394,
+    "meanR_actual": -0.03749064943571207,
+    "coins_traded": 135,
+    "coins_positive": 35,
+    "order": 13,
+    "feasibility": {
+     "attempts": 955,
+     "executed": 955,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 962,
+    "n_early": 512,
+    "n_late": 450,
+    "meanR7": -0.03001037566555103,
+    "meanR15": -0.05495165232806489,
+    "meanR23": -0.07989292899057876,
+    "meanR15_early": -0.010896635522457706,
+    "meanR15_late": -0.10507647144911128,
+    "best_coin": "TRXUSDT",
+    "n_ex_best": 931,
+    "meanR15_ex_best": -0.07080116482249234,
+    "sumR15": -52.863489539598426,
+    "meanR_actual": -0.030010330955881372,
+    "coins_traded": 139,
+    "coins_positive": 32,
+    "order": 14,
+    "feasibility": {
+     "attempts": 963,
+     "executed": 963,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 934,
+    "n_early": 518,
+    "n_late": 416,
+    "meanR7": -0.025246429910030645,
+    "meanR15": -0.04921405714912005,
+    "meanR23": -0.07318168438820942,
+    "meanR15_early": -0.025821494501326245,
+    "meanR15_late": -0.07834229621536327,
+    "best_coin": "GALAUSDT",
+    "n_ex_best": 858,
+    "meanR15_ex_best": -0.06708264464137703,
+    "sumR15": -45.96592937727812,
+    "meanR_actual": -0.025246315057273674,
+    "coins_traded": 132,
+    "coins_positive": 35,
+    "order": 15,
+    "feasibility": {
+     "attempts": 935,
+     "executed": 935,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 948,
+    "n_early": 511,
+    "n_late": 437,
+    "meanR7": -0.038754051978643796,
+    "meanR15": -0.06429863137877469,
+    "meanR23": -0.08984321077890554,
+    "meanR15_early": -0.035822371921654494,
+    "meanR15_late": -0.09759695765472068,
+    "best_coin": "EGLDUSDT",
+    "n_ex_best": 941,
+    "meanR15_ex_best": -0.0736720490496423,
+    "sumR15": -60.9551025470784,
+    "meanR_actual": -0.03875438448746613,
+    "coins_traded": 139,
+    "coins_positive": 35,
+    "order": 16,
+    "feasibility": {
+     "attempts": 949,
+     "executed": 949,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 922,
+    "n_early": 510,
+    "n_late": 412,
+    "meanR7": -0.013907602001871322,
+    "meanR15": -0.03838715561644526,
+    "meanR23": -0.06286670923101922,
+    "meanR15_early": -0.016526524271226334,
+    "meanR15_late": -0.06544764587387647,
+    "best_coin": "ZILUSDT",
+    "n_ex_best": 905,
+    "meanR15_ex_best": -0.05160799192110419,
+    "sumR15": -35.39295747836253,
+    "meanR_actual": -0.01390736951098566,
+    "coins_traded": 134,
+    "coins_positive": 35,
+    "order": 17,
+    "feasibility": {
+     "attempts": 922,
+     "executed": 922,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 927,
+    "n_early": 505,
+    "n_late": 422,
+    "meanR7": -0.046479975982027494,
+    "meanR15": -0.07138314245713999,
+    "meanR23": -0.09628630893225253,
+    "meanR15_early": -0.034542993851343906,
+    "meanR15_late": -0.11546910228161165,
+    "best_coin": "TRXUSDT",
+    "n_ex_best": 897,
+    "meanR15_ex_best": -0.08656175096043783,
+    "sumR15": -66.17217305776877,
+    "meanR_actual": -0.04648052920256564,
+    "coins_traded": 129,
+    "coins_positive": 37,
+    "order": 18,
+    "feasibility": {
+     "attempts": 928,
+     "executed": 928,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 968,
+    "n_early": 514,
+    "n_late": 454,
+    "meanR7": -0.05260902787337939,
+    "meanR15": -0.07744305496658976,
+    "meanR23": -0.10227708205980011,
+    "meanR15_early": -0.03579077087440771,
+    "meanR15_late": -0.12460004620751833,
+    "best_coin": "ZENUSDT",
+    "n_ex_best": 967,
+    "meanR15_ex_best": -0.0852749252152005,
+    "sumR15": -74.96487720765889,
+    "meanR_actual": -0.05260989242213922,
+    "coins_traded": 141,
+    "coins_positive": 26,
+    "order": 19,
+    "feasibility": {
+     "attempts": 968,
+     "executed": 968,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 965,
+    "n_early": 518,
+    "n_late": 447,
+    "meanR7": -0.009742991702046863,
+    "meanR15": -0.033598429011928346,
+    "meanR23": -0.0574538663218098,
+    "meanR15_early": 0.029449046612367226,
+    "meanR15_late": -0.106660156916593,
+    "best_coin": "LPTUSDT",
+    "n_ex_best": 954,
+    "meanR15_ex_best": -0.05507946545157453,
+    "sumR15": -32.422483996510856,
+    "meanR_actual": -0.009742577709013215,
+    "coins_traded": 140,
+    "coins_positive": 41,
+    "order": 20,
+    "feasibility": {
+     "attempts": 965,
+     "executed": 965,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 912,
+    "n_early": 498,
+    "n_late": 414,
+    "meanR7": -0.029916051306158115,
+    "meanR15": -0.05453300931150817,
+    "meanR23": -0.07914996731685822,
+    "meanR15_early": -0.04188271414690742,
+    "meanR15_late": -0.06975003103124526,
+    "best_coin": "BCHUSDT",
+    "n_ex_best": 902,
+    "meanR15_ex_best": -0.06670233709359792,
+    "sumR15": -49.73410449209545,
+    "meanR_actual": -0.029916122233479954,
+    "coins_traded": 141,
+    "coins_positive": 42,
+    "order": 21,
+    "feasibility": {
+     "attempts": 913,
+     "executed": 913,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 962,
+    "n_early": 519,
+    "n_late": 443,
+    "meanR7": -0.05251938858787802,
+    "meanR15": -0.07712587451008254,
+    "meanR23": -0.10173236043228709,
+    "meanR15_early": -0.04471078816131543,
+    "meanR15_late": -0.1151020140473515,
+    "best_coin": "CELOUSDT",
+    "n_ex_best": 956,
+    "meanR15_ex_best": -0.08346769458150434,
+    "sumR15": -74.19509127869941,
+    "meanR_actual": -0.05252020551590675,
+    "coins_traded": 132,
+    "coins_positive": 36,
+    "order": 22,
+    "feasibility": {
+     "attempts": 963,
+     "executed": 963,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 933,
+    "n_early": 500,
+    "n_late": 433,
+    "meanR7": -0.008878185202362748,
+    "meanR15": -0.0337290161562974,
+    "meanR23": -0.05857984711023207,
+    "meanR15_early": -0.004605745977056438,
+    "meanR15_late": -0.0673586583956057,
+    "best_coin": "TRXUSDT",
+    "n_ex_best": 902,
+    "meanR15_ex_best": -0.045176889719194174,
+    "sumR15": -31.469172073825476,
+    "meanR_actual": -0.008877906857911667,
+    "coins_traded": 136,
+    "coins_positive": 39,
+    "order": 23,
+    "feasibility": {
+     "attempts": 934,
+     "executed": 934,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 963,
+    "n_early": 518,
+    "n_late": 445,
+    "meanR7": -0.023566095806534137,
+    "meanR15": -0.0483020722634252,
+    "meanR23": -0.07303804872031625,
+    "meanR15_early": 0.015972776777123703,
+    "meanR15_late": -0.12312088530388436,
+    "best_coin": "RUNEUSDT",
+    "n_ex_best": 960,
+    "meanR15_ex_best": -0.06461104340789962,
+    "sumR15": -46.51489558967847,
+    "meanR_actual": -0.023565920736433217,
+    "coins_traded": 135,
+    "coins_positive": 32,
+    "order": 24,
+    "feasibility": {
+     "attempts": 964,
+     "executed": 964,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 931,
+    "n_early": 510,
+    "n_late": 421,
+    "meanR7": -0.013966982464912028,
+    "meanR15": -0.03864988686071653,
+    "meanR23": -0.06333279125652104,
+    "meanR15_early": -0.00958189285213395,
+    "meanR15_late": -0.07386289622978333,
+    "best_coin": "BLURUSDT",
+    "n_ex_best": 925,
+    "meanR15_ex_best": -0.04910193266872065,
+    "sumR15": -35.983044667327086,
+    "meanR_actual": -0.013966799650353816,
+    "coins_traded": 128,
+    "coins_positive": 39,
+    "order": 25,
+    "feasibility": {
+     "attempts": 932,
+     "executed": 932,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 944,
+    "n_early": 519,
+    "n_late": 425,
+    "meanR7": -0.021410569980604865,
+    "meanR15": -0.04568634342352686,
+    "meanR23": -0.06996211686644885,
+    "meanR15_early": -0.00922125311914513,
+    "meanR15_late": -0.090216653701113,
+    "best_coin": "EGLDUSDT",
+    "n_ex_best": 921,
+    "meanR15_ex_best": -0.06216904914612851,
+    "sumR15": -43.127908191809354,
+    "meanR_actual": -0.021410376461930003,
+    "coins_traded": 135,
+    "coins_positive": 29,
+    "order": 26,
+    "feasibility": {
+     "attempts": 945,
+     "executed": 945,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 924,
+    "n_early": 530,
+    "n_late": 394,
+    "meanR7": -0.008611026270676092,
+    "meanR15": -0.03378341765030422,
+    "meanR23": -0.05895580902993237,
+    "meanR15_early": -0.01776878255900397,
+    "meanR15_late": -0.05532594708784013,
+    "best_coin": "TRXUSDT",
+    "n_ex_best": 904,
+    "meanR15_ex_best": -0.044391789675402984,
+    "sumR15": -31.215877908881104,
+    "meanR_actual": -0.00861076826048613,
+    "coins_traded": 134,
+    "coins_positive": 38,
+    "order": 27,
+    "feasibility": {
+     "attempts": 925,
+     "executed": 925,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 952,
+    "n_early": 527,
+    "n_late": 425,
+    "meanR7": 0.00026060216071741846,
+    "meanR15": -0.024980359561683426,
+    "meanR23": -0.05022132128408427,
+    "meanR15_early": -0.005693199299300592,
+    "meanR15_late": -0.048896438287038144,
+    "best_coin": "LPTUSDT",
+    "n_ex_best": 916,
+    "meanR15_ex_best": -0.041373495456231424,
+    "sumR15": -23.781302302722622,
+    "meanR_actual": 0.0002611237005329285,
+    "coins_traded": 134,
+    "coins_positive": 40,
+    "order": 28,
+    "feasibility": {
+     "attempts": 953,
+     "executed": 953,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 972,
+    "n_early": 531,
+    "n_late": 441,
+    "meanR7": -0.04664884981477131,
+    "meanR15": -0.07230044880123145,
+    "meanR23": -0.09795204778769159,
+    "meanR15_early": -0.06446435546292713,
+    "meanR15_late": -0.08173574486163869,
+    "best_coin": "EGLDUSDT",
+    "n_ex_best": 953,
+    "meanR15_ex_best": -0.0845987478745653,
+    "sumR15": -70.27603623479696,
+    "meanR_actual": -0.04664945794291469,
+    "coins_traded": 134,
+    "coins_positive": 29,
+    "order": 29,
+    "feasibility": {
+     "attempts": 972,
+     "executed": 972,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 940,
+    "n_early": 527,
+    "n_late": 413,
+    "meanR7": -0.04667404206958964,
+    "meanR15": -0.0707449722284643,
+    "meanR23": -0.094815902387339,
+    "meanR15_early": -0.04611312682611548,
+    "meanR15_late": -0.10217592265712734,
+    "best_coin": "GMTUSDT",
+    "n_ex_best": 917,
+    "meanR15_ex_best": -0.07945345325660069,
+    "sumR15": -66.50027389475645,
+    "meanR_actual": -0.04667464327685784,
+    "coins_traded": 135,
+    "coins_positive": 33,
+    "order": 30,
+    "feasibility": {
+     "attempts": 941,
+     "executed": 941,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 957,
+    "n_early": 518,
+    "n_late": 439,
+    "meanR7": -0.06287827252039005,
+    "meanR15": -0.08780103743198986,
+    "meanR23": -0.11272380234358965,
+    "meanR15_early": -0.07231991007080149,
+    "meanR15_late": -0.10606806242765174,
+    "best_coin": "ZENUSDT",
+    "n_ex_best": 955,
+    "meanR15_ex_best": -0.09518671039626105,
+    "sumR15": -84.0255928224143,
+    "meanR_actual": -0.0628795784121652,
+    "coins_traded": 134,
+    "coins_positive": 28,
+    "order": 31,
+    "feasibility": {
+     "attempts": 958,
+     "executed": 958,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 945,
+    "n_early": 530,
+    "n_late": 415,
+    "meanR7": 0.003842366681265339,
+    "meanR15": -0.02028305437666773,
+    "meanR23": -0.044408475434600796,
+    "meanR15_early": 0.004851923613006112,
+    "meanR15_late": -0.05238314674902229,
+    "best_coin": "ARKMUSDT",
+    "n_ex_best": 931,
+    "meanR15_ex_best": -0.0536535703215878,
+    "sumR15": -19.167486385951005,
+    "meanR_actual": 0.003843245979756718,
+    "coins_traded": 141,
+    "coins_positive": 32,
+    "order": 32,
+    "feasibility": {
+     "attempts": 946,
+     "executed": 946,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 967,
+    "n_early": 561,
+    "n_late": 406,
+    "meanR7": -0.0062816916235138055,
+    "meanR15": -0.030483007061352096,
+    "meanR23": -0.05468432249919042,
+    "meanR15_early": -0.0006120124308085603,
+    "meanR15_late": -0.07175795284395046,
+    "best_coin": "TRBUSDT",
+    "n_ex_best": 947,
+    "meanR15_ex_best": -0.051553354834635697,
+    "sumR15": -29.477067828327478,
+    "meanR_actual": -0.006281138297736031,
+    "coins_traded": 136,
+    "coins_positive": 29,
+    "order": 33,
+    "feasibility": {
+     "attempts": 968,
+     "executed": 968,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 928,
+    "n_early": 538,
+    "n_late": 390,
+    "meanR7": -0.013098669441417484,
+    "meanR15": -0.03802266680340059,
+    "meanR23": -0.0629466641653837,
+    "meanR15_early": -0.042188877785989634,
+    "meanR15_late": -0.03227543216588034,
+    "best_coin": "PYTHUSDT",
+    "n_ex_best": 888,
+    "meanR15_ex_best": -0.053165332628613345,
+    "sumR15": -35.28503479355575,
+    "meanR_actual": -0.013098429788103065,
+    "coins_traded": 138,
+    "coins_positive": 38,
+    "order": 34,
+    "feasibility": {
+     "attempts": 929,
+     "executed": 929,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 968,
+    "n_early": 547,
+    "n_late": 421,
+    "meanR7": -0.020791380944900503,
+    "meanR15": -0.0448054704712158,
+    "meanR23": -0.06881955999753106,
+    "meanR15_early": -0.0223129241830508,
+    "meanR15_late": -0.07402975270310712,
+    "best_coin": "RUNEUSDT",
+    "n_ex_best": 962,
+    "meanR15_ex_best": -0.06310200832461493,
+    "sumR15": -43.371695416136895,
+    "meanR_actual": -0.020791132664494866,
+    "coins_traded": 138,
+    "coins_positive": 28,
+    "order": 35,
+    "feasibility": {
+     "attempts": 969,
+     "executed": 969,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 942,
+    "n_early": 506,
+    "n_late": 436,
+    "meanR7": -0.04191833049120953,
+    "meanR15": -0.06684742624755767,
+    "meanR23": -0.0917765220039058,
+    "meanR15_early": -0.027216102124653124,
+    "meanR15_late": -0.11284157763790102,
+    "best_coin": "TRXUSDT",
+    "n_ex_best": 916,
+    "meanR15_ex_best": -0.0777311871245335,
+    "sumR15": -62.97027552519933,
+    "meanR_actual": -0.04191875657231256,
+    "coins_traded": 133,
+    "coins_positive": 37,
+    "order": 36,
+    "feasibility": {
+     "attempts": 943,
+     "executed": 943,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 931,
+    "n_early": 518,
+    "n_late": 413,
+    "meanR7": -0.02208624926741824,
+    "meanR15": -0.04690442843778785,
+    "meanR23": -0.07172260760815746,
+    "meanR15_early": -0.032494815087727634,
+    "meanR15_late": -0.06497750280904982,
+    "best_coin": "TRXUSDT",
+    "n_ex_best": 911,
+    "meanR15_ex_best": -0.06188774029482644,
+    "sumR15": -43.66802287558049,
+    "meanR_actual": -0.022086117867787226,
+    "coins_traded": 133,
+    "coins_positive": 28,
+    "order": 37,
+    "feasibility": {
+     "attempts": 932,
+     "executed": 932,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 913,
+    "n_early": 487,
+    "n_late": 426,
+    "meanR7": -0.0010525689418219776,
+    "meanR15": -0.025348275293113533,
+    "meanR23": -0.04964398164440507,
+    "meanR15_early": 0.024431800449308524,
+    "meanR15_late": -0.08225648394700917,
+    "best_coin": "IDUSDT",
+    "n_ex_best": 909,
+    "meanR15_ex_best": -0.03806291283162695,
+    "sumR15": -23.142975342612655,
+    "meanR_actual": -0.0010521722464416588,
+    "coins_traded": 131,
+    "coins_positive": 33,
+    "order": 38,
+    "feasibility": {
+     "attempts": 914,
+     "executed": 914,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   },
+   {
+    "n": 870,
+    "n_early": 474,
+    "n_late": 396,
+    "meanR7": 0.0013040183063982077,
+    "meanR15": -0.022955103743339658,
+    "meanR23": -0.047214225793077526,
+    "meanR15_early": 0.028972620980951297,
+    "meanR15_late": -0.08511101667090006,
+    "best_coin": "TRBUSDT",
+    "n_ex_best": 847,
+    "meanR15_ex_best": -0.0336307583564528,
+    "sumR15": -19.970940256705504,
+    "meanR_actual": 0.0013043769116772702,
+    "coins_traded": 133,
+    "coins_positive": 44,
+    "order": 39,
+    "feasibility": {
+     "attempts": 871,
+     "executed": 871,
+     "rule_blocked": 0,
+     "skipped": {}
+    }
+   }
+  ]
+ },
+ "code_sha256": {
+  "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+  "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+  "longscout_v1.py": "20f432edfddd63afdf5419fc38b03597bfd4eaffc0937c993dc7bbbf69f90500",
+  "longscout_v13.py": "9ce4ca68ef8f6b356bd7e07aa3de806dee9d00ba7dde7797d544c32b5c3496ab"
+ },
+ "cases_sha256": "ba3492bf53850e7bb5998a2112ac95179ea4b473d2e34f62c82ece1f2fe79752",
+ "variant_sha256": "6fd133b36a823aa05826b3ad4e21abfecc5ec384535c24d701d9c948ec7db2f2",
+ "runner_sha256": "6da5a8493a66015ebe2f16f1bb3dff62231b56b37b3b8a3f8b476e6baf5de075",
+ "sieve_v1_sha256": "49612393fb38b3208b30b42f629b6b9ca0fda5ef49d25a1824c9a45d70a41929",
+ "longscout": {
+  "cases_sha256": "2da84a41f321a5a45403c7d81bf83d2ae4db61ed3856e25a01d5399e909a8def",
+  "runner_sha256": "5d569f51ea21e87930c712ba96ddf086d821a5b7f3f311db6c4d6c90200ab853",
+  "panel_runner_sha256": "6da5a8493a66015ebe2f16f1bb3dff62231b56b37b3b8a3f8b476e6baf5de075",
+  "note": "cases_sha256 / runner_sha256 above (from sieve_v1_panel) name that runner's files; this block names the LONGSCOUT ones"
+ },
+ "wide165": {
+  "subset_gate": {
+   "fresh134": {
+    "median_meanR15": -0.05903463089323227,
+    "median_n": 692.5
+   },
+   "extra31": {
+    "median_meanR15": -0.03992437734434451,
+    "median_n": 270.0
+   },
+   "pass": false
+  },
+  "status": "FAIL",
+  "cases_sha256": "fb32ede2369443267a8e751fce0c86f0c1e8fe81e2d06510aac73599e89c249b",
+  "runner_sha256": "5b05c65420e808dacf32dd029c9f2614e725b531a877d89c15d325392fb1ef59",
+  "n_coins": 165
+ }
+}

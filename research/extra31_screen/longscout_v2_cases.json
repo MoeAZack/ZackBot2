@@ -1,0 +1,134 @@
+{
+ "id": "LONGSCOUT-V2",
+ "status": "FROZEN before any backtest outcome of these six rules",
+ "approval": "moe 2026-11-14 07:54 UTC ('another scouting round why do we stop?'): keep scouting rounds going; relayed by the coordinator",
+ "sources": {
+  "longscout2": {
+   "commit": "ebc5ec331379b237f0de05ab9348c5743230ae93",
+   "modules": [
+    "longscout_v1",
+    "longscout_v2"
+   ],
+   "note": "longscout_v2 reuses R1 helpers from longscout_v1"
+  }
+ },
+ "universe": "165 coins = the 134 fresh coins (LONGSCOUT-FRESH-V1 data lock 28d7b7c8, manifest fb0c0572...) + extra31 (cache manifest 99af9bfb...); BTC context = the fresh-set BTCUSDT file (as in the pooled run); traded coins never include BTC or the original nine",
+ "rule": "Codex rule v1 unchanged (max one position, $8 risk, $3,333.33 cap, 40 coin orders seed 20261112, 15 bp; medians: n >= 100, meanR15 > 0, meanR23 >= 0, halves split 2025-01-01 > 0, ex-best-coin > 0, order 0 >= 30 per half)",
+ "extra_gate": "ALSO required for a pass: the median over the 40 orders of mean R15 restricted to trades on the 134 fresh coins > 0, and the same restricted to the 31 extra coins > 0 (both subsets must earn; neither may carry the other)",
+ "status_names": "WIDE165_PASS only when every rule-v1 gate and both subset gates hold; else FAIL",
+ "multiple_testing": "six candidates in this round (fourteen across LONGSCOUT so far); a pass is a lead for Codex reproduction and a forward test, never an activation",
+ "never": "no gate weakened, no parameter tuned, no coin dropped; a changed rule is a new candidate",
+ "cases": {
+  "l2_crash_base_reclaim_1d": {
+   "source": "longscout2",
+   "commit": "ebc5ec331379b237f0de05ab9348c5743230ae93",
+   "key": "l2_crash_base_reclaim_1d",
+   "tf": "1d",
+   "side": "long",
+   "management": {
+    "stop_atr": 2.5,
+    "tp_r": 4.0,
+    "max_bars": 40
+   },
+   "params": {
+    "peak_n": 180,
+    "look": 60,
+    "crash": 0.6,
+    "below_n": 30
+   },
+   "eligible_coins": "fresh134+extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1_WIDE165"
+  },
+  "l2_btc_flush_leader_1d": {
+   "source": "longscout2",
+   "commit": "ebc5ec331379b237f0de05ab9348c5743230ae93",
+   "key": "l2_btc_flush_leader_1d",
+   "tf": "1d",
+   "side": "long",
+   "management": {
+    "stop_atr": 2.0,
+    "tp_r": 2.0,
+    "max_bars": 10
+   },
+   "params": {
+    "flush_atr": 2.0
+   },
+   "eligible_coins": "fresh134+extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1_WIDE165"
+  },
+  "l2_weekly_rs_breakout_1d": {
+   "source": "longscout2",
+   "commit": "ebc5ec331379b237f0de05ab9348c5743230ae93",
+   "key": "l2_weekly_rs_breakout_1d",
+   "tf": "1d",
+   "side": "long",
+   "management": {
+    "stop_atr": 3.0,
+    "max_bars": 120
+   },
+   "params": {
+    "weeks": 12,
+    "exit_weeks": 4,
+    "rs_days": 84
+   },
+   "eligible_coins": "fresh134+extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1_WIDE165"
+  },
+  "r2_regime_donchian55_1d": {
+   "source": "longscout2",
+   "commit": "ebc5ec331379b237f0de05ab9348c5743230ae93",
+   "key": "r2_regime_donchian55_1d",
+   "tf": "1d",
+   "side": "both",
+   "management": {
+    "stop_atr": 2.5,
+    "max_bars": 120
+   },
+   "params": {},
+   "eligible_coins": "fresh134+extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1_WIDE165"
+  },
+  "r2_alt_btc_ratio_trend_1d": {
+   "source": "longscout2",
+   "commit": "ebc5ec331379b237f0de05ab9348c5743230ae93",
+   "key": "r2_alt_btc_ratio_trend_1d",
+   "tf": "1d",
+   "side": "both",
+   "management": {
+    "stop_atr": 2.5,
+    "max_bars": 40
+   },
+   "params": {
+    "ema": 50,
+    "slope": 10,
+    "look": 20
+   },
+   "eligible_coins": "fresh134+extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1_WIDE165"
+  },
+  "s2_high_rollover_short_4h": {
+   "source": "longscout2",
+   "commit": "ebc5ec331379b237f0de05ab9348c5743230ae93",
+   "key": "s2_high_rollover_short_4h",
+   "tf": "4h",
+   "side": "short",
+   "management": {
+    "stop_atr": 2.5,
+    "tp_r": 3.0,
+    "max_bars": 60
+   },
+   "params": {
+    "recent": 60,
+    "high_n": 180
+   },
+   "eligible_coins": "fresh134+extra31",
+   "prior_exposure": "none: new rule, never run on any coin before this freeze",
+   "label": "NEW_CANDIDATE_RULE_V1_WIDE165"
+  }
+ }
+}
