@@ -1225,6 +1225,7 @@ def _validate_lot(k, l):
     _str(l.get('stop_miss_why'), w + '.stop_miss_why', opt=True, choices=STOP_MISS_ORDER)
     _str(l.get('stop_foreign'), w + '.stop_foreign', _TAG_RE, opt=True)
     _num(l.get('stop_confirmed_t'), w + '.stop_confirmed_t', opt=True)
+    _str(l.get('stop_short'), w + '.stop_short', opt=True)              # LANE3-F2: listed stop does not cover the lot
     _bool(l.get('restored_from_bak'), w + '.restored_from_bak', opt=True)
     _str(l.get('tp_id'), w + '.tp_id', _TAG_RE, opt=True)                 # resting take-profit (mgmt.resting_tp)
     _str(l.get('tp_cid'), w + '.tp_cid', _CID_RE, opt=True); _str(l.get('tp_acid'), w + '.tp_acid', _CID_RE, opt=True)
@@ -4159,6 +4160,7 @@ class Engine:
             return False
         old = lot.get('stop_id')
         lot['stop_id'], lot['stop'], lot['stop_dirty'], lot['last_order_t'] = new, new_stop, False, time.time()
+        lot.pop('stop_short', None)                        # LANE3-F2: a new full-size stop - judged again by the verifier
         lot['stop_confirmed_t'] = lot['stop_placed_t'] = self.clock()      # AUD-04: Binance accepted it (id known) - re-verified
         self._clock_ok('a stop was placed')                # CLOCK-1021: a stop got through again
         lot['stop_miss'] = 0; lot.pop('stop_miss_t', None); lot.pop('stop_miss_why', None)   # on the open-order list shortly,
@@ -5630,17 +5632,20 @@ class Engine:
         if var or 'retry' in ps: kw['retry'] = False
         return fn(*a, **kw)
 
-    def _stops_seen(self, sym, tags, push=False, short=()):
+    def _stops_seen(self, sym, tags, push=False, short=None):
         """Positive evidence from ANY successful open-order read of `sym` (verifier, reconcile, T05b recovery): every lot
         whose recorded stop is listed is confirmed now (miss state cleared, its stop-missing incident closed).
         push=True (the T05b recovery read): when every lot's stop there is listed, the routine verification of the coin
         moves a full period on - the same symbol is not read twice in one pass.
         short (LANE3-F2): lot keys whose recorded stop IS listed but whose detailed row does not protect the lot (wrong
-        side / type / trigger, or not enough quantity) - listed is not confirmed: those lots are never refreshed here."""
+        side / type / trigger, or not enough quantity) - listed is not confirmed: those lots are never refreshed here.
+        short=None (a tag-only read: reconcile, T05b recovery) cannot judge coverage, so it never overrides the detailed
+        verifier's last verdict: a lot flagged stop_short stays unconfirmed until a detailed read or a new stop clears it."""
         now = self.clock(); self._stopv_last[sym] = now
         for k, l in self.state['lots'].items():
             if l['symbol'] != sym or not l.get('stop_id') or l['stop_id'] not in tags: continue
-            if k in short: continue
+            if (k in short) if short is not None else l.get('stop_short'): continue
+            l.pop('stop_short', None)
             l['stop_confirmed_t'] = now
             self.resolve(f'stop-short|{k}', f"{sym} {l['side']} [{l['sleeve']}]: protective stop {l['stop_id']} covers the lot")
             if l.get('stop_miss') or l.get('stop_miss_why'):
@@ -5915,8 +5920,8 @@ class Engine:
         """LANE3-F2: the lot's recorded stop is listed but does not protect it. Fail closed: never 'protected'; the lot is
         marked stop_dirty, so manage re-places its stop the normal way (new full stop FIRST, then the old one cancelled -
         never zero stops), and entries / adds on the coin wait (stop_dirty blocks them). Returns True when state changed."""
-        first = not l.get('stop_dirty')
-        l['stop_dirty'] = True; l['stop_confirmed_t'] = None
+        first = not l.get('stop_dirty') or l.get('stop_short') != why
+        l['stop_dirty'] = True; l['stop_confirmed_t'] = None; l['stop_short'] = why
         self.stopv_stats['short'] = self.stopv_stats.get('short', 0) + 1
         self.err(f"{l['symbol']} {l['side']} [{l['sleeve']}]: protective stop {l['stop_id']} is on Binance but {why} - "
                  'not counted as protection; a correct stop is placed first, then the old one is cancelled',
@@ -5932,6 +5937,7 @@ class Engine:
             if abs(x['qty'] - l['qty']) <= r['step'] / 2 and abs(x['stop_price'] - l['stop']) <= r['tick'] / 2:
                 extras.remove(x)
                 l['stop_id'], l['stop_dirty'], l['stop_miss'], l['stop_confirmed_t'] = x['tag'], False, 0, self.clock()
+                l.pop('stop_short', None)
                 l.pop('stop_miss_t', None); l.pop('stop_miss_why', None); l.pop('stop_foreign', None)
                 self.stopv_stats['adopted'] += 1
                 log.warning(f"{l['symbol']} {l['side']} [{l['sleeve']}] adopted the matching bot stop {x['tag']} found on Binance")

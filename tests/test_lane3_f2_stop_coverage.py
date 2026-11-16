@@ -141,3 +141,28 @@ def test_short_stop_blocks_new_entries_on_the_coin(tmp_path):
     e._verify_symbol('BTCUSDT', 'x')
     assert any(l['symbol'] == 'BTCUSDT' and l.get('stop_dirty') for l in e.state['lots'].values())
     assert 'waiting for its stop' in (e.entry_block(None, 'BTCUSDT', 'LONG', manual=True) or '')
+
+
+def test_tag_only_read_never_clears_a_short_verdict(tmp_path):
+    """Adversarial review: a tag-only open-order read (T05b recovery / reconcile) cannot judge coverage - it must not
+    re-confirm the lot or close the stop-short alert as 'covers the lot'."""
+    e, clk, k, lot = setup(tmp_path)
+    edit(e, lot['stop_id'], qty=lot['qty'] / 2)
+    e._verify_symbol('BTCUSDT', 'x')
+    inc = lambda: (e.health.get('incidents', {}).get(f'stop-short|{k}') or {}).get('open')
+    assert lot['stop_dirty'] and lot['stop_confirmed_t'] is None and inc() and lot['stop_short']
+    clk[0] += 1
+    e._stops_reconfirmed()
+    e._stops_seen('BTCUSDT', set(e.trade.stops))                         # the reconcile call shape
+    assert not e.stop_view(lot)['protected'] and lot['stop_confirmed_t'] is None and inc()
+
+
+def test_short_verdict_is_cleared_by_the_new_stop_and_saved_state_validates(tmp_path):
+    e, clk, k, lot = setup(tmp_path)
+    edit(e, lot['stop_id'], qty=lot['qty'] / 2)
+    e._verify_symbol('BTCUSDT', 'x')
+    E._validate_lot(k, lot)                                              # stop_short is a known, valid lot field
+    tick(e, clk, n=3)
+    assert 'stop_short' not in lot and not lot.get('stop_dirty')
+    clk[0] += 1; e._stops_reconfirmed()
+    assert e.stop_view(lot)['protected']
