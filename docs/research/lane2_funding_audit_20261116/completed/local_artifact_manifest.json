@@ -1,0 +1,71 @@
+{
+  "note": "Large immutable research data remains in the isolated lane2 clone. All job summaries, public funding events, proxy values/provenance and coverage are committed.",
+  "artifacts": [
+    {
+      "kind": "baseline_matched_replay_tape",
+      "local_path": "C:\\Dev\\ZackBot2_lane2_20261116\\research_cache\\lane2\\replay\\r6_regime_flip_4h\\r6_regime_flip_4h_jobs.jsonl",
+      "bytes": 11774812,
+      "sha256": "ab06e31813790ed8c9ebee66192fa5fe7af4fddee488540a4c92af9754db8d6f"
+    },
+    {
+      "kind": "baseline_matched_replay_tape",
+      "local_path": "C:\\Dev\\ZackBot2_lane2_20261116\\research_cache\\lane2\\replay\\s54_double_top_4h\\s54_double_top_4h_jobs.jsonl.gz",
+      "bytes": 1450760,
+      "sha256": "395d62565295f928c60f55e80df617752a772c1e245294c02f9c814af15a15a0"
+    },
+    {
+      "kind": "baseline_matched_replay_tape",
+      "local_path": "C:\\Dev\\ZackBot2_lane2_20261116\\research_cache\\lane2\\replay\\l24_breakaway_day_4h\\l24_breakaway_day_4h_jobs.jsonl.gz",
+      "bytes": 4051292,
+      "sha256": "35cbed4fe3337affef5966d6948caa4b0d71354c91a9e32b30555a29b31482cf"
+    },
+    {
+      "kind": "baseline_matched_replay_tape",
+      "local_path": "C:\\Dev\\ZackBot2_lane2_20261116\\research_cache\\lane2\\replay\\s26_weekly_close_breakdown_4h\\s26_weekly_close_breakdown_4h_jobs.jsonl.gz",
+      "bytes": 1298964,
+      "sha256": "f0e8653e4ab09a2ed2cb6e5ddf76434793ec2ee79d56b7e9504ea24bcef8e9b8"
+    },
+    {
+      "kind": "baseline_matched_replay_tape",
+      "local_path": "C:\\Dev\\ZackBot2_lane2_20261116\\research_cache\\lane2\\replay\\l40_dual_momentum_4h\\l40_dual_momentum_4h_jobs.jsonl.gz",
+      "bytes": 1471663,
+      "sha256": "06d1ad2ef3a53ab6896ef066f2ca593cfeb1f5f781ca841bc128c07f416075bf"
+    },
+    {
+      "kind": "baseline_matched_replay_tape",
+      "local_path": "C:\\Dev\\ZackBot2_lane2_20261116\\research_cache\\lane2\\replay\\s51_momentum_accel_4h\\s51_momentum_accel_4h_jobs.jsonl.gz",
+      "bytes": 2803570,
+      "sha256": "1a1dfc5aa4ececcfae835ab4599c87c2f2695a8a1d117d4f6c8761d167c3e6a2"
+    },
+    {
+      "kind": "baseline_matched_replay_tape",
+      "local_path": "C:\\Dev\\ZackBot2_lane2_20261116\\research_cache\\lane2\\replay\\s76_uptrend_line_break_4h\\s76_uptrend_line_break_4h_jobs.jsonl.gz",
+      "bytes": 2861143,
+      "sha256": "67ff9408cd752cd9f0895f522fddcf7e17e66ab04037225992c94be513970256"
+    },
+    {
+      "kind": "baseline_matched_replay_tape",
+      "local_path": "C:\\Dev\\ZackBot2_lane2_20261116\\research_cache\\lane2\\replay\\r74_prior_month_break_4h\\r74_prior_month_break_4h_jobs.jsonl.gz",
+      "bytes": 2775228,
+      "sha256": "124b59d49d559ce5321520d0590e2785d6c92c425b0ee782f1e33ef873801c01"
+    },
+    {
+      "kind": "complete_per_trade_funding_deltas",
+      "local_path": "C:\\Dev\\ZackBot2_lane2_20261116\\research_cache\\lane2\\recost\\leads\\trade_deltas.jsonl.gz",
+      "bytes": 62912841,
+      "sha256": "3fddf314e8e4f36929579da9f0b37128365d0a269e1d779c727e964dd90cc7b8"
+    },
+    {
+      "kind": "baseline_matched_replay_tape",
+      "local_path": "C:\\Dev\\ZackBot2_lane2_20261116\\research_cache\\lane2\\prot_replay\\canonical.jsonl.gz",
+      "bytes": 613922194,
+      "sha256": "88e5e74abe523f10301e35d3540334850db0cf42e8c9314d4c480b0ab584b097"
+    },
+    {
+      "kind": "complete_per_trade_funding_deltas",
+      "local_path": "C:\\Dev\\ZackBot2_lane2_20261116\\research_cache\\lane2\\recost\\prot\\trade_deltas.jsonl.gz",
+      "bytes": 249596043,
+      "sha256": "f31c78e6334302ca612c924ca32104de58917f5695a3d30a322159738c21c00a"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "tapes": [
+    {
+      "path": "C:\\Dev\\ZackBot2_lane2_20261116\\research_cache\\lane2\\prot_replay\\canonical.jsonl.gz",
+      "sha256": "88e5e74abe523f10301e35d3540334850db0cf42e8c9314d4c480b0ab584b097"
+    }
+  ],
+  "allow_all_labelled_proxies": true,
+  "recost_engine_sha256": "4d90d59919a2f2565925c84ce2d7b4e54bdf9c597cdd8a5d89559d81480c9658",
+  "proxy_sha256": "ea2a351d7d853e676f2c64743e5cbb2bb5e9e3c4989220008f8d871a39a3482c"
+}

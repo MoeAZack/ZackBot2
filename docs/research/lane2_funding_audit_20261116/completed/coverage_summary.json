@@ -1,0 +1,15 @@
+{
+  "symbols": 174,
+  "events": 619468,
+  "response_pages": 723,
+  "required_proxy_marks": 44175,
+  "applied_proxy_marks": 41525,
+  "LUNC_required_proxy_marks": 467,
+  "LUNC_applied_proxy_marks": 446,
+  "proxy_max_abs_timestamp_gap_ms": 31,
+  "non_containing_proxy_candles": 0,
+  "source_gaps": [],
+  "cadence_discontinuities": 0,
+  "unresolved_required_marks": 0,
+  "status": "FULL_SOURCE_COVERAGE_UNDER_DECLARED_MARK_PROXY_AND_CLOCK_CONVENTIONS"
+}
