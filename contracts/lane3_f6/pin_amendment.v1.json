@@ -1,9 +1,9 @@
 {
  "amendment": "LANE3-F6 one-function pin amendment to FACTORY-F01-PARITY-01 code.pinned_function_sha256 and the FACTORY-F01-IMPL-01 cohort manifest pins_expected",
  "version": 1,
- "status": "PROPOSED - pending Integration (Codex) ruling",
+ "status": "PROPOSED - not accepted; NOT applied to any manifest or test overlay (Codex #364 ruling 6925213800: C9 stays fail-closed until ONE separate integration PR, after F5/F6 code acceptance, applies accepted overlays with explicit Integration approval)",
  "ticket": "#359 F6 / PR #364: round_step floors non-power-of-ten steps on the grid",
- "why_separate_file": "The signed parity contract JSON stays byte-identical; its pin test overlays this amendment (each 'from' must equal the signed pin)",
+ "why_separate_file": "Documentation of the exact old/new AST pin of the changed function. The signed parity contract, the F01 cohort manifest and the C260 originals stay byte-identical in this PR",
  "rule": "sha256 of ast.get_source_segment (LF), as the contracts' pin rule",
  "amended": {
   "feasibility.py:round_step": {

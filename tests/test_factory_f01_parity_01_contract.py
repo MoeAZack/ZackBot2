@@ -31,8 +31,6 @@ with open(os.path.join(ROOT, 'contracts', 'factory_f01_impl_01', 'pin_amendment.
     AMEND = json.load(_fh)
 with open(os.path.join(ROOT, 'contracts', 'cand_evict_ack_01', 'pin_amendment.v1.json'), encoding='utf-8') as _fh:
     EVICT_AMEND = json.load(_fh)                          # CAND-EVICT-ACK-01 one-function pin amendment (Codex 6518282215)
-with open(os.path.join(ROOT, 'contracts', 'lane3_f6', 'pin_amendment.v1.json'), encoding='utf-8') as _fh:
-    F6_AMEND = json.load(_fh)                             # LANE3-F6 one-function pin amendment (PROPOSED, PR #364)
 CLASSES = {'MUST-MATCH', 'MEASURED-DIFF', 'NOT-COMPARABLE'}
 
 
@@ -138,10 +136,6 @@ def test_every_pinned_function_source_matches(c):
         pins[cite] = ch['to']
     assert set(EVICT_AMEND['amended']) == {'engine.py:Engine.candidate_guard'}
     for cite, ch in EVICT_AMEND['amended'].items():       # signed JSON stays byte-identical; 'from' == the signed pin
-        assert pins[cite] == ch['from'], cite
-        pins[cite] = ch['to']
-    assert set(F6_AMEND['amended']) == {'feasibility.py:round_step'}
-    for cite, ch in F6_AMEND['amended'].items():          # signed JSON stays byte-identical; 'from' == the signed pin
         assert pins[cite] == ch['from'], cite
         pins[cite] = ch['to']
     for cite, sha in pins.items():
