@@ -5700,3 +5700,145 @@ def test_v87_regime_gate_and_hour_zero(monkeypatch):
             g = _sig(key, coin, btc)
             assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
             monkeypatch.undo()
+
+
+import longscout_v88 as L88
+L88.register()
+
+_V88_COIN = {'l88_low_idio_vol_uptrend_4h': lambda: _ms(_mk(2600, '4h', 45)),
+             's88_high_idio_vol_downtrend_4h': lambda: _ms(_mk(2600, '4h', 45))}
+
+
+@pytest.mark.parametrize('key', sorted(L88.CANDIDATES))
+def test_v88_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V88_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l88': le.sum() and not se.any(), 's88': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent - 1) | set(ent) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v88_ref(D, J, up, m=60, n=120):
+    days = list(D.index); c = [float(x) for x in D.c]; b = [float(x) for x in J.b]; L = len(c)
+    rc = [None] * L; rb = [None] * L
+    for t in range(1, L):
+        if days[t] - days[t - 1] == pd.Timedelta(days=1) and not (math.isnan(b[t]) or math.isnan(b[t - 1])):
+            rc[t] = c[t] / c[t - 1] - 1; rb[t] = b[t] / b[t - 1] - 1
+    IV = [None] * L
+    for t in range(m, L):
+        x = rc[t - m + 1:t + 1]; y = rb[t - m + 1:t + 1]
+        if None in x or None in y:
+            continue
+        mx, my = sum(x) / m, sum(y) / m
+        vx = sum((a - mx) ** 2 for a in x) / (m - 1); vy = sum((a - my) ** 2 for a in y) / (m - 1)
+        cxy = sum((a - mx) * (q - my) for a, q in zip(x, y)) / (m - 1)
+        IV[t] = math.sqrt(max(0.0, vx - cxy ** 2 / vy))
+
+    def ext(t):
+        w = IV[t - n:t]
+        if IV[t] is None or None in w:
+            return False
+        return IV[t] < min(w) if up else IV[t] > max(w)
+
+    res = np.zeros(L, bool)
+    for j in range(m + n + 1, L):
+        if days[j] - days[j - (m + n + 1)] != pd.Timedelta(days=m + n + 1):
+            continue
+        R = math.log(c[j] / c[j - m])
+        res[j] = ext(j) and not ext(j - 1) and (R > 0 if up else R < 0)
+    return res
+
+
+def test_v88_flags_match_an_independent_loop_and_prefixes():
+    btc = _ms(_mk(2600, '4h', 52)); L.set_btc(btc)
+    hits = {}
+    for seed in (45, 44, 41, 46):
+        coin = _ms(_mk(2600, '4h', seed)); d = S.indicators(coin)
+        D, J = L33._joint(d)
+        for up in (True, False):
+            v = L88._idio_v(D, J, L88.IP, up).values
+            np.testing.assert_array_equal(v, _v88_ref(D, J, up), err_msg=str((seed, up)))
+            hits[up] = hits.get(up, 0) + int(v.sum())
+            if seed == 45:
+                for cut in range(190, len(D), 37):
+                    np.testing.assert_array_equal(L88._idio_v(D.iloc[:cut], J.iloc[:cut], L88.IP, up).values, v[:cut])
+                t = pd.to_datetime(coin.t).dt.normalize()
+                gc = coin[t != t.iloc[len(coin) // 2]].reset_index(drop=True)
+                Dg, Jg = L33._joint(S.indicators(gc))
+                assert len(Dg) == len(D) - 1
+                np.testing.assert_array_equal(L88._idio_v(Dg, Jg, L88.IP, up).values, _v88_ref(Dg, Jg, up))
+    assert all(hits.values()), hits
+
+
+def test_v88_residual_vol_definition():
+    idx = pd.date_range('2022-01-01', periods=200, freq='D')
+    rng = np.random.default_rng(7)
+    rb = rng.normal(0, 0.03, 200); e = rng.normal(0, 0.01, 200)
+    J = pd.DataFrame(dict(rc=1.5 * rb + e, rb=rb), index=idx)
+    iv = L88._iv(J, 60)
+    k = 120; x = J.rc.values[k - 59:k + 1]; y = J.rb.values[k - 59:k + 1]
+    X = np.vstack([np.ones(60), y]).T
+    res = x - X @ np.linalg.lstsq(X, x, rcond=None)[0]
+    assert abs(iv.iloc[k] - np.sqrt(res @ res / 59)) < 1e-12               # sd of the OLS residual (n - 1 divisor)
+    J2 = pd.DataFrame(dict(rc=2.0 * rb, rb=rb), index=idx)                    # perfectly explained by BTC: zero, not NaN
+    assert np.nanmax(L88._iv(J2, 60).values[59:]) < 1e-9 and not L88._iv(J2, 60).iloc[59:].isna().any()
+
+
+def test_v88_boundaries(monkeypatch):
+    L_ = 190
+    idx = pd.date_range('2022-01-01', periods=L_, freq='D')
+    def run(IV, c, up):
+        D = pd.DataFrame(dict(h=c, l=c, c=c, v=1.0), index=idx)
+        monkeypatch.setattr(L88, '_iv', lambda J, m: pd.Series(IV, index=D.index))
+        out = L88._idio_v(D, D, L88.IP, up).values[182:].tolist()
+        monkeypatch.undo()
+        return out
+    lo = np.r_[np.full(60, np.nan), np.full(122, 1.0), [0.9, 0.8, 0.8, 1.0, 1.0, 0.7, 2.0, 2.0]]
+    hi = np.r_[np.full(60, np.nan), np.full(122, 1.0), [1.1, 1.2, 1.2, 1.0, 1.0, 1.3, 0.5, 0.5]]
+    rise = np.exp(np.linspace(0, 1, L_)); fall = 1 / rise
+    assert run(lo, rise, True) == [True, False, False, False, False, True, False, False]
+    assert run(hi, fall, False) == [True, False, False, False, False, True, False, False]
+    assert not any(run(lo, fall, True)) and not any(run(hi, rise, False)) and not any(run(hi, fall, True))
+    lo2 = lo.copy(); lo2[182] = 1.0; hi2 = hi.copy(); hi2[182] = 1.0          # equal to the extreme is not beyond it
+    assert run(lo2, rise, True)[:2] == [False, True] and run(hi2, fall, False)[:2] == [False, True]
+    eq = rise.copy(); eq[182] = eq[122]; eqf = fall.copy(); eqf[182] = eqf[122]
+    assert run(lo, eq, True)[0] is False and run(hi, eqf, False)[0] is False  # R exactly 0
+    base = rise.copy(); base[123] = 5.0; fb = fall.copy(); fb[123] = 0.01      # only day j-60 is the base of R
+    assert run(lo, base, True)[0] is True and run(hi, fb, False)[0] is True
+    gap = pd.date_range('2022-01-01', periods=L_ + 1, freq='D').delete(1)
+    D = pd.DataFrame(dict(h=rise, l=rise, c=rise, v=1.0), index=gap)
+    monkeypatch.setattr(L88, '_iv', lambda J, m: pd.Series(np.r_[np.full(60, np.nan), np.full(121, 1.0), [0.9, 1.0, 0.8],
+                                                                 np.full(6, 1.0)], index=D.index))
+    # row 181 is day 182: j-181 = day 1 missing -> no signal; row 183 (day 184) is complete
+    assert L88._idio_v(D, D, L88.IP, True).values[181:184].tolist() == [False, False, True]
+
+
+def test_v88_regime_gate_and_hour_zero(monkeypatch):
+    btc = _ms(_mk(2600, '4h', 52))
+    for key, up, ok in (('l88_low_idio_vol_uptrend_4h', True, (1,)), ('s88_high_idio_vol_downtrend_4h', False, (-1,))):
+        coin = _V88_COIN[key](); L.set_btc(btc); d = S.indicators(coin); cr = L.coin_regime(d)
+        f = np.asarray(L88._idio(d, L88.IP, up))
+        full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+        assert got.any(), key
+        np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+        t = pd.to_datetime(coin.t).dt.normalize()
+        for i in np.flatnonzero(got)[:15]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=150)].reset_index(drop=True)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            g = _sig(key, cut, btc)
+            assert not (np.asarray(g['le'])[k0] or np.asarray(g['se'])[k0]), key
+            tb = pd.to_datetime(btc.t).dt.normalize()
+            bcut = btc[tb != t.iloc[i] - pd.Timedelta(days=30)].reset_index(drop=True)
+            g = _sig(key, coin, bcut)                                         # a missing BTC day inside the 60-day window
+            assert not (np.asarray(g['le'])[i] or np.asarray(g['se'])[i]), key
+        for forced in (1.0, 0.0, -1.0):
+            monkeypatch.setattr(L88.L1, 'coin_regime', lambda d, v=forced: np.full(len(d), v))
+            g = _sig(key, coin, btc)
+            assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
+            monkeypatch.undo()
