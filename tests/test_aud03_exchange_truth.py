@@ -309,6 +309,11 @@ def test_a_known_order_whose_record_is_unreadable_is_never_guessed_from_the_posi
     real = E.time.time
     monkeypatch.setattr(E.time, 'time', lambda: real() + 301)
     e.reconcile(500); e.reconcile(500)
+    # LANE3-F1 r2 (Codex #360 6925134894): a timer may alert, never release - still owned, the owner alerted
+    assert k in e.state['lots'] and 'pending' in lot and e.history == []
+    assert (e.health['incidents'].get(f'pending-unknown|{k}') or {}).get('open')
+    e.trade.get_order = lambda s, cid: dict(status='EXPIRED', executedQty='0', avgPrice='0', clientOrderId=cid)   # readable: it decides
+    e.reconcile(500); e.reconcile(500)
     assert k not in e.state['lots'] and e.history[-1]['exit_reason'] == 'stop'
 
 

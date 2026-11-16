@@ -79,3 +79,31 @@ def test_nosource_unchanged_position_still_released_after_20s():
     e, _ = mk_engine(); k = opened(e); lot = e.state['lots'][k]; q0 = lot['qty']
     lot['pending'] = dict(kind='add', qty=q0, px=100.0, why='pyramid_add', post={}, t=time.time() - 21, cid=None)
     assert e._resolve_pending(k, q0, q0, 1e-9) is True and 'pending' not in lot
+
+
+@pytest.mark.parametrize('state', ['pending', 'unreadable'])
+@pytest.mark.parametrize('kind', ['add', 'close'])
+def test_r2_known_order_not_final_or_unreadable_is_never_released_on_a_timer(state, kind):
+    """Codex #360 round 2 (comment 6925134894): a known client id whose record is still open or cannot be read is not
+    terminal non-execution. It stays owned at 301 s / 1 h / 24 h, the owner is alerted once, and the record decides."""
+    e, _ = mk_engine(); k = opened(e); lot = e.state['lots'][k]; q0 = lot['qty']
+    if kind == 'add':
+        ambiguous_once(e, 'open', fill=False)
+        with pytest.raises(BC.AmbiguousOrder): e._add_qty(lot, q0, 100.0, 'pyramid_add')
+    else:
+        ambiguous_once(e, 'close', fill=False)
+        with pytest.raises(BC.AmbiguousOrder): e._market_close(lot, q0 / 2, 'tp1')
+    assert lot['pending']['kind'] == kind
+    have = e.trade.pos[('BTCUSDT', 'LONG')]
+    rec = dict(state=state, qty=None, px=None, status='NEW' if state == 'pending' else None, cid=lot['pending'].get('cid'))
+    e._order_result = lambda sym, cid, qty: dict(rec)
+    pushed = []; e.notify = lambda m: pushed.append(m)
+    for age in (21, 299, 301, 3600, 86400):
+        lot['pending']['t'] = time.time() - age
+        assert e._resolve_pending(k, have, q0, 1e-9) is None and 'pending' in lot, (state, age)
+    assert len(pushed) == 1 and state in pushed[0] and 'never' not in pushed[0].lower().split('nothing')[0]
+    assert (e.health['incidents'].get(f'pending-unknown|{k}') or {}).get('open')
+    qty = lot['pending']['qty']
+    e._order_result = lambda sym, cid, q: dict(state='final', qty=qty, px=100.0, status='FILLED', cid=rec['cid'])
+    assert e._resolve_pending(k, have, q0, 1e-9) is True and 'pending' not in lot          # the record decides at last
+    assert not e.health['incidents'][f'pending-unknown|{k}']['open']

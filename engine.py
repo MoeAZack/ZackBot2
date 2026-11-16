@@ -4523,11 +4523,11 @@ class Engine:
             else: self._replace_stop(l)
             return True
         if fr['state'] not in ('nosource', 'notfound'):                  # AUD-03 r1: a KNOWN order is decided only by its record
-            if age > 300:                                                # no record within the evidence window: timed resync
-                del l['pending']
-                self.err(f"{l['symbol']} [{l['sleeve']}] could not read the order record of a {pd_['kind']} for 5 min "
-                         f"({fr['state']}) - resyncing to the exchange")
-                return False
+            # LANE3-F1 r2 (Codex #360): a record that is not final yet ('pending') or cannot be read is not proof that the
+            # order did not execute - it stays owned and quarantined; after 5 min the owner is alerted, it is never released
+            if age > 300:
+                self._quarantine_alert(f'pending-unknown|{key}', l['symbol'], l['side'], l['sleeve'], pd_['kind'], pd_.get('cid'),
+                                       age, what=f"order record {fr['state']} on Binance")
             return None                                                  # wait: the position alone could pick the wrong cause
         # LANE3-F1: 'not found' is NOT proof that it never executed (a lookup can trail the matching engine, and Binance
         # documents no time after which an accepted request can no longer execute). A position that shows the fill books
@@ -7677,13 +7677,14 @@ class Engine:
                 log.info(f"ENTRY {sym} {side} unconfirmed -> nothing on Binance after {int(age)} s ({fr['state']}), forgotten")
                 self.save_state()
 
-    def _quarantine_alert(self, key, sym, side, sleeve, kind, cid, age):
-        """LANE3-F1: an order whose answer was lost and that Binance does not show (not found, no position change) is kept
-        as unresolved - never released for a retry on that absence alone. One keyed alert (and one push) for the owner."""
+    def _quarantine_alert(self, key, sym, side, sleeve, kind, cid, age, what='not found on Binance'):
+        """LANE3-F1: an order whose answer was lost and whose outcome Binance does not prove (not found, a record that is not
+        final or cannot be read, no position change) is kept as unresolved - never released for a retry on a timer or on
+        absence alone. One keyed alert (and one push) for the owner."""
         if (self.health.get('incidents', {}).get(key) or {}).get('open'):
-            self.err(f'{sym} {side} [{sleeve}] {kind} {cid}: still not found on Binance', key=key); return
-        msg = (f'{sym} {side} [{sleeve}]: unconfirmed {kind} (client id {cid}) not found on Binance for {int(age // 60)} min and '
-               'the position has not changed - held as unresolved: nothing is re-sent while it could still execute. Check '
+            self.err(f'{sym} {side} [{sleeve}] {kind} {cid}: still {what}', key=key); return
+        msg = (f'{sym} {side} [{sleeve}]: unconfirmed {kind} (client id {cid}) {what} for {int(age // 60)} min and '
+               'its outcome is not proven - held as unresolved: nothing is re-sent while it could still execute. Check '
                'the order history on Binance')
         self.err(msg, key=key)
         self.notify(f'⚠️ {msg}.')
