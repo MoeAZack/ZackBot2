@@ -65,7 +65,7 @@ def req(cond, path, msg):
         raise InvalidRecord(path, msg)
 
 
-# ----------------------------------------------------------------------------------------------------------- values
+# REDACTED_VALUE
 def canonical_decimal(v, path):
     """Validate a Decimal and return its canonical value (trailing zeroes removed, no positive exponent)."""
     if type(v) is not Decimal:
@@ -159,7 +159,7 @@ def make_id(prefix, n):
     return f'{prefix}_{n:032x}'
 
 
-# ----------------------------------------------------------------------------------------------------------- records
+# REDACTED_VALUE
 def _checker(tp, name):
     origin = typing.get_origin(tp)
     if origin is typing.Union or origin is types.UnionType:

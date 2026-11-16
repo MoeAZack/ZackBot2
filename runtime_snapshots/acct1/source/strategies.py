@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 
 
-# ------------------------------------------------------------------ indicators
+# REDACTED_VALUE
 def ema(x, n):
     return x.ewm(span=n, adjust=False).mean()
 
@@ -85,7 +85,7 @@ def xup(a, b):
 NEVER = None   # placeholder meaning "no signal"
 
 
-# ------------------------------------------------------------------ signal functions
+# REDACTED_VALUE
 # ctx: dict(btc=<btc indicator df aligned>, rank=<cross-sectional momentum rank Series for this symbol>)
 def sig_ema_st(d, p, ctx):
     trend_l, trend_s = d.st > 0, d.st < 0
@@ -159,7 +159,7 @@ def sig_hot_coin(d, p, ctx):
 
 
 
-# ------------------------------------------------------------------ sprint families (EXPERIMENTAL / TESTNET-ONLY, frozen v0)
+# REDACTED_VALUE
 # Four deterministic long+short entry families for the 48h testnet sprint. Each is one simple frozen rule on CLOSED
 # candles, symmetric by construction (a price reflection maps every long decision onto the short one), and never raises
 # a long and a short entry on the same candle. An opposite entry always implies the held side's exit signal, so a
@@ -234,7 +234,7 @@ def sig_exp_structure(d, p, ctx):
                           lx=(d.c < last_lo) | dn, sx=(d.c > last_hi) | up))
 
 
-# ------------------------------------------------------------------ BREADTH-01 B3: short-only mirrors (EXPERIMENTAL / testnet-only)
+# REDACTED_VALUE
 # Codex ruling 6186050896 pt 4. Each is the exact price mirror of an existing long-only strategy (same thresholds, same
 # mgmt, no new parameters, no tuning). Short side only; the long columns never fire.
 def sig_exp_mom_short(d, p, ctx):
@@ -259,7 +259,7 @@ def sig_exp_rip_sell_dca(d, p, ctx):
     return _one_side(dict(le=never, se=dn & (stretch > 1.5) & (stretch.shift() <= 1.5), lx=never, sx=never))
 
 
-# ------------------------------------------------------------------ VWAPREV: REX-01 runtime adapter (EXPERIMENTAL / PAPER)
+# REDACTED_VALUE
 # The sixth PAPER family: `range_vwap_rev.v1` X1 (frozen contract RANGE-EXIT-01, tools/research/range_vwap_rev.py) on
 # closed 4h candles. The research decision logic (`indicators` / `entry_x1` / `mean_close` / `invalidated`) is mirrored
 # here in the SAME exact decimal-fraction arithmetic, so the frozen equality boundaries (z == -k, drift == 1 ATR) decide
@@ -344,7 +344,7 @@ def sig_exp_vwaprev(d, p, ctx):
 
 
 
-# ------------------------------------------------------------------ SCALP-4: PAPER scalp package (EXPERIMENTAL / PAPER-only)
+# REDACTED_VALUE
 # Four simple 15m scalps (the engine's shortest timeframe: engine.TF_SEC has 15m / 1h / 4h; there is no 5m candle path).
 # Each is a frozen rule on CLOSED candles, symmetric by construction (the short rule is the price mirror of the long rule),
 # wrapped in _one_side (an ambiguous candle takes neither side). Constants are documented defaults, NOT optimised; no edge
@@ -428,7 +428,7 @@ def sig_quick_bank_runner(d, p, ctx):
     return _one_side(dict(le=le, se=se, lx=dn, sx=up))
 
 
-# ------------------------------------------------------------------ registry
+# REDACTED_VALUE
 # style: calm / balanced / aggressive  ·  sides: long / short / both
 STRATEGIES = {
     'ema_st': dict(name='EMA cross + Supertrend', style='balanced', fn=sig_ema_st, sides='long',

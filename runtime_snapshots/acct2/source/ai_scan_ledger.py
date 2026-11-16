@@ -142,7 +142,7 @@ def scan_view(settings, data_dir, now=None, limit=VIEW_LIMIT):
     return dict(on=True, rows=rows, skipped=skipped, error=None)
 
 
-# ------------------------------------------------------------------ AI-SCAN-03A: rotation / manifest prerequisite (§6b)
+# REDACTED_VALUE
 # Layout: <data>/ai_scan/segments/seg-000001.jsonl ... + manifest.json. Segment n is sealed (immutable, listed in the
 # manifest with sha256 / bytes / rows and a prev -> chain hash link) or it is the one ACTIVE segment n = sealed + 1.
 # The active segment is never in the manifest: the writer indexes it (row-level record hashes) for restart dedupe, but
@@ -408,7 +408,7 @@ class RotatingLedger:
         return rec
 
 
-# ------------------------------------------------------------------ verified pagination (reader side)
+# REDACTED_VALUE
 def _derive_binding(m):
     segs = m['segments']
     pages = [segs[i:i + SEGS_PER_READ] for i in range(0, len(segs), SEGS_PER_READ)]

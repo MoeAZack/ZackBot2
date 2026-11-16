@@ -1,106 +1,4 @@
-"""ZackBot RANGE-MARKET bots: futures GRID (long / short / neutral) and COMBO (DCA entry + grid take-profits).
-
-Optional, toggled strategy slots with explicit worst-case risk. Everything in this module is shared by the backtest
-and the live engine: the grid math (build_grid / risk_metrics / validate_cfg / triggers) is pure and used by both.
-
-==================================================================================================================
-GRID MODEL
-------------------------------------------------------------------------------------------------------------------
-* A range [lo, hi] (from ATR, %, or the high/low of the last N candles) is cut into `levels` cells (Binance "grid
-  number"): arithmetic or geometric spacing. Cell k = (a_k, b_k).
-* Cell kinds:  long mode: every cell is a LONG cell;  short mode: every cell is a SHORT cell;
-  neutral: cells below the start price are LONG cells, cells above are SHORT cells (hedge mode: both sides at once).
-* LONG cell : empty & price <= a -> buy q        filled & price >= b -> sell q   (one completed cycle)
-  SHORT cell: empty & price >= b -> short q      filled & price <= a -> cover q
-  Long mode buys the cells above the start price at start (Binance-style), short mode shorts the cells below.
-* Size: every cell has the same notional; with ALL cells of one side filled the notional is
-  capital_frac x slot capital  (capital_frac = notional multiple of the grid's capital, <= max_lev).
-* Hard stop beyond the range: stop_lo = lo x (1 - stop_out_pct%), stop_hi = hi x (1 + stop_out_pct%).
-  Live: one exchange STOP_MARKET per inventory lot (LONG lot at stop_lo, SHORT lot at stop_hi), sized to the lot.
-  Price beyond stop_lo / stop_hi -> the grid closes everything and stops.
-* Regime (need_range, default on): a grid starts only while the coin's own 4h `range` flag of strategies.regime() is on
-  (ADX < 20 and Bollinger-width percentile < 0.35); it closes everything and stops when the flag stays off for
-  `trend_bars` candles. need_range off = no regime gate and no trend stop (the hard range stop still applies).
-* Worst case (risk_metrics.worst_loss_usd): all cells of one side filled, then the hard stop, incl. fees+slippage.
-
-COMBO MODEL (backtest only here; live = an engine DCA slot with a TP ladder, see the research note in the report)
-* Dip entry when (EMA20 - close) / ATR > dip_atr, safety orders every so_step_atr ATR below (weights so_scale^k),
-  tp_n take-profits of 1/tp_n of the max size every tp_step_atr ATR above the average, each re-buys when price comes
-  back to the level below it (grid behaviour), hard basket stop stop_atr ATR under the last safety order.
-
-==================================================================================================================
-LIVE: GridManager(engine) - integration (engine.py / app.py are NOT edited by this module; add these lines)
-------------------------------------------------------------------------------------------------------------------
-1) engine.py, top:                      import grid as GRID
-   Engine.__init__ (after self.health = ...):
-                                        self.grids = GRID.GridManager(self)
-   load_settings(), after `s = copy.deepcopy(GLOBAL_DEFAULTS)` handling (anywhere before self.S = s):
-                                        s.setdefault('GRID_SLOTS', [])
-2) Engine.manage(), right AFTER the `for key in list(self.state['lots']): ...` loop and BEFORE `if ok:`:
-            try: changed = self.grids.on_marks(marks) or changed
-            except Exception as e: ok = False; self.err(f'grid: {e}')
-3) Engine.cycle(tf), right BEFORE `st['last_cycle'][tf] = ...`:
-            try: self.grids.on_cycle(tf)
-            except Exception as e: self.err(f'grid cycle {tf}: {e}')
-4) app.py loop():
-     - manage must also run while a grid waits flat:   if e.state['lots'] or e.state.get('grids'): e.manage(marks)
-     - candle cycles for grid timeframes:  tfs = sorted({...existing...} | {g['tf'] for g in e.S.get('GRID_SLOTS', [])})
-5) app.py handle():
-     if path == '/api/grid_slots':                     # body {'slots': [...]}
-         if not isinstance(b.get('slots'), list) or len(b['slots']) > 6: raise ValueError('0-6 grid slots')
-         slots = [GRID.validate_slot(x, i) for i, x in enumerate(b['slots'])]       # raises ValueError with a human message
-         if len({x['id'] for x in slots}) != len(slots): raise ValueError('each grid slot needs a unique name')
-         used = sum(x['share'] for x in e.S['SLEEVES'] if x['enabled']) + sum(x['share'] for x in slots if x['enabled'])
-         if used > 1.0001: raise ValueError('capital shares of strategies + grids add up to more than 100%')
-         with e.lock: e.S['GRID_SLOTS'] = slots; e.save_settings()
-         return 'grid slots saved'
-     if path == '/api/grid_start': with e.lock: return e.grids.start(b['slot'], b['symbol'])          # dict status
-     if path == '/api/grid_stop':  with e.lock: return e.grids.stop(b['slot'], b['symbol'], 'manual')
-     if path == '/api/grid_preview': return GRID.validate_cfg(b.get('cfg') or {}, price=..., atr_pct=...)[1]
-     GET status: e.grids.status()   (list of dicts: levels, filled cells, inventory, cycles, cycle_pnl, metrics)
-     Also in the '/api/sleeves' share check add the enabled grid slots' shares.
-
-Grid slot JSON for the UI (defaults; ranges enforced by validate_slot / validate_cfg):
-{
-  "id": "G1",                 // 1-12 chars [A-Za-z0-9_-], not MAN, not a strategy slot id
-  "enabled": false,           // toggled slot
-  "auto": true,               // start by itself on its coins whenever the coin is ranging (else only via grid_start)
-  "symbols": "core8",         // 'core8' | 'all' | ['BTCUSDT', ...]
-  "tf": "4h",                 // '1h' | '4h' - timeframe of the regime / trend check and of ATR / lookback ranges
-  "share": 0.25,              // 0.01-1   share of bot capital for this slot
-  "max_coins": 4,             // 1-20     grids running at once; each grid gets share x capital / max_coins
-  "mode": "neutral",          // 'neutral' | 'long' | 'short'
-  "range_kind": "atr",        // 'atr' (start +- k ATR) | 'pct' (start +- x %) | 'lookback' (low/high of N candles)
-  "range_value": 4,           // atr 1-20 ATR | pct 1-50 % | lookback 10-500 candles
-  "levels": 12,               // 4-40 cells
-  "spacing": "geom",          // 'arith' | 'geom'
-  "capital_frac": 1.0,        // 0.1-10   notional with one side fully filled, x grid capital (= effective leverage)
-  "stop_out_pct": 3.0,        // 0.5-20   hard stop this % beyond the range
-  "max_lev": 3.0,             // 1-10     cap on capital_frac and on total grid notional
-  "trend_bars": 6,            // 1-50     regime not 'range' this many candles in a row -> close all & stop
-  "cooldown_bars": 6,         // 0-100    candles to wait after a stop before a new grid on that coin
-  "need_range": true,         // only start while strategies.regime() says range
-  "max_worst_loss_pct": 25    // 1-100    refuse a grid whose worst case > this % of the grid's capital
-}
-risk_metrics() fields: worst_loss_usd, worst_loss_pct (all cells of the worse side filled then stopped, incl. fees
-and slippage, % of the grid capital), max_notional, eff_leverage, profit_per_cycle_after_fees (mean $ per cell
-round trip, taker 0.05% + slippage 0.02% each side), profit_per_cycle_min, profit_per_cycle_pct (min, % of a cell's
-notional), spacing_pct (smallest cell, %), min_fee_positive_spacing_pct, fee_share_pct (fees as % of the gross
-of the tightest cycle), liq_price / liq_distance_pct (cross margin, maintenance 0.5%, only the grid capital as
-margin = conservative; distance from the hard stop to the liquidation price, > 0 means the stop fires first),
-cycles_to_recover (worst loss / mean cycle profit), range_pct, stop_lo, stop_hi, cell_qty, cells.
-
-Live design (GridManager): MARKET orders at virtual levels checked on mark prices every manage pass (no resting
-orders on the book); inventory per coin+side = one engine lot (key '<slot>|<sym>|<side>|<ts>', key_strategy 'grid',
-empty mgmt so the engine's generic management never touches it) created when inventory goes 0 -> >0 and finished
-when it returns to 0; grid bookkeeping (cells, filled flags, cycles, cycle_pnl, pending op) in
-engine.state['grids'][<slot>|<sym>] -> survives restarts. Adds / reductions via engine._add_qty / _market_close
-with post={'grid_ack': op_id}; a lost answer (AmbiguousOrder) leaves lot['pending'] that engine.reconcile resolves
-from the real position; the grid applies the op only once the ack shows up on the lot (never twice, never guessed).
-Never acts on a side whose lot is pending. The initial start passes engine.entry_block for every side it can open
-(incl. risk rules with the grid's max notional / worst loss); later inventory increases are refused while entries are
-paused, the daily halt is on, or the coin/side is untracked or waiting for a stop.
-"""
+'REDACTED_VALUE'
 import math, re, time, uuid, logging
 import numpy as np
 import pandas as pd
@@ -620,7 +518,7 @@ class GridManager:
     def __init__(self, engine):
         self.e = engine
 
-    # ---------------------------------------------------------------- helpers
+    # REDACTED_VALUE
     @property
     def grids(self):
         return self.e.state.setdefault('grids', {})
@@ -663,7 +561,7 @@ class GridManager:
         if e._lev_exception_block(g['sym']): return False     # T03c r1: coin traded through the above-cap leverage exception
         return True
 
-    # ---------------------------------------------------------------- start / stop
+    # REDACTED_VALUE
     def start(self, slot, sym, force=False):
         """Start a grid of `slot` on `sym` at the current mark. Raises ValueError with the reason if it may not start."""
         e = self.e
@@ -748,7 +646,7 @@ class GridManager:
             e.notify(f"🔲 GRID closed {g['sym']} [{g['slot']}] ({g['why']}) · {g['cycles']} cycles · cycle P&L {g['cycle_pnl']:+.2f}")
         e.save_state()
 
-    # ---------------------------------------------------------------- reconcile hook: settle unanswered orders, vanished lots
+    # REDACTED_VALUE
     def reconcile(self):
         """Settle grid ops whose answer was lost, adopt a lost initial fill, and notice lots closed outside the grid
         (exchange stop, flatten, resync). Called at the start of every on_marks."""
@@ -830,7 +728,7 @@ class GridManager:
             if have - lot_qty > 0.5 * q and c['f']: c['f'] = False; c['e'] = None; have -= c['q']
         log.warning(f"grid {g['key']}: {kind} cells resynced to the lot size {lot_qty}")
 
-    # ---------------------------------------------------------------- the mark-price step
+    # REDACTED_VALUE
     def on_marks(self, marks):
         """Called from engine.manage (under engine.lock) after reconcile and lot management. Returns True if state changed."""
         changed = self.reconcile()
@@ -994,7 +892,7 @@ class GridManager:
         g['op'] = None
         g['cycle_pnl'] = round(g['cycle_pnl'], 6)
 
-    # ---------------------------------------------------------------- candle close: regime / trend stop / auto start
+    # REDACTED_VALUE
     def on_cycle(self, tf):
         e = self.e
         for g in list(self.grids.values()):
@@ -1033,7 +931,7 @@ class GridManager:
         except Exception: return True
         return age >= int(slot.get('cooldown_bars', 6)) * TF_BAR.get(slot.get('tf', '4h'), 14400)
 
-    # ---------------------------------------------------------------- status for the UI
+    # REDACTED_VALUE
     def status_one(self, g):
         e = self.e; mk = (e.marks or {}).get(g['sym'])
         out = dict(key=g['key'], slot=g['slot'], symbol=g['sym'], mode=g['mode'], status=g['status'], why=g.get('why'), tf=g['tf'],

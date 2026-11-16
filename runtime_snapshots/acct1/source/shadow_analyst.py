@@ -36,8 +36,8 @@ ANTHROPIC_VERSION = '2023-06-01'
 PROMPT_VERSION = 'shadow-prompt-v3'               # v3: fixed-role shadow committee + bounded strategy ranking
 SCHEMA_VERSION = 'shadow-schema-v2'
 
-MAX_INPUT_TOKENS = 4000                        # estimated as chars / 4 over system prompt + user message
-MAX_OUTPUT_TOKENS = 3000                       # SHADOW-ANALYST-TRUNC-01: >= 2x the worst-case compliant reply
+MAX_INPUT_TOKENS = 'REDACTED_VALUE'                        # estimated as chars / 4 over system prompt + user message
+MAX_OUTPUT_TOKENS = 'REDACTED_VALUE'                       # SHADOW-ANALYST-TRUNC-01: >= 2x the worst-case compliant reply
 # What the prompt ASKS for (the validator below stays more lenient - MAX_ITEMS / MAX_ITEM_CHARS). Worst case under the
 # prompt remains below the cap at a conservative OUTPUT_CHARS_PER_TOKEN after the fixed six committee rows are included,
 # so a compliant reply fits MAX_OUTPUT_TOKENS with 2x margin (tests pin this). v1 allowed 10 x
@@ -46,7 +46,7 @@ PROMPT_MAX_ITEMS = 6
 PROMPT_ITEM_CHARS = 80
 PROMPT_OBJ_KEYS = 4                            # role/ranking records need four small scalar fields
 PROMPT_OBJ_CHARS = 140
-OUTPUT_CHARS_PER_TOKEN = 3
+OUTPUT_CHARS_PER_TOKEN = 'REDACTED_VALUE'
 TIMEOUT_S = 30
 BACKOFF_BASE_S = 2.0
 MAX_ATTEMPTS = 2                               # one retry on 429/5xx/timeout; a timed-out attempt may still be billed
@@ -111,7 +111,7 @@ SYSTEM_PROMPT = (
 USER_PREFIX = "Aggregate statistics for the review window follow as JSON data.\n<data>\n"
 USER_SUFFIX = "\n</data>"
 
-# --- aggregate allow-list --------------------------------------------------------------------------------------------
+# REDACTED_VALUE
 # Sections in priority order, highest first. Truncation drops from the END; REQUIRED sections are never dropped.
 SECTIONS = ('window', 'n_trades', 'performance', 'counts', 'regime_performance', 'portfolio_pressure',
             'source_coverage', 'backtests', 'score_buckets', 'drift', 'skip_reasons', 'exposure_duplication',
@@ -294,7 +294,7 @@ def fit_budget(agg, max_tokens=None):
     return agg, dropped
 
 
-# --- schedule --------------------------------------------------------------------------------------------------------
+# REDACTED_VALUE
 def slot_instant(cairo_date, hm):
     """UTC instant of a Cairo wall-clock slot. A wall time skipped by the spring-forward gap resolves (fold=0) to the
     instant one hour later in local terms - still exactly one instant per slot per Cairo day."""
@@ -327,7 +327,7 @@ def is_enabled(cfg):
     return v is True or (isinstance(v, str) and v.strip().lower() in ('on', 'true', '1'))
 
 
-# --- response validation ---------------------------------------------------------------------------------------------
+# REDACTED_VALUE
 def _valid_item(it):
     if isinstance(it, str):
         return 0 < len(it) <= MAX_ITEM_CHARS
@@ -437,7 +437,7 @@ def rankings_grounded(analysis, aggregate):
     return all(r.get('candidate') in allowed for r in analysis.get('strategy_rankings', ()))
 
 
-# --- transport -------------------------------------------------------------------------------------------------------
+# REDACTED_VALUE
 class TransportTimeout(Exception):
     pass
 
@@ -469,7 +469,7 @@ def _retryable(status):
     return status == 429 or 500 <= status <= 599
 
 
-# --- auth / workspace ------------------------------------------------------------------------------------------------
+# REDACTED_VALUE
 WORKSPACE_HEADER = 'anthropic-workspace-id'
 _WORKSPACE_RE = re.compile(r'[A-Za-z0-9_-]{1,128}')   # used with fullmatch: no trailing newline (Cowork F1)
 _REQUEST_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,128}$')
@@ -566,7 +566,7 @@ def auth_self_test(api_key, workspace_id=None, transport=None, model=AUTH_SELF_T
         return {'status': AUTH_REJECTED, 'request_id': None}
     if not valid_workspace_id(workspace_id):
         return {'status': AUTH_WS_REQUIRED, 'request_id': None}
-    body = canonical({'model': model, 'max_tokens': 1, 'messages': [{'role': 'user', 'content': 'ping'}]}).encode('utf-8')
+    body = canonical({'model': model, 'max_tokens': 'REDACTED_VALUE', 'messages': [{'role': 'user', 'content': 'ping'}]}).encode('utf-8')
     try:
         status, text, rid = _call(transport or urllib_transport, API_URL, _headers(api_key, workspace_id or None), body, AUTH_TIMEOUT_S)
     except Exception as e:                                      # network / timeout
@@ -592,7 +592,7 @@ class ShadowAnalyst:
         self._mono = monotonic
         self.state = self._load()
 
-    # state ----------------------------------------------------------------------------------------------------------
+    # REDACTED_VALUE
     def _load(self):
         base = {'last_digest': None, 'last_result': None, 'last_ok_ts': None, 'slots_run': [], 'usage': {'day': {}, 'month': {}},
                 'auth': None, 'last_trunc_digest': None}
@@ -721,7 +721,7 @@ class ShadowAnalyst:
             'monthly_remaining_usd': round(max(0.0, monthly - used['month']['est_cost_usd']), 4),
         }
 
-    # public ---------------------------------------------------------------------------------------------------------
+    # REDACTED_VALUE
     def auth_self_test(self, api_key, workspace_id=None, *, now_utc=None, transport=None):
         """Run the self-test and record it for this (key, workspace) pair. -> {'status', 'request_id'}."""
         now_utc = now_utc or _dt.datetime.now(_dt.timezone.utc)

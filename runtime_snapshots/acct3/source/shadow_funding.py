@@ -1,14 +1,4 @@
-"""TRUE-BOOK-02: keyless Binance USD-M TESTNET funding timeline for the strategy shadow (observe only).
-
-Codex 6246971221 #4: shadow funding comes from the collected TESTNET historical funding timeline (fundingTime, fundingRate,
-markPrice) - never account income, never mainnet. A daemon thread pages /fapi/v1/fundingRate forward per symbol over its
-OWN keyless testnet transport (market_data.RequestsTransport(TESTNET): separate session, rate-limit and failure state) into
-<data>/strategy_shadow/funding_testnet/funding_rate/<SYM>.csv (market_data storage: rows keyed by fundingTime, written
-atomically, earlier rows kept). It never takes engine.lock, never calls the engine's exchange client, never touches the
-ShadowBook: the engine feeds new rows to the observer on its own thread (Engine._shadow_funding_feed), so the shadow
-ledger keeps a single writer. A run is skipped unless the engine is PAPER with STRATEGY_SHADOW on, and stops while the
-engine's exchange circuit is not healthy (read one-way, like market_collector).
-"""
+'REDACTED_VALUE'
 import logging, os, random, threading, time
 
 import market_data as MD

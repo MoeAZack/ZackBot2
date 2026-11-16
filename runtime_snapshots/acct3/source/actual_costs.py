@@ -189,7 +189,7 @@ def finalize(target, quote, booked_fills, now_ms=None, wait_ms=None):
     return target
 
 
-# ---- FILL-PNL-01 (#176): realized P&L from the MEASURED fill prices --------------------------------------------------
+# REDACTED_VALUE
 # A lot books each fill at the price known when it was sent (the order answer's average, else the mark / plan price). The
 # exchange price arrives later in the fill's cost record (enriched `actual`). The booked numbers (`realized`, `avg`,
 # `pnl_gross`) are never rewritten; `pnl_fill_adj` / `avg_fill_adj` are the corrections from replaying the lot's own fills
@@ -369,7 +369,7 @@ def apply_funding(target, amount, asset):
     return target
 
 
-# ---------------------------------------------------------------- FILL-PNL-02 (#178): measured P&L for every consumer
+# REDACTED_VALUE
 # Codex ruling 6329976227: sizing, guards, R history, ML labels, notifications and books read the MEASURED result; a row
 # tracked since FILL-PNL-01 whose result is not measured yet is never presented or compounded as actual. Rows booked
 # before FILL-PNL-01 (no fill links, no coverage marks) keep their booked value - nothing exists to measure them with.

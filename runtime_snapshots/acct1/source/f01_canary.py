@@ -61,7 +61,7 @@ FROZEN_CARD = dict(key='ema_mom', sides='long', risk=0.01, max_pos=4, tf='4h', s
                             'QNTUSDT', 'BNBUSDT', 'LSKUSDT', 'ENAUSDT', '1000PEPEUSDT', 'WLDUSDT', 'ADAUSDT', 'AVAXUSDT', 'LINKUSDT'])
 
 
-# ------------------------------------------------------------------ flag + environment
+# REDACTED_VALUE
 def _ts(v):
     """A tz-aware UTC datetime from an ISO string / datetime, else None (a naive or unreadable time is not a frozen start)."""
     try:
@@ -166,7 +166,7 @@ def env_refusal(live, base, testnet):
     return None
 
 
-# ------------------------------------------------------------------ bounds (OQ1) + rollback semantics (OQ8)
+# REDACTED_VALUE
 def _rid_ok(r):
     return isinstance(r.get('id'), str) and r['id'].strip() != ''
 
@@ -262,7 +262,7 @@ def _iso(v):
     return s
 
 
-# ------------------------------------------------------------------ preflight (C1-C10), read-only
+# REDACTED_VALUE
 def _owner(x, key=None):
     sid = (x or {}).get('sleeve') or (((x or {}).get('plan') or {}).get('sl') or {}).get('id')
     if not sid and key and str(key).startswith('UE|') and str(key).count('|') >= 2: sid = str(key).split('|')[1]
@@ -347,7 +347,7 @@ def function_pins(names, root=REPO_ROOT):
     return out
 
 
-# ------------------------------------------------------------------ extracts (immutable, hashed, no ids)
+# REDACTED_VALUE
 def _enc(v):
     """Contract value_encoding: non-finite floats as {"float": "nan" | "inf" | "-inf"}; bools stay bools."""
     if isinstance(v, float) and not math.isfinite(v): return {'float': 'nan' if v != v else ('inf' if v > 0 else '-inf')}

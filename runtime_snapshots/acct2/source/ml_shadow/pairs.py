@@ -91,7 +91,7 @@ def paths(data_dir):
                 epoch=os.path.join(d, EPOCH_FILE))
 
 
-# ------------------------------------------------------------------ cost identity
+# REDACTED_VALUE
 def cost_inputs(row, view, meas):
     """The engine side (engine thread, at the measured close): a plain, detached copy of what pairing needs from one closed
     history row. view = actual_costs.row_view(row), meas = actual_costs.measured(row). No exchange ids are copied."""
@@ -114,7 +114,7 @@ def cost_revision_id(c, net_basis=NET_BASIS, cost_model_id=COST_MODEL_ID):
     return sha256_hex(canonical_json([COST_REV_SCHEMA, vals, net_basis, cost_model_id]))
 
 
-# ------------------------------------------------------------------ code identity (section 1.6)
+# REDACTED_VALUE
 def bundle_base():
     return getattr(sys, '_MEIPASS', None) or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -167,7 +167,7 @@ def packaged(code):
     return identity_gap(code) is None
 
 
-# ------------------------------------------------------------------ management snapshot (section 1.7)
+# REDACTED_VALUE
 def mgmt_snapshot(decision_id, effective, canonical, overlay_id=None, overlay=None, tf=None):
     """The lot's effective management as the engine will apply it, taken when the lot opens. Immutable once written."""
     g = effective if isinstance(effective, dict) else {}
@@ -181,7 +181,7 @@ def mgmt_snapshot(decision_id, effective, canonical, overlay_id=None, overlay=No
             'horizon_h': (mb * hrs) if (mb and hrs) else None}
 
 
-# ------------------------------------------------------------------ sealed append-only JSONL
+# REDACTED_VALUE
 def seal(row):
     body = {k: v for k, v in row.items() if k not in ('record_hash', 'paired_at')}
     return chash(body)
@@ -254,7 +254,7 @@ def _pair_key(r):
     return tuple(pk)
 
 
-# ------------------------------------------------------------------ epoch (section 1.8)
+# REDACTED_VALUE
 def read_epoch(path):
     """-> the verified epoch body, None when absent. Raises PairError when present but unverifiable."""
     if not os.path.exists(path): return None
@@ -294,7 +294,7 @@ def create_epoch(path, code, first_candle, now=None):
     return body
 
 
-# ------------------------------------------------------------------ the store
+# REDACTED_VALUE
 class PairStore:
     """Opened on the ML writer thread. counters: the engine health block; pairing counters live in counters['pairs']."""
 

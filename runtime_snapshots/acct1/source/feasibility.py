@@ -33,7 +33,7 @@ REASON_LEV_PLAN = 'the slot leverage cap is already used by the entry and earlie
 REASON_NOT_REACHED = 'not reached: an earlier order of this sequence is skipped, so the engine never places this one'
 
 
-# ------------------------------------------------------------------ rounding (the engine's _rd, moved here verbatim)
+# REDACTED_VALUE
 def round_step(x, step):
     """Floor x to a multiple of step (the engine's _rd). step must be > 0."""
     dec = max(0, -int(math.floor(math.log10(step)))) if step < 1 else 0
@@ -47,7 +47,7 @@ def ceil_step(x, step):
     return q if q >= x - 1e-12 else round_step(q + step, step)
 
 
-# ------------------------------------------------------------------ rules
+# REDACTED_VALUE
 def rules_from_exchange_info(info, allow_tradfi=False):
     """exchangeInfo JSON -> {symbol: dict(step, min_qty, tick, min_notional)}: PERPETUAL + TRADING only, MARKET_LOT_SIZE for
     the quantity filters, MIN_NOTIONAL default 5 - exactly what engine.connect has always built.
@@ -164,7 +164,7 @@ def diff_snapshots(old, new):
     return out
 
 
-# ------------------------------------------------------------------ sizing (the engine's open_lot formula)
+# REDACTED_VALUE
 def risk_qty(mgmt, risk_usd, px, atr, sd):
     """Risk-sized first-order quantity, as engine.open_lot / backtest.open_pos compute it.
     DCA basket (mgmt['dca']): levels px - sd*k*step_atr*ATR (k = 0..n), weights scale**k, stop step past the last level;
@@ -181,7 +181,7 @@ def risk_qty(mgmt, risk_usd, px, atr, sd):
     return dict(qty=risk_usd / R, stop=px - sd * R, R=R, levels=None, weights=None)
 
 
-# ------------------------------------------------------------------ THE order-size check
+# REDACTED_VALUE
 def size_check(qty_raw, qty, px, rule):
     """Can this order be placed? qty_raw: the risk-sized quantity; qty: after the leverage cap (<= qty_raw); px: price.
     rule: dict(step, min_qty, min_notional[, max_qty]) or None (no rule known for the symbol).
@@ -239,7 +239,7 @@ def leaves_dust(rest, px, rule):
     return rest < float(rule.get('min_qty', 0)) or rest * px < float(rule.get('min_notional', 0))
 
 
-# ------------------------------------------------------------------ preset preflight (panel / API)
+# REDACTED_VALUE
 def slot_order_legs(sl, capital, px, atr, max_lev=10.0, rule=None):
     """EVERY order the engine would plan for this slot's position on one coin at `capital` (no open lots, Kelly and governor
     multipliers 1). sl['mgmt'] must be the FULL merged management (strategies.merge_mgmt).

@@ -15,7 +15,7 @@ LOCK_NAME = 'app.owner.lock'
 TAKEOVER_STALE_S = 60
 
 
-# ------------------------------------------------------------------ exclusive control-panel bind
+# REDACTED_VALUE
 class ExclusiveServer(ThreadingHTTPServer):
     """ThreadingHTTPServer that can never share its port, with platform-correct semantics:
     - Windows: SO_REUSEADDR would let a SECOND listener bind the same port (proven on this project's Windows PC), so it
@@ -38,7 +38,7 @@ def bind_exclusive(addr, handler):
         return None
 
 
-# ------------------------------------------------------------------ process identity
+# REDACTED_VALUE
 def _win_proc(pid):
     import ctypes
     k = ctypes.WinDLL('kernel32', use_last_error=True)
@@ -101,7 +101,7 @@ def owner_gone(info, alive=pid_alive, start=proc_start):
     return rec is not None and now is not None and rec != now
 
 
-# ------------------------------------------------------------------ the ownership lock
+# REDACTED_VALUE
 UNREADABLE = None                     # the lock exists but cannot be read right now (sharing violation / antivirus)
 
 

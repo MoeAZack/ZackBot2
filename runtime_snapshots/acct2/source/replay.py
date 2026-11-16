@@ -125,7 +125,7 @@ def run_replay(raw, sleeves, t0, steps=6, start=500.0, tf_sec=14400, quiet=True,
         E.now_utc = lambda: pd.Timestamp(fake_now[0], unit='s', tz='UTC').to_pydatetime()
         E.time = types.SimpleNamespace(time=lambda: fake_now[0], sleep=lambda x: None)
         tmp = tempfile.mkdtemp(prefix='zb_replay_')
-        eng = E.Engine(dict(MODE='paper', API_KEY='x', API_SECRET='y'), tmp)
+        eng = E.Engine(dict(MODE='paper', API_KEY='REDACTED_VALUE', API_SECRET='REDACTED_VALUE'), tmp)
         eng.S['SLEEVES'] = sleeves; eng.S['UNIVERSE'] = syms; eng.S['SYMBOLS_ON'] = {s: True for s in syms}
         eng.S['CAPITAL_CAP'] = 0; eng.S['MAX_LEVERAGE'] = 10
         eng.equity_hist = []; eng.record_equity = lambda e: None

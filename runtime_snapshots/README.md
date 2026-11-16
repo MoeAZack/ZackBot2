@@ -1,65 +1,70 @@
-# Lane 1: bounded, read-only runtime inventory
+# Read-only runtime source inventory ? accounts 1?4
 
-This is **partial evidence**, not a deployable reconstruction or proof of loaded
-process memory. No runtime was stopped, restarted, written, configured or traded.
-Nothing here authorizes deployment or activation. The reference master commit and
-Africa/Cairo capture time are in `manifest.json`.
-The directory attributes preserve original line endings and whitespace in Git.
+This is an evidence archive, not an installer or deployable reconstruction.
+The owner extended account-4/R6 read-only authorization on 16 Nov 2026. No runtime
+file was edited, copied over, configured, stopped, restarted or traded. No
+scheduler/watchdog/task, lead-forward clone or other lane was operated on.
+The original PR snapshot is preserved in Git history; the manifest records this
+capture time in Africa/Cairo and the pinned comparison master.
 
-## Coverage and boundaries
+## Coverage
 
-- Account 1: the explicit read-only inventory exception was used. Captured the
-  loose source at `%LOCALAPPDATA%/ZackBot/src`; hashed the on-disk packaged
-  executable separately. The observed process runs the packaged executable.
-  **The loose source is not proven to be the executable's embedded source.**
-- Account 2: observed Python launcher `OLD3-account2/start_old3.py`; it prepends
-  its sibling `source` and sets LOCALAPPDATA to sibling `runtime`. Captured
-  launcher and the source scope below.
-- Account 3: observed Python launcher `ACCOUNT3-breakeven/start_account3.py`;
-  same source/runtime redirection. Captured launcher and the source scope below.
-- Account 4: **excluded** because the active launcher is in the protected R6
-  canary area. Directory names/process-path metadata were observed during initial
-  discovery; no canary file contents were read and nothing was changed.
-- The lead-forward clone, daily task, scheduler, watchdogs, orders and credentials
-  were not operated on. No integration watcher was installed or edited: this lane
-  explicitly prohibits scheduler/watchdog actions.
+Account 1 loose source is under LOCALAPPDATA/ZackBot/src. Accounts 2, 3 and 4 use
+their F-drive source directories beside the observed launchers. The launchers
+prepend those source directories and redirect LOCALAPPDATA to sibling runtime
+roots. Account 4 includes R6 strategy/overlay source and the launcher-adjacent
+runtime gate, panel client and read-only monitor. These are archived as source;
+none was executed. Source scope: top-level Python/HTML/JS/CSS/BAT/PS1 plus
+recursive newcore/ml_shadow. Bytecode, dependencies, logs, data, state and backup
+trees are outside scope. A top-level obsolete HTML backup remains labeled by its
+filename; its presence does not imply that it is served.
 
-The source scope is top-level `.py/.html/.js/.css/.bat/.ps1` plus recursive
-`newcore` and `ml_shadow`, excluding bytecode. Data, logs, dependencies, research
-trees, binaries and backup source trees are excluded. The obsolete account-2
-panel backup is captured because it is a top-level HTML file; this does not imply
-it is served. Imported external packages and OS environment are not reconstructed.
+Account 1 now has stronger executable evidence: 45/45 comparable embedded Python
+code entries match the loose source after compiler filename normalization. See
+PROVENANCE.md for the independent method, module coverage and limitations. The
+historical build revision also matches all 96 included tracked source files;
+generated build_info is untracked there. Loaded memory was not inspected.
 
-## Identity and configuration
+## Identity and redactions
 
-Each manifest file has SHA-256 and size. During capture, its runtime bytes were
-read again and compared with both the initial read and repository copy. This
-proves on-disk identity during those reads, **not** identity with code already
-loaded in a long-running Python process. No atomic multi-file snapshot was taken.
+For every included file, the manifest records original on-disk SHA-256/size and
+snapshot SHA-256/size. Runtime bytes were reread and compared during capture.
+Files marked byte_identical retain original bytes including line endings through
+Git attributes. Redacted files deliberately differ: sensitive-looking literals
+are replaced with REDACTED_VALUE and documented by file/line/kind in REDACTIONS.md
+and redactions.json. No original values appear in those reports. Conservative
+replacements can include public hashes, test fixtures and harmless placeholders;
+this is not a claim that all replacements were real credentials.
 
-Credential-screened source files are omitted entirely, including their hashes.
-The screen is conservative and may exclude harmless placeholders. `config.env`
-was never opened. Selected JSON configurations are represented as schemas only:
-all values, list contents and sensitive/identifier-like keys are omitted; no
-source hashes are published for these secret-bearing files. These schemas cannot
-reproduce settings or prove configuration identity.
+All 14 previously withheld files were reconsidered under this rule. Doubtful,
+malformed or unresolved files are omitted entirely and listed in the manifest.
+They must not be deployed from this archive. Redactions and omissions mean that
+this archive cannot claim byte identity for every source file or reproduce all
+runtime behavior. It does not prove atomic multi-file or already-loaded process
+identity. No stored digest is a hash of a standalone credential/config value.
 
-`DRIFT.md` enumerates modified/runtime-only captured files and absent master files
-within the declared source scope. It gives line counts and conservative risk
-categories. Screened files remain unassessed; a complete semantic drift audit is
-an open item. Account 1 build provenance, account 4's scope conflict, screened
-source, configurations and external dependencies prevent the requested exact
-four-account reconstruction. Final lane status is **STOPPED / partial artifact**.
+Secret-bearing config.env, account state and trade logs were not opened.
+Selected settings/cohort/install JSON is represented as types only: every scalar
+value and list item is omitted, as are sensitive/identifier-like field names.
+Those schemas cannot reproduce settings or establish config identity.
 
-## Review and validation
+DRIFT.md lists source changes and master-only files within the declared scope.
+Counts compare original on-disk source before redaction, with conservative risk
+categories. It is an inventory, not semantic acceptance or a profitability claim.
 
-Run `python runtime_snapshots/verify.py` from this checkout to verify published
-hashes, sizes and Python syntax without reading or executing any runtime. The
-capture script is retained for audit and is deliberately workstation-bound;
-do not rerun it casually because its reads are authorized only for this handoff.
-No bot tests or runtime imports were run, and no strategy/profitability claim is
-made. This draft must not be merged or marked ready by this lane.
+## Validation and publication gate
 
-ROADMAP FIT: owner-approved lane 1 deployed-source traceability for PAPER/testnet.
-DEFERRED: deployment, activation, semantic drift acceptance, account-4 R6 access,
-account-1 embedded-source recovery and all live/mainnet work.
+Run python runtime_snapshots/verify.py for offline snapshot hashes, redaction
+bookkeeping, file coverage and Python syntax. Add --index to compare staged Git
+bytes too. No runtime imports or bot/full-suite execution is necessary for this
+inert archive. The capture/compare helpers are workstation-bound read-only audit
+utilities; rerun only within the explicitly authorized inventory scope.
+
+The owner requires a strict secret scan of the complete PR diff and the local
+redaction list in C:/Dev/codex-inbox/lane1-redactions.md before any new push.
+These changes remain local pending that check. The PR stays draft; this lane may
+not merge or mark ready. Secret-scan evidence names locations/kinds only.
+
+ROADMAP FIT: owner-approved PAPER/testnet runtime source traceability.
+DEFERRED: deployment, semantic drift acceptance,
+complete binary/dependency/process-memory provenance and all live/mainnet work.

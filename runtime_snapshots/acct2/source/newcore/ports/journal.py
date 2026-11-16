@@ -213,7 +213,7 @@ class Grammar:
         self._last_protect: dict[str, str] = {}
         self._lots: set[str] = set()
 
-    # ------------------------------------------------------------------------------------------------ queries
+    # REDACTED_VALUE
     def is_consumed(self, key: DecisionKey) -> bool:
         return derive_decision_id(self.account_id, key) in self._decisions
 
@@ -225,7 +225,7 @@ class Grammar:
         purpose = Purpose(purpose)
         return derive_child_intent_id(self.account_id, owner_id, purpose, self._lineage.get((owner_id, purpose), 0))
 
-    # ------------------------------------------------------------------------------------------------ admission
+    # REDACTED_VALUE
     def admit(self, h: EventHeader) -> Admission:
         commit = self.prepare(h)
         if commit is None:
@@ -361,7 +361,7 @@ class Grammar:
         return commit
 
 
-# ---------------------------------------------------------------------------------------------- the one gate
+# REDACTED_VALUE
 class StagedEvent:
     """A validated, NOT yet committed admission (JournalGate.stage). The journal makes the event durable FIRST and
     only then calls commit(); if persistence fails it simply drops this object, and the gate never saw the event."""
@@ -476,7 +476,7 @@ class JournalGate:
 
 
 
-# ---------------------------------------------------------------------------------------------- consumed-signal rule
+# REDACTED_VALUE
 @dataclass(frozen=True, slots=True)
 class SignalClaim:
     fresh: bool                       # True: decide now; False: already consumed, never decide again
@@ -493,7 +493,7 @@ def claim_signal(grammar: Grammar, key: DecisionKey) -> SignalClaim:
     return SignalClaim(True, d, (derive_intent_id(grammar.account_id, key),))
 
 
-# ---------------------------------------------------------------------------------------------- the port
+# REDACTED_VALUE
 @runtime_checkable
 class JournalPort(Protocol):
     """Append-only, single-writer journal of one account aggregate (NC-02a file journal, S1 MemoryJournal). Every

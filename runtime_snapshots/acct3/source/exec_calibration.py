@@ -79,7 +79,7 @@ class CalibrationError(ValueError):
     pass
 
 
-# ---- helpers ----------------------------------------------------------------------------------------------------------
+# REDACTED_VALUE
 def canonical(obj) -> bytes:
     return json.dumps(obj, sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False).encode('ascii')
 
@@ -131,7 +131,7 @@ def _finite(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
 
 
-# ---- 1. reader ----------------------------------------------------------------------------------------------------------
+# REDACTED_VALUE
 def normalize(rec, th=THRESHOLDS):
     """One raw fills.jsonl record -> (row, None, flags) or (None, reject_reason, []). Only the fields the profile needs are
     kept; ids and anything else on the record are dropped here."""
@@ -215,7 +215,7 @@ def read_fills(paths, th=THRESHOLDS):
                       reader_thresholds={k: float(th[k]) for k in READER_KEYS})
 
 
-# ---- 2. profile --------------------------------------------------------------------------------------------------------
+# REDACTED_VALUE
 def _stats(rows, kind_class, as_of, max_age):
     n = len(rows)
     oc = Counter(r['outcome'] for r in rows)
@@ -314,7 +314,7 @@ def load_profile(path):
     with open(path, encoding='utf-8') as fh: return json.load(fh)
 
 
-# ---- 4. promotion guard ------------------------------------------------------------------------------------------------
+# REDACTED_VALUE
 def promotable(profile, now, thresholds=None):
     """(ok, reasons). Thresholds come from the profile but can never be looser than THRESHOLDS (or the override)."""
     reasons = []
@@ -403,7 +403,7 @@ def _consistent(cov, lv, cells):
     return True
 
 
-# ---- 3. opt-in application ---------------------------------------------------------------------------------------------
+# REDACTED_VALUE
 def _check(profile, mode):
     if mode not in MODES: raise CalibrationError(f'mode must be one of {sorted(MODES)}')
     if not isinstance(profile, dict) or profile.get('schema') != SCHEMA: raise CalibrationError('schema mismatch')
@@ -490,7 +490,7 @@ def run_backtest(book, sleeves, profile=None, mode='median', now=None, **kw):
     return tr, cv
 
 
-# ---- CLI: read-only run over local fills --------------------------------------------------------------------------------
+# REDACTED_VALUE
 def summary(profile):
     lv = profile['levels']
     out = dict(digest=profile['digest'], rows=profile['coverage']['rows'], slip_coverage=profile['coverage']['slip_coverage'],

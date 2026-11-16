@@ -243,7 +243,7 @@ class Portfolio(Record):
             'KNOWN_EMPTY is proven exactly by a flat snapshot; KNOWN by journal / reconciliation / adoption')
         _check_known(self, p)
 
-    # ------------------------------------------------------------------------------------------------ accessors
+    # REDACTED_VALUE
     def _known(self):
         if self.ownership is Ownership.UNKNOWN:
             raise OwnershipUnknown('Portfolio.ownership', 'ownership is UNKNOWN: nothing can be listed as owned')
@@ -400,7 +400,7 @@ def _check_known(pf, p):
                     f'a {it.purpose} intent created after entries became {pf.entries_mode} is not permitted')
 
 
-# ----------------------------------------------------------------------------------------------------------- queries
+# REDACTED_VALUE
 def owned_client_ids(pf):
     """Every client order id this portfolio owns (intents, algo fallbacks, orphan cancels). Raises OwnershipUnknown for
     an UNKNOWN portfolio: unknown is never an empty set."""

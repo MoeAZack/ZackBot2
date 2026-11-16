@@ -123,7 +123,7 @@ class FileJournal:
     def _path(self, n=None):
         return os.path.join(self._jd, seg_name(self.segment_no if n is None else n))
 
-    # ------------------------------------------------------------------------------------------------ JournalPort
+    # REDACTED_VALUE
     def append(self, event):
         if self._closed:
             raise DurabilityUnavailable('append refused: journal closed', self._path())
@@ -183,7 +183,7 @@ class FileJournal:
         it via `append` only."""
         return self._folder.gate
 
-    # ------------------------------------------------------------------------------------------------ extras
+    # REDACTED_VALUE
     def state(self):
         """The recovered / current JournalState (fold.py): ownership UNKNOWN, intents classified for the Runner."""
         return self._folder.state()
@@ -200,7 +200,7 @@ class FileJournal:
             except OSError:
                 pass
 
-    # ------------------------------------------------------------------------------------------------ failure path
+    # REDACTED_VALUE
     def _failed(self, op):
         """Never reuse the failed handle; roll now so the files equal the in-process state. A failing roll is retried
         by the next append."""

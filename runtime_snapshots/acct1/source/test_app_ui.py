@@ -31,7 +31,7 @@ if os.path.isdir(BASE): shutil.rmtree(BASE, ignore_errors=True)
 os.makedirs(BASE, exist_ok=True)
 sys.path.insert(0, HERE); os.chdir(HERE)
 
-# ---------------------------------------------------------------- result recording
+# REDACTED_VALUE
 CHECKS, SHOTS, STARTED = [], [], now_cairo()
 def check(name, ok, detail=''):
     CHECKS.append(dict(name=name, ok=bool(ok), detail=str(detail)[:400]))
@@ -68,7 +68,7 @@ def free_port():
     with socket.socket() as s: s.bind(('127.0.0.1', 0)); return s.getsockname()[1]
 PORT = int(os.environ.get('ZB_UI_PORT') or free_port())
 
-# ---------------------------------------------------------------- isolated app on a fake exchange
+# REDACTED_VALUE
 # Playwright finds Chromium through LOCALAPPDATA on Windows; pin the real location BEFORE LOCALAPPDATA is redirected below
 # (review finding T02-P1). run_ui_baseline.bat sets PLAYWRIGHT_BROWSERS_PATH explicitly; this covers direct runs.
 if os.name == 'nt' and not os.environ.get('PLAYWRIGHT_BROWSERS_PATH') and os.environ.get('LOCALAPPDATA'):
@@ -140,7 +140,7 @@ class Fake:
 import binance_client; binance_client.Futures = Fake
 import engine; engine.Futures = Fake
 import app; app.Futures = Fake
-app.load_cfg = lambda: dict(MODE='paper', API_KEY='k', API_SECRET='s')
+app.load_cfg = lambda: dict(MODE='paper', API_KEY='REDACTED_VALUE', API_SECRET='REDACTED_VALUE')
 class _NeverDownload(dict):                 # coin icons: serve bundled/cached files only, never download (offline harness)
     def get(self, k, d=None): return time.time()
 app._ICON_FAIL = _NeverDownload()
@@ -171,7 +171,7 @@ check('isolation: public market-data collector is off in this harness', app.APP.
       and not app.APP.collector.enabled(), app.APP.engine.S.get('MARKET_COLLECTOR'))
 check('isolation: normal PAPER default keeps the collector on', engine.GLOBAL_DEFAULTS['MARKET_COLLECTOR'] is True)
 
-# ---------------------------------------------------------------- auth boundary (no token / foreign origin)
+# REDACTED_VALUE
 check('auth: /api/status without token -> 401', _rq.get(U + '/api/status').status_code == 401)
 check('auth: panel without token -> locked page 401', _rq.get(U + '/').status_code == 401)
 check('auth: POST without token -> 401', _rq.post(U + '/api/action', json={'action': 'flatten'}).status_code == 401)
@@ -189,7 +189,7 @@ def wait_job(jid, limit=300, step=2):
         time.sleep(step)
     return dict(status='timeout')
 
-# ---------------------------------------------------------------- API checks (existing harness, now asserted)
+# REDACTED_VALUE
 try:
     st = G('/api/status'); META = G('/api/meta'); st['presets'] = META['presets']
     check('api: status has equity, settings, health', all(k in st for k in ('equity', 'settings', 'health')) and st['health'].get('engine'), str(st.get('health')))
@@ -258,7 +258,7 @@ try:
 except Exception as ex:
     check('api section ran without exceptions', False, traceback.format_exc()[-400:])
 
-# ---------------------------------------------------------------- browser
+# REDACTED_VALUE
 TABS = ['dash', 'trades', 'risk', 'strat', 'coins', 'sig', 'bt', 'res', 'logs', 'set', 'help']
 VIEWPORTS = [('desktop', 1560, 1000), ('tablet', 820, 1180), ('mobile', 390, 844)]
 CONSOLE = {}                                   # context name -> [{type, text, url}]

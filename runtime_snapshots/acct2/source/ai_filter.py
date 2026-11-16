@@ -211,7 +211,7 @@ def _attempt(cfg, key, model, meta, symbol, sleeve, sig, candles, funding, tf, s
                             close=_number(sig, 'close'), e20=_number(sig, 'e20'), e50=_number(sig, 'e50'),
                             e200=_number(sig, 'e200'), atr=_number(sig, 'atr'), ret42=_percent(sig, 'ret42'),
                             ret180=_percent(sig, 'ret180'))
-        payload = dict(model=model, max_tokens=400, messages=[{'role': 'user', 'content': msg}],
+        payload = dict(model=model, max_tokens='REDACTED_VALUE', messages=[{'role': 'user', 'content': msg}],
                        output_config={'format': {'type': 'json_schema', 'schema': OUTPUT_SCHEMA}})
         r = requests.post('https://api.anthropic.com/v1/messages', timeout=timeout, headers={
             'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'},

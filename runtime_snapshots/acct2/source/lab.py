@@ -27,7 +27,7 @@ MAX_TRIALS, MAX_WINDOWS, MAX_WF_TOTAL = 300, 30, 1500
 MAX_DIMS, MAX_VALUES = 6, 50
 MAX_MC = 10000
 
-# ------------------------------------------------------------------ allowed optimisation paths and value ranges
+# REDACTED_VALUE
 TOP_RANGES = {'risk': (0.0005, 0.10, float), 'share': (0.01, 1.0, float), 'max_pos': (1, 40, int)}
 MGMT_RANGES = {'stop_atr': (0.2, 20, float), 'trail_atr': (0, 20, float), 'be_r': (0, 20, float), 'tp1_r': (0, 20, float),
                'tp1_frac': (0.05, 1, float), 'tp_r': (0, 50, float), 'max_bars': (0, 2000, int)}
@@ -62,7 +62,7 @@ def _core8():
         return list(CORE8_FALLBACK)
 
 
-# ------------------------------------------------------------------ small helpers
+# REDACTED_VALUE
 def _f(x, nd=4):
     """JSON-safe float (None for NaN/inf)."""
     if x is None: return None
@@ -173,7 +173,7 @@ def run_period(book, sleeves, t0, t1, run_kwargs):
     return tr, cv, _stats(tr, cv, start)
 
 
-# ------------------------------------------------------------------ search space
+# REDACTED_VALUE
 def expand_values(spec):
     if isinstance(spec, dict):
         lo, hi, st = float(spec['min']), float(spec['max']), float(spec['step'])
@@ -260,7 +260,7 @@ def _combos(space, n_trials, method, seed):
     return out, total
 
 
-# ------------------------------------------------------------------ 1) optimize
+# REDACTED_VALUE
 def optimize(book, base_sleeves, space, metric='calmar', n_trials=60, seed=0, t0=None, t1=None, method='random', min_trades=30,
              holdout=True, top_k=10, progress=None, should_stop=None, **run_kwargs):
     """Search `space` on the first 75% of [t0, t1) (or all of it with holdout=False); report the top results also on the
@@ -303,7 +303,7 @@ def optimize(book, base_sleeves, space, metric='calmar', n_trials=60, seed=0, t0
                 elapsed_s=round(time.time() - t_start, 1))
 
 
-# ------------------------------------------------------------------ 2) walk-forward
+# REDACTED_VALUE
 def wf_windows(t0, t1, train_days, test_days, step_days):
     """Rolling windows: train [s, s+train), test [s+train, s+train+test); s += step. A last test window shorter than the
     others is kept if it has at least half of test_days."""
@@ -387,7 +387,7 @@ def _curve_pts(cv, max_pts=400):
     return [[str(t.date()), round(float(v), 2)] for t, v in d.items()]
 
 
-# ------------------------------------------------------------------ 3) Monte Carlo
+# REDACTED_VALUE
 EQ_COLS = ('eq_in', 'equity_in', 'eq_entry', 'equity_at_entry')
 
 
@@ -503,7 +503,7 @@ def monte_carlo_daily(cv, start=500.0, n=2000, block_days=5, seed=0):
                 actual=dict(end=_f(act[-1], 2), max_dd=_f((np.r_[start, act] / np.maximum.accumulate(np.r_[start, act]) - 1).min() * 100, 1)))
 
 
-# ------------------------------------------------------------------ 4) lookahead check
+# REDACTED_VALUE
 def _raw_from(book_or_raw):
     if isinstance(book_or_raw, BT.Book):
         return {s: d[['t', 'o', 'h', 'l', 'c', 'v'] + (['qv'] if 'qv' in d else [])].copy() for s, d in book_or_raw.d.items()}
@@ -627,7 +627,7 @@ def lookahead_check(book_or_raw, keys=None, n_points=40, seed=0, symbols=None, m
                 elapsed_s=round(time.time() - t_start, 1))
 
 
-# ------------------------------------------------------------------ 5) liquidation distance (backtest.run liquidates on maintenance margin;
+# REDACTED_VALUE
 #                                                                      this adds how CLOSE the account came to it)
 def liquidation_report(book, sleeves, tr, cv, max_lev=10.0, mm=0.005, start=500.0):
     """Cross-margin estimate. Position size of each trade is rebuilt from its risk (|pnl / R|) and the sizing rules of
@@ -696,7 +696,7 @@ def liquidation_report(book, sleeves, tr, cv, max_lev=10.0, mm=0.005, start=500.
                 note='estimate: sizes rebuilt from each trade\'s risk; cushion = worst-case intrabar equity / maintenance margin (<=1 means liquidation)')
 
 
-# ------------------------------------------------------------------ 6) validation + job wrapper
+# REDACTED_VALUE
 def _num(v, lo, hi, name, typ=float):
     if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(float(v)):
         raise ValueError(f'{name} must be a number')

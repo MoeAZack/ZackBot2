@@ -22,13 +22,13 @@ from newcore.ports.venue import (MarketOrder, OrderRef, ReadOutcome, StopOrder, 
 from newcore.venue.binance_usdm_testnet import RateEvidence
 
 
-TRADE_SOURCE = ('https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-'
+TRADE_SOURCE = ('REDACTED_VALUE'
                 'usd-s-m-futures/api/rest-api/trade')
-ACCOUNT_SOURCE = ('https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-'
+ACCOUNT_SOURCE = ('REDACTED_VALUE'
                   'usd-s-m-futures/api/rest-api/account')
-GENERAL_SOURCE = 'https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/general-info'
-MARKET_DATA_SOURCE = ('https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-'
-                      'usd-s-m-futures/api/rest-api/market-data')
+GENERAL_SOURCE = 'REDACTED_VALUE'
+MARKET_DATA_SOURCE = ('REDACTED_VALUE'
+                      'REDACTED_VALUE')
 SOURCE_RETRIEVED_ON = '2026-11-03'
 ENDPOINT_TABLE_VERSION = 'binance-usdm-v1-2026-11-03'
 EXCHANGE_INFO_PATH = '/fapi/v1/exchangeInfo'

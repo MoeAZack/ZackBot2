@@ -74,7 +74,7 @@ def _label(r):
     }
 
 
-# ------------------------------------------------------------------ ML-PAIR-01 (contracts/ml_train_01 section 1.3)
+# REDACTED_VALUE
 _HEX64, _HEX40 = re.compile(r'^[0-9a-f]{64}$'), re.compile(r'^[0-9a-f]{40}$')
 _BUILD = re.compile(r'^[A-Za-z0-9._-]{1,40}$')
 _NAME = re.compile(r'^[a-z0-9_]+(\.[a-z0-9_]+)*$')     # schema / model ids: dotted names, never free text

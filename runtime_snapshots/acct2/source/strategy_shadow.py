@@ -142,7 +142,7 @@ class ShadowBook:
         os.makedirs(d, exist_ok=True)
         self._replay()
 
-    # ------------------------------------------------------------------ store
+    # REDACTED_VALUE
     def _replay(self):
         if not os.path.exists(self.path): return
         with open(self.path, 'r', encoding='utf-8') as fh:
@@ -190,7 +190,7 @@ class ShadowBook:
             else: break
         return q
 
-    # ------------------------------------------------------------------ public observer API (values in, documents out)
+    # REDACTED_VALUE
     def on_signal(self, slot, symbol, side, signal, mark, live_decision, rule=None):
         iid, dg, cfg = identity(slot)
         dt = (signal or {}).get('time')
@@ -239,7 +239,7 @@ class ShadowBook:
     def mark_incomplete(self, instance_id, reason):
         return self._record('incomplete', instance_id=instance_id, reason=str(reason))
 
-    # ------------------------------------------------------------------ reducer
+    # REDACTED_VALUE
     def _register(self, rec):
         iid, cfg = rec['instance_id'], rec['config']
         inst = self.instances.get(iid)
@@ -561,7 +561,7 @@ class ShadowBook:
         elif rec['reason'] not in inst['incomplete']: inst['incomplete'].append(rec['reason'])
         return dict(seq=self.seq)
 
-    # ------------------------------------------------------------------ read side
+    # REDACTED_VALUE
     def _unreal(self, ep):
         return ep['sd'] * (ep['last'] - ep['avg']) * ep['qty'] if ep['status'] == 'open' else 0.0
 

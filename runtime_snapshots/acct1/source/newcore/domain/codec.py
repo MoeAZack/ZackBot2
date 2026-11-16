@@ -70,7 +70,7 @@ RECORD_TYPES = {
 TYPE_OF = {cls: k for k, cls in RECORD_TYPES.items()}
 
 
-# ----------------------------------------------------------------------------------------------------------- encode
+# REDACTED_VALUE
 def to_json(obj):
     if isinstance(obj, Record):
         return {name: to_json(getattr(obj, name)) for name, _, _ in field_spec(type(obj))}
@@ -105,7 +105,7 @@ def contract_sha256(obj):
     return hashlib.sha256(canonical_bytes(obj)).hexdigest()
 
 
-# ----------------------------------------------------------------------------------------------------------- decode
+# REDACTED_VALUE
 def _bad(path, msg):
     raise InvalidRecord(path, msg)
 
@@ -201,7 +201,7 @@ def decode_document(doc, *, expect=None):
     return from_json(RECORD_TYPES[rtype], doc['body'], rtype)
 
 
-# ----------------------------------------------------------------------------------------------------------- text
+# REDACTED_VALUE
 class _Bad:
     """Marker for a JSON token that is damage (float / NaN / Infinity / huge int). Fails every typed field."""
     __slots__ = ('text',)

@@ -293,7 +293,7 @@ class OrderIntent(Record):
                                                                                    self.alt_client_order_id)
 
 
-# ----------------------------------------------------------------------------------------------------------- results
+# REDACTED_VALUE
 class ResultPhase(enum.StrEnum):
     UNKNOWN = 'unknown'      # sent; the answer is lost / the order cannot be read / not found
     KNOWN = 'known'          # the exchange has it, not final: its executed quantity is NOT trusted

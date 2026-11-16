@@ -105,7 +105,7 @@ def _read_only_safe(fs, account_dir, account_id, aggregate_id):
     except (IndexError, KeyError, TypeError, ValueError, AttributeError, OverflowError) as ex:
         raise _Out(Verdict.DAMAGED, [Finding('damage', None, None, f'internal: {type(ex).__name__}')]) from None
 
-# ---------------------------------------------------------------------------------------------------- read-only phase
+# REDACTED_VALUE
 @dataclass
 class _Plan:
     folder: Folder
@@ -171,7 +171,7 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
         except OSError as ex:
             unreadable.append(Finding('unreadable', n, None, type(ex).__name__))
 
-    # P3 rule 1 -------------------------------------------------------------------------------------------------
+    # REDACTED_VALUE
     scans, headers, future = {}, {}, []
     decoded = {}                                              # (no, offset) -> DecodeResult
     for no, data in blobs.items():
@@ -211,7 +211,7 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
     if not names:
         raise _Out(Verdict.MISSING, [Finding('missing', JOURNAL_DIR, None, 'an empty journal directory')])
 
-    # P4 structure ------------------------------------------------------------------------------------------------
+    # REDACTED_VALUE
     nos = sorted(names)
     if nos != list(range(1, len(nos) + 1)):
         raise _Out(Verdict.DAMAGED, [Finding('damage', None, None, f'segments are not numbered 1..{len(nos)}')])
@@ -263,7 +263,7 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
     if damage:
         raise _Out(Verdict.DAMAGED, damage)
 
-    # P5 decode and fold ------------------------------------------------------------------------------------------
+    # REDACTED_VALUE
     events = []
     for j, hj, recs in seq_segments:
         n = names[j]
@@ -285,7 +285,7 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
     except JournalConflict as ex:
         raise _Out(Verdict.DAMAGED, [Finding('damage', None, None, f'gate replay: {ex}')]) from None
 
-    # P6 torn tail ------------------------------------------------------------------------------------------------
+    # REDACTED_VALUE
     active = scans[m] if m else None
     if active is not None and active.tail_offset is not None:
         findings.append(Finding('torn_tail', names[m], active.tail_offset, f'{len(blobs[m]) - active.tail_offset} bytes'))
@@ -293,7 +293,7 @@ def _read_only(fs, account_dir, account_id, aggregate_id):
         findings.append(Finding('void_segment', names[v], 0, f'interrupted segment create ({len(blobs[v])} bytes)'))
     return _Plan(folder, names, blobs, m, hdr, active, voids, findings)
 
-# ---------------------------------------------------------------------------------------------------- write phase
+# REDACTED_VALUE
 def _finish(fs, account_dir, account_id, plan, writer_build, lock=None):
     jd = os.path.join(account_dir, JOURNAL_DIR)
     folder, m = plan.folder, plan.m

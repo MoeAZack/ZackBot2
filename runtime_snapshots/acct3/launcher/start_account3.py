@@ -31,7 +31,7 @@ def paper_handle(path, body):
             raise ValueError('Cohort preparation takes no parameters')
         import json
         accepted = json.loads((root / 'prot333-acceptance.json').read_text())
-        if accepted.get('head') != 'bdd0cc7a3de1c5a17e0991ce169758eeea610e9f' or accepted.get('status') != 'accepted':
+        if accepted.get('head') != 'REDACTED_VALUE' or accepted.get('status') != 'accepted':
             raise ValueError('Exact-head protection acceptance required')
         from account3_activation import prepare_cohort
         return prepare_cohort(app.APP.engine, app.PORT, app.ENG.TESTNET, root / 'cohort-archives')

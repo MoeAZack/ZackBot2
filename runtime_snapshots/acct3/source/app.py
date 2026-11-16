@@ -106,12 +106,12 @@ import f01_activation as F01ACT  # noqa: E402  FACTORY-F01-ACT-01: stage / prefl
 import candidate_activation as CACT  # noqa: E402  generic PAPER candidate stage / preflight / enable / rollback
 
 
-# ------------------------------------------------------------------ config (keys) - validated, atomically written, encrypted on Windows
+# REDACTED_VALUE
 CFG_KEYS = ('MODE', 'LIVE_CONFIRM', 'API_KEY', 'API_SECRET', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'TELEGRAM_TOKEN',
             'ANTHROPIC_WORKSPACE_ID')
 CFG_SECRET = ('API_KEY', 'API_SECRET', 'ANTHROPIC_API_KEY', 'TELEGRAM_TOKEN', 'ANTHROPIC_WORKSPACE_ID')   # ML-SHADOW-01: DPAPI too
-CFG_RULES = dict(MODE=r'paper|live', LIVE_CONFIRM=r'(YES_REAL_MONEY)?', API_KEY=r'[A-Za-z0-9]{8,128}', API_SECRET=r'[A-Za-z0-9]{8,128}',
-                 ANTHROPIC_API_KEY=r'[A-Za-z0-9_\-]{8,200}', ANTHROPIC_MODEL=r'[A-Za-z0-9.\-_]{0,80}', TELEGRAM_TOKEN=r'\d{5,15}:[A-Za-z0-9_\-]{20,80}',
+CFG_RULES = dict(MODE=r'paper|live', LIVE_CONFIRM=r'(YES_REAL_MONEY)?', API_KEY='REDACTED_VALUE', API_SECRET='REDACTED_VALUE',
+                 ANTHROPIC_API_KEY='REDACTED_VALUE', ANTHROPIC_MODEL=r'[A-Za-z0-9.\-_]{0,80}', TELEGRAM_TOKEN='REDACTED_VALUE',
                  ANTHROPIC_WORKSPACE_ID=r'[A-Za-z0-9_\-]{1,128}')
 
 
@@ -214,7 +214,7 @@ def write_cfg(updates):
         except OSError: pass
 
 
-# ------------------------------------------------------------------ candle cache for backtests
+# REDACTED_VALUE
 PUB = None
 
 
@@ -270,7 +270,7 @@ def _get_candles(sym, tf, days):
     return out.reset_index(drop=True)
 
 
-# ------------------------------------------------------------------ backtest jobs (one worker, bounded queue)
+# REDACTED_VALUE
 JOBS = {}
 JOBQ = queue.Queue(maxsize=8)
 BT_ID = re.compile(r'^[0-9]{8}-[0-9]{6}-[a-z0-9_\-]{2,40}$')
@@ -553,7 +553,7 @@ def research():
     return out
 
 
-# ------------------------------------------------------------------ coin logos
+# REDACTED_VALUE
 # Bundled SVGs (CC0 cryptocurrency-icons + MIT web3icons) for the top coins; anything else is
 # fetched once from Binance's public asset list and cached in DATA/icons.
 _ICON_FAIL, _ASSETS = {}, {'t': 0, 'map': {}}
@@ -590,7 +590,7 @@ def coin_icon(sym):
             if time.time() - _ASSETS['t'] > 3600 and not _ASSETS['map']:
                 _ASSETS['t'] = time.time()
                 try:
-                    r = requests.get('https://www.binance.com/bapi/asset/v2/public/asset/asset/get-all-asset', timeout=8).json()
+                    r = requests.get('REDACTED_VALUE', timeout=8).json()
                     _ASSETS['map'] = {str(a.get('assetCode', '')).upper(): (a.get('logoUrl') or a.get('fullLogoUrl')) for a in r.get('data', []) if a.get('logoUrl') or a.get('fullLogoUrl')}
                 except Exception as e:
                     log.info(f'coin logo list unavailable: {type(e).__name__}')
@@ -610,7 +610,7 @@ def coin_icon(sym):
     return None
 
 
-# ------------------------------------------------------------------ app state
+# REDACTED_VALUE
 def migrate_settings_secrets(cfg, data_dir=None):
     """AUD-05 r2: v2 kept the Telegram token in settings.json. Move it into the encrypted config, then rewrite settings.json
     and its .bak without it - before any Engine is created, so no engine save (init, pause, recovery) can persist it. If
@@ -625,7 +625,7 @@ def migrate_settings_secrets(cfg, data_dir=None):
     ENG.redact_settings_files(data_dir)
 
 
-# ------------------------------------------------------------------ ML-SHADOW-01: shadow analyst wiring (report only)
+# REDACTED_VALUE
 ANALYST_TICK_S = 300
 # Serialises the analyst's persisted state and its API call (timer, manual action, review thread). Never held while the
 # local evidence files are scanned: ml_aggregate() runs before the lock is taken.
@@ -1327,7 +1327,7 @@ LOCKED_PAGE = ('<!doctype html><meta charset=utf-8><title>ZackBot</title><body s
                'ZackBot shortcut. Close this tab and start ZackBot again from the desktop or Start menu.</p></div>')
 
 
-# ------------------------------------------------------------------ HTTP (loopback only, per-launch token, exact Host/Origin)
+# REDACTED_VALUE
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
@@ -1433,7 +1433,7 @@ class H(BaseHTTPRequestHandler):
             log.error('panel action failed: ' + traceback.format_exc()); self._json(dict(ok=False, error=str(e)), 400)
 
 
-# ------------------------------------------------------------------ request validation
+# REDACTED_VALUE
 LIMITS = dict(MAX_LEVERAGE=(1, 50), DAILY_LOSS_HALT=(0.01, 1.0), PEAK_DD_FLATTEN=(0.0, 0.95))
 SYM = re.compile(r'^[A-Z0-9]{2,20}USDT$')
 MG_NUM = dict(stop_atr=(0.3, 20), trail_atr=(0.3, 20), be_r=(0.1, 50), tp1_r=(0.1, 50), tp1_frac=(0.05, 1), tp_r=(0.2, 100), max_bars=(1, 5000))
@@ -1910,7 +1910,7 @@ def handle(path, b):
     raise ValueError('unknown request')
 
 
-# ------------------------------------------------------------------ window
+# REDACTED_VALUE
 SESSION_F = os.path.join(DATA, 'session.json')
 
 
@@ -1927,7 +1927,7 @@ def open_window(token):
         import webbrowser; webbrowser.open(url); return None
     prof = os.path.join(DATA, 'app-window')
     return subprocess.Popen([b, f'--app={url}', f'--user-data-dir={prof}', '--window-size=1560,980', '--no-first-run',
-                             '--disable-extensions', '--disable-sync', '--disable-component-extensions-with-background-pages',
+                             '--disable-extensions', '--disable-sync', 'REDACTED_VALUE',
                              '--disable-features=Translate,msEdgeSync,EdgeCollections,msUndersideButton', '--no-default-browser-check',
                              '--disable-background-networking'])
 

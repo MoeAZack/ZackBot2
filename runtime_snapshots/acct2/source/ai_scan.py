@@ -183,7 +183,7 @@ def cost_revision_id(actual_costs, *, net_basis, cost_model_id):
 _cost_rev_id = cost_revision_id                     # build_outcome's parameter of the same name shadows it
 
 
-# ------------------------------------------------------------------ inputs -> INSUFFICIENT reasons
+# REDACTED_VALUE
 def features_hash(features):
     return sha256_hex(canonical_json(features))
 
@@ -264,7 +264,7 @@ def check_inputs(side, tf, cutoff_ms, decided_ms, snapshot, plan, inputs):
     return why
 
 
-# ------------------------------------------------------------------ record builders
+# REDACTED_VALUE
 def build_signal(*, sleeve, strategy, family, symbol, side, tf, candle_open, decided_at, rules_status, rules_reason,
                  snapshot, plan, inputs=None, costs=None):
     """One immutable signal record. candle_open = the decision candle's OPEN (engine sg['time'], engine.py _utc_ms
@@ -478,7 +478,7 @@ def build_outcome(signal, *, source, closed_at, exit_reason, cost_basis, net_r=N
     return _seal(rec)
 
 
-# ------------------------------------------------------------------ bounded, non-blocking analysis queue
+# REDACTED_VALUE
 class ScanQueue:
     """The remote-analysis hand-off: bounded, and offer() never blocks or raises. A refused offer is the caller's cue to
     record build_shadow_failure(..., reason='queue_full'); the 15-minute cycle never waits on analysis."""
@@ -504,7 +504,7 @@ class ScanQueue:
         return len(self._q)
 
 
-# ------------------------------------------------------------------ replay
+# REDACTED_VALUE
 def _verify(rec):
     if rec.get('schema') != SCHEMA_VERSION: raise AIScanError(f"unknown schema {rec.get('schema')!r}")
     h = sha256_hex(canonical_json({k: v for k, v in rec.items() if k != 'record_hash'}))

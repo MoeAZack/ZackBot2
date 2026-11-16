@@ -72,7 +72,7 @@ def _num(x):
     return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
 
 
-# ------------------------------------------------------------------ event hygiene: finite-or-null, no secrets / raw dumps
+# REDACTED_VALUE
 # Allowed in audit files: symbol, side, sleeve id, lot id ('<sleeve>|<symbol>|<side>|<epoch>'), times, prices, quantities,
 # P&L numbers, reason texts/codes (URL query strings, {...} blobs and long tokens removed), policy parameters.
 # Never: API keys/secrets/signatures, Telegram token/chat ids, exchange order ids / client ids / stop tags, raw exchange
@@ -120,7 +120,7 @@ def clean(x, _d=0, _k=None):
     return None
 
 
-# ------------------------------------------------------------------ predeclared policies (stored on the lot AT ENTRY)
+# REDACTED_VALUE
 def _atr_now(lot):
     """(atr, src): atr0, else the latest atr_now, else the initial stop distance R."""
     for k in ('atr0', 'atr_now', 'R'):
@@ -173,7 +173,7 @@ def _dparams(lot, name):
     return p.get('params') if isinstance(p, dict) and isinstance(p.get('params'), dict) else None
 
 
-# ------------------------------------------------------------------ online tracking (mark loop: memory only)
+# REDACTED_VALUE
 def _state_now(lot):
     """The lot fields every policy value depends on, as they are right now: [avg, qty, target, R, e0, realized, fees].
     A non-finite realized/fees is stored as None (never NaN: NaN != NaN would add a snapshot on every observation)."""
@@ -539,7 +539,7 @@ def final_close_state(lot, fee_rate=FEE_EST):
         'final close fill not found: the lot quantity and totals at close are used'
 
 
-# ------------------------------------------------------------------ quantity cohort ledger + runner attribution
+# REDACTED_VALUE
 def cohort_ledger(lot, fee_rate=FEE_EST):
     """FIFO quantity cohorts rebuilt from the lot's own fills [t, why, qty, px] (persisted with the lot, so the ledger is
     the same after any restart). Entries/adds open cohorts; every close consumes the oldest open quantity. The FIRST
@@ -618,7 +618,7 @@ def fill_events(lot, key, fee_rate=FEE_EST):
         return []
 
 
-# ------------------------------------------------------------------ the final trade audit record
+# REDACTED_VALUE
 def close_record(lot, net_pnl, fee_rate=FEE_EST, slip_bps=0.0, path=None, cap_bars=None, trail_k=None):
     """The audit record at the final close. path: list of (t, price) marks in time order; None = the live path recorded
     on the lot (recorded_path). cap_bars / trail_k other than the declared ones give kind='what_if' entries (research
@@ -735,7 +735,7 @@ def _ts(t):
         return None
 
 
-# ------------------------------------------------------------------ causal cutoff: info_cutoff < decision_at, or withheld
+# REDACTED_VALUE
 def _cutoff(parts, dec):
     """parts: [(t, seq, what)] = every piece of information a decision used; dec = dict(t, seq). With observation
     sequences on all of them the proof is STRICT: max(seq) < dec.seq (an observation never decides on itself: the
@@ -1032,7 +1032,7 @@ def policy_regime_exit(lot, net_pnl, fee_rate, slip_bps, path):
         return _policy(rule, None, None, net_pnl, f'not evaluated ({type(e).__name__})')
 
 
-# ------------------------------------------------------------------ owner scope 2026-10-07: regime snapshots (closed candles only)
+# REDACTED_VALUE
 def _f(x):
     try:
         v = float(x)
@@ -1142,7 +1142,7 @@ def regime_trigger(lot, snap, now_t):
         return None
 
 
-# ------------------------------------------------------------------ owner scope 2026-10-07: per-trade metrics + failure classes
+# REDACTED_VALUE
 def trade_metrics(lot, net_pnl, fee_rate=FEE_EST, slip_bps=EXEC_SLIP_BPS):
     """MFE/MAE of the mark samples in price (distance from the average entry valid AT that observation), USD (on the
     quantity open at that observation, gross of fees), % of that average and R (risk_usd); time to MFE / MAE / net peak;
@@ -1386,7 +1386,7 @@ def missed_short_summary(items, missed=None, samples=3):
         return dict(error='missed short summary not evaluated')
 
 
-# ------------------------------------------------------------------ candle-close hold/close evaluation (cycle; memory only)
+# REDACTED_VALUE
 def hold_eval(lot, key, candle, now_t, action, exit_signal=None, runner_override=None, missing=False, fee_rate=FEE_EST, regime=None):
     """One 'hold_eval' event per open lot per closed candle of its tf: what the bot did (action: 'hold' / 'close_exit_signal'
     / 'close_time_exit') and what the predeclared rules saw at the candle close. info_cutoff = the candle close,
@@ -1434,7 +1434,7 @@ def hold_eval(lot, key, candle, now_t, action, exit_signal=None, runner_override
         return None
 
 
-# ------------------------------------------------------------------ funnel events (candidates, incl. RAW signals before masking)
+# REDACTED_VALUE
 def funnel_event(t, sleeve, symbol, side, candle, decision, reason=None, raw=None):
     """A candidate decision. Terminal (exactly one per candidate): 'taken' (a lot was created), 'not_taken'. Interim:
     'armed_trailing' (trailing entry armed), 'order_placed' (post-only maker order resting; 'taken' / 'not_taken'
@@ -1466,7 +1466,7 @@ def coverage_event(t, key, lot, why):
         return None
 
 
-# ------------------------------------------------------------------ attribution summary (pure; for /api/status health.audit)
+# REDACTED_VALUE
 def _key_str(x):
     return x if isinstance(x, str) and x else '?'
 
@@ -1581,7 +1581,7 @@ def attribution(records, top=50):
                 other_kinds=other, malformed=bad)
 
 
-# ------------------------------------------------------------------ funnel: stable reason codes for not-taken signals
+# REDACTED_VALUE
 # Observe only: the text and behaviour of every gate are unchanged; the code is derived from the existing text.
 # 1) wrappers that carry an inner cause are unwrapped first (so 'order failed: ... leverage ...' is an order failure and
 #    'trailing entry cancelled: max positions reached (2)' is a trailing-stage cancel by the max-positions gate);
@@ -1673,7 +1673,7 @@ def reason_info(reason, _depth=0):
             word = r[5:].split(' ', 1)[1]
             return dict(stage='true_book', code=next((c for w, c in _BOOK if word.startswith(w)), 'book_other'))
         if r.startswith('true books: '): return dict(stage='true_book', code='book_no_cohort' if 'cohort' in r else 'book_unmapped')
-        if r == 'true_book/opposite_side_funding_ambiguity': return dict(stage='true_book', code='opposite_side_funding_ambiguity')
+        if r == 'REDACTED_VALUE': return dict(stage='true_book', code='opposite_side_funding_ambiguity')
         if r.startswith('risk rule '):
             name, _, msg = r[len('risk rule '):].partition(':')
             return dict(stage='risk_gateway', code=_slug(name), detail=msg.strip()[:160])

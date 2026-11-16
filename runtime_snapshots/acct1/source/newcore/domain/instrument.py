@@ -97,7 +97,7 @@ class InstrumentRules(Record):
     def supports(self, cap):
         return Capability(cap) in self.capabilities
 
-    # -------------------------------------------------------------------------------------------- helpers
+    # REDACTED_VALUE
     def quantize_qty(self, x, rounding):
         return _quantize(x, self.step_size, rounding, f'{self.symbol}.qty')
 

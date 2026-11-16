@@ -38,7 +38,7 @@ class LedgerWriter:
         self.closing, self.thread, self.loaded = False, None, False
         self.ids = set()
 
-    # ---------------------------------------------------------------- engine side (non-blocking)
+    # REDACTED_VALUE
     def submit(self, kind, row, close=None):
         """Queue one built row ('decision' | 'label' | 'mgmt'). close: for a label, the measured-close inputs pairing
         needs (ML-PAIR-01). True if accepted; False (counted as dropped) when the queue is full or the writer is closing.
@@ -65,7 +65,7 @@ class LedgerWriter:
             if did in self.ids: return True
             return False if self.loaded else None
 
-    # ---------------------------------------------------------------- writer thread
+    # REDACTED_VALUE
     def _write(self, led, kind, row, close=None):
         dec, lab = led
         try: self._do_write(dec, lab, kind, row, close)
@@ -135,7 +135,7 @@ class LedgerWriter:
             finally:
                 self.q.task_done()
 
-    # ---------------------------------------------------------------- flush / close
+    # REDACTED_VALUE
     def flush(self, timeout=2.0):
         """Wait (bounded) until every accepted row is written or failed. True if the queue drained."""
         end = time.monotonic() + timeout

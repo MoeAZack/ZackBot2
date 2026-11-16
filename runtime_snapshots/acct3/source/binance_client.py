@@ -342,7 +342,7 @@ class Futures:
             if e.code == -2013: return None             # order does not exist
             raise
 
-    # ---- EXEC-CAL-00 audit reads (observe only) -----------------------------------------------------------------------
+    # REDACTED_VALUE
     # A path of their own, separate from _req: own requests.Session (same constructor / auth as trading, built lazily on
     # the enrichment worker), one attempt, a short timeout, and they NEVER call health.ok() / fail() or touch any circuit
     # telemetry (state, counters, last_ok). They obey the T05b outage (no read while it is open) and a shared audit

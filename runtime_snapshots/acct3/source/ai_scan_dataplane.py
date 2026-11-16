@@ -45,7 +45,7 @@ from ml_shadow.common import canonical_json, sha256_hex
 
 log = logging.getLogger('zackbot.ai_scan')
 
-# ------------------------------------------------------------------ frozen numbers (contracts/ai_scan_04 JSON twin)
+# REDACTED_VALUE
 TICK_PERIOD_S = 60
 SEALED_PER_TICK = 16
 ELIGIBILITY_MAX_AGE_S = 180
@@ -77,7 +77,7 @@ COUNTERS = ('producer_disabled', 'manifest_full', 'rotations', 'skipped_lines', 
             'checkpoint_seal_advanced', 'index_full', 'recovery_resumed')
 
 
-# ------------------------------------------------------------------ durable primitives (fault-injection seams)
+# REDACTED_VALUE
 def _sleep(s):
     time.sleep(s)
 
@@ -208,7 +208,7 @@ def _num(v):
     return type(v) in (int, float)
 
 
-# ------------------------------------------------------------------ checkpoint / state documents
+# REDACTED_VALUE
 def checkpoint_doc(committed, pending=None, opened_at=0.0, first_row_at=None):
     d = dict(schema=CP_SCHEMA, committed=_st(committed), pending=_st(pending), opened_at=opened_at,
              first_row_at=first_row_at)
@@ -292,7 +292,7 @@ def window_eligible(seg_dir, start_utc, end_utc):
     return not any(g['from_utc'] <= end_utc and g['to_utc'] >= start_utc for g in gaps)
 
 
-# ------------------------------------------------------------------ eligibility with a monotonic age
+# REDACTED_VALUE
 class AgedEligibility(L.Eligibility):
     """G4 seam plus the 180 s age rule: publish() stamps each generation with the monotonic clock; check() is one cached
     tuple read and one clock read - no lock, disk I/O, hashing or manifest traversal. An eligible generation older than
@@ -334,7 +334,7 @@ def _index_cap(v, default, what):
     return v
 
 
-# ------------------------------------------------------------------ the producer ledger (writer side, OFF by default)
+# REDACTED_VALUE
 class ProducerLedger(L.RotatingLedger):
     """Writer side of the AI-SCAN-04 data plane. Construction is cheap and does no segment I/O: the producer is
     published ineligible ('startup_verifying') until start() - the off-thread startup callable - completes. Nothing
@@ -369,7 +369,7 @@ class ProducerLedger(L.RotatingLedger):
             return
         self.eligibility.publish(False, 'startup_verifying')
 
-    # ---------------------------------------------------------------- paths / persistence
+    # REDACTED_VALUE
     def _p(self, name):
         return os.path.join(self.dir, name)
 
@@ -404,13 +404,13 @@ class ProducerLedger(L.RotatingLedger):
                 try: os.remove(self._p(name))
                 except OSError as ex: log.warning('ai_scan: orphan temp %s not removed (%s)', name, type(ex).__name__)
 
-    # ---------------------------------------------------------------- disable / corrupt path
+    # REDACTED_VALUE
     def _disable(self, reason, ex=None):
         self.ready = False
         if reason == 'index_full': self.counters['index_full'] += 1
         super()._disable(reason, ex)
 
-    # ---------------------------------------------------------------- M2: bounded lifetime dedupe index
+    # REDACTED_VALUE
     def _room(self, nbytes):
         return self._irows + 1 <= self.max_index_rows and self._ibytes + nbytes <= self.max_index_bytes
 
@@ -452,7 +452,7 @@ class ProducerLedger(L.RotatingLedger):
         try: return os.path.getmtime(self._p(name))
         except OSError: return 0.0
 
-    # ---------------------------------------------------------------- startup (off-thread callable)
+    # REDACTED_VALUE
     def start(self):
         """Startup recovery + full verification. Run it off the trading thread (e.g. threading.Thread(target=
         led.start)); the producer stays ineligible until it returns. -> the published eligibility generation."""
@@ -673,7 +673,7 @@ class ProducerLedger(L.RotatingLedger):
         if r[3] or r[2] != e['rows']: raise A.AIScanError(f"{e['name']}: malformed line or row count differs")
         return r[0]
 
-    # ---------------------------------------------------------------- seal (E1: seal manifest, then advance checkpoint)
+    # REDACTED_VALUE
     def _seal_locked(self, kind):
         """kind: 'bytes' / 'rows' / 'age' (forced), 'startup' or 'close'. Pre-seal check: the file must equal the
         running digest and the durable committed checkpoint, else active_corrupt and nothing is sealed."""
@@ -730,7 +730,7 @@ class ProducerLedger(L.RotatingLedger):
     def _rotate(self):                                   # legacy entry point -> the forced bytes seal
         return self._seal_locked('bytes')
 
-    # ---------------------------------------------------------------- append: one row per transaction (C1, E3)
+    # REDACTED_VALUE
     def append(self, rec):
         """Append exactly one sealed record: persist intent {committed, pending} -> append + fsync -> commit. -> the
         record, or None for a same-hash replay. A partial append / ENOSPC is active_corrupt (E4); a checkpoint persist
@@ -775,7 +775,7 @@ class ProducerLedger(L.RotatingLedger):
             self._irows, self._ibytes = self._irows + 1, self._ibytes + len(line) - 1
         return rec
 
-    # ---------------------------------------------------------------- refresh tick (writer thread, every 60 s)
+    # REDACTED_VALUE
     def tick(self):
         """One refresh tick. Never overlaps: a tick still running makes this one skip (refresh_overrun). Verifies the
         manifest hash, the next sealed_per_tick sealed entries at the rolling cursor sequentially (wrapping to segment

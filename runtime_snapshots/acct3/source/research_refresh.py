@@ -28,7 +28,7 @@ def book(which):
     return _bk[which]
 
 
-# ------------------------------------------------------------------ single strategies
+# REDACTED_VALUE
 SIDES = {k: (['short'] if v['sides'] == 'short' else ['long'] if k in ('dca_dip', 'hot_coin') else ['long', 'both']) for k, v in S.STRATEGIES.items()}
 
 
@@ -41,7 +41,7 @@ def single(job):
                 sides=sides, risk=risk, **{k: st[k] for k in ('end', 'ret', 'maxdd', 'sharpe', 'trades', 'win', 'pf', 'y1', 'y2', 'worst_month', 'busted')})
 
 
-# ------------------------------------------------------------------ 4h vs 1h
+# REDACTED_VALUE
 def tframe(job):
     key, tf = job
     bk, fpb = (book('4h8'), B.FUND_PER_BAR) if tf == '4h' else (book('1h'), B.FUND_PER_BAR / 4)
@@ -52,7 +52,7 @@ def tframe(job):
                 sharpe=s['sharpe'], win=s['win'], pf=s['pf'], h1=s['y1'], h2=s['y2'])
 
 
-# ------------------------------------------------------------------ winner handling
+# REDACTED_VALUE
 LAD = dict(be_r=1, step_r=1, gap_r=1, dca_frac=1)
 HOLD = dict(be_r=99, step_r=99, gap_r=99, dca_frac=1)
 VARIANTS = {
@@ -93,7 +93,7 @@ def runner(job):
                 hold_h=round(hold, 0), y1=st['y1'], y2=st['y2'])
 
 
-# ------------------------------------------------------------------ v3.1 feature table (Research tab "v3.1 findings")
+# REDACTED_VALUE
 def _preset(p, bk):
     return [dict(key=x['key'], share=x['share'], risk=x['risk'], max_pos=x['max_pos'], sides=x['sides'], mgmt=copy.deepcopy(x['mgmt']), id=x['id'],
                  symbols=CORE if x['symbols'] == 'core8' else list(bk.syms)) for x in E.PRESETS[p]['sleeves']]

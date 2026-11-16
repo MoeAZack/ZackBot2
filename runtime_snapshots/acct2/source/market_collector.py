@@ -85,7 +85,7 @@ class MarketCollector:
         self.thread = None
         self._st = dict(running=False, runs=0, skipped=0, rows_total=0, last_run=None, last_skip=None, next_run=None, error=None)
 
-    # -------------------------------------------------------------- switches
+    # REDACTED_VALUE
     def enabled(self, e=None):
         e = self.get_engine() if e is None else e
         if e is None: return False
@@ -110,7 +110,7 @@ class MarketCollector:
     def _sleep(self, s):
         self._stop.wait(max(0.0, float(s)))
 
-    # -------------------------------------------------------------- one run
+    # REDACTED_VALUE
     def run_once(self):
         """One bounded collection run. Returns its summary, or None when skipped."""
         if not self._run_lock.acquire(blocking=False):
@@ -152,7 +152,7 @@ class MarketCollector:
         with self._st_lock:
             self._st['skipped'] += 1; self._st['last_skip'] = dict(t=MD.utc_iso(MD.now_ms(self.clock)), why=why)
 
-    # -------------------------------------------------------------- thread
+    # REDACTED_VALUE
     def _jit(self, s):
         return s * random.uniform(1 - self.JITTER, 1 + self.JITTER)
 

@@ -77,7 +77,7 @@ def partition_problems():
     return out
 
 
-# ---------------------------------------------------------------- parallel slices of verify.py full
+# REDACTED_VALUE
 def _report(level, out):
     rep = V.Report(level, os.path.abspath(out))
     rep.data['git'] = V.git_info()
@@ -159,7 +159,7 @@ def cmd_merge(a):
     return rep.finish()
 
 
-# ---------------------------------------------------------------- push workflow only: docs-only reuse
+# REDACTED_VALUE
 def changed_files(before, head):
     """Files changed from before to head, or None when git cannot tell (unknown commit, not an ancestor, git error)."""
     if not (SHA_RX.fullmatch(before or '') and SHA_RX.fullmatch(head or '')) or before == ZERO: return None

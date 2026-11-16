@@ -218,7 +218,7 @@ def close_fill_writers(timeout=2.0):
 atexit.register(close_fill_writers, 2.0)
 
 
-# ---- EXEC-CAL-00: fill-audit enrichment (observe only, PAPER/testnet) ---------------------------------------------------
+# REDACTED_VALUE
 # A fill record whose order answer has no average price (or, always, no commission) is handed to ONE process-wide worker
 # with the order's ids held in memory only. The worker reads the order's own record / its userTrades (bounded retries,
 # wall-clock cap), folds price + commission into the record and writes it once through the fill writer. The order path
@@ -1138,7 +1138,7 @@ def save_json(path, obj, backup=False, strict=False):
     return evidence
 
 
-# ------------------------------------------------------------------ AUD-05 r2: versioned schemas (validated before use)
+# REDACTED_VALUE
 STATE_SCHEMA = 1           # state.json: v0 = unversioned (before AUD-05 r2) -> migrated by adding the version
 SETTINGS_SCHEMA = 1        # settings.json: same; v0 legacy secrets are dropped by the migration
 INSTALL_SCHEMA = 1
@@ -1787,7 +1787,7 @@ class Engine:
                                   f'copy kept as {os.path.basename(aside) if aside else "(could not be moved aside)"}; trading unaffected')
             return []
 
-    # ------------------------------------------------------------ AUD-05: fail-closed safety files
+    # REDACTED_VALUE
     def _integrity_alert(self, key, msg):
         """Incident + Telegram for a damaged data file. Before self.health exists (start-up) it is queued and reported
         right after. Never raises."""
@@ -2082,7 +2082,7 @@ class Engine:
             cids = {}
         return fn(*a, **cids)
 
-    # ------------------------------------------------------------ notifications (Telegram, optional)
+    # REDACTED_VALUE
     def notify(self, text):
         S_ = self.S
         tok = self.cfg.get('TELEGRAM_TOKEN') or S_.get('TELEGRAM_TOKEN')
@@ -2095,7 +2095,7 @@ class Engine:
             except Exception as ex: log.warning('telegram send failed: ' + type(ex).__name__)
         threading.Thread(target=_send, daemon=True).start()
 
-    # ------------------------------------------------------------ settings
+    # REDACTED_VALUE
     def load_settings(self):
         s = copy.deepcopy(GLOBAL_DEFAULTS)
         try: unredacted = redact_settings_files(os.path.dirname(self.F['settings']))   # AUD-05 r3/r4: no legacy secret survives a load
@@ -2219,7 +2219,7 @@ class Engine:
         return dict(rotation_at(ts, **self._rot_kw()), on=self.S.get('PRESET') == ROTATION_PRESET, paper_only=True,
                     live_refused=getattr(self, 'live', True) is not False, tradfi=self.tradfi_on())
 
-    # ------------------------------------------------------------ TRADFI-01 T3/T4
+    # REDACTED_VALUE
     def tradfi_on(self):
         """TradFi (gold + 12 US stock perps) is opt-in AND PAPER/testnet only: S['TRADFI_ENABLED'] is True and not live.
         In live mode the flag is ignored (refused, fail closed)."""
@@ -2245,7 +2245,7 @@ class Engine:
         log.info(f"TRADFI: rotation slots added {[x['id'] for x in add]}")
         return [x['id'] for x in add]
 
-    # ------------------------------------------------------------ SCALP-4 (PAPER)
+    # REDACTED_VALUE
     def scalp_block(self, sl, ts=None):
         """Rotation gate for a NEW automatic entry, with the SCALP-4 slots folded in. A scalp-strategy slot: refused in live
         mode (any profile, fail closed); in PAPER always eligible (it is not part of the rotation - its own `enabled` flag,
@@ -2378,7 +2378,7 @@ class Engine:
                     except Exception: pass
             return off
 
-    # ------------------------------------------------------------ FACTORY-F01-IMPL-01: bounded C-F01 PAPER canary
+    # REDACTED_VALUE
     def f01_canary_block(self, sl):
         """Refusal text for a NEW automatic C-F01 entry, else None. Other slots -> None (unchanged). C-F01 trades only inside
         the bounded canary (Codex 6514109966 #2): the flag (settings F01_CANARY) missing, malformed or OFF, ON outside
@@ -2522,7 +2522,7 @@ class Engine:
     def mgmt(self, sl):
         return S.merge_mgmt(sl['key'], sl.get('mgmt'))
 
-    # ------------------------------------------------------------ exchange setup
+    # REDACTED_VALUE
     def connect(self):
         info = self.trade.exchange_info()
         on = self.tradfi_on()                                  # TRADFI-01: opt-in, PAPER only (ignored in live)
@@ -2557,7 +2557,7 @@ class Engine:
         self.sync_scalp_slots()                         # SCALP-4: PAPER rotation only; appends missing slots, idempotent
         self.sync_candidate_slots()                     # FACTORY-CAND-01: the same, for the factory candidate slots (off)
 
-    # ------------------------------------------------------------ helpers
+    # REDACTED_VALUE
     @staticmethod
     def _rd(x, step):
         return F.round_step(x, step)                     # BT02: moved verbatim to feasibility.round_step
@@ -2615,7 +2615,7 @@ class Engine:
             self.last_eq = max(0.0, min(bal, sizing))
         return self.last_eq
 
-    # ------------------------------------------------------------ capital: fixed / compounding, withdrawals, fresh starts
+    # REDACTED_VALUE
     def capital_info(self, acc=None):
         S = self.S
         since = S.get('CAP_SINCE') or ''
@@ -2937,7 +2937,7 @@ class Engine:
         must not send."""
         return self._save_safe('state', self.state, strict=True)
 
-    # ------------------------------------------------------------ T05: fill telemetry (observe only)
+    # REDACTED_VALUE
     # One record per fill the bot itself sends: expected vs actual price, slippage in bps (+ = worse for us), requested
     # vs filled qty, wait, maker tries, fallback state. Order paths only BUILD a record (no I/O) and hand it to the
     # process-wide FillWriter for this file with a non-blocking put; that writer is the only thing that ever touches
@@ -3013,7 +3013,7 @@ class Engine:
         self._fill_emit(rec, None if order is None else [self._order_ref(order, (rec or {}).get('qty_fill'))])
         return rec
 
-    # ------------------------------------------------------------ FEE-ASSET-01: actual commission / funding (observe only)
+    # REDACTED_VALUE
     # Every executed fill record gets a cost_ref (not an exchange id) that its lot lists in cost_refs. The finished record
     # (enriched by the worker, or written at once) is appended to a queue; apply_costs() folds it into the lot - or into the
     # trade's history row when it arrives after the close - on the engine's own thread. Estimates (`fees`) never change.
@@ -3167,7 +3167,7 @@ class Engine:
         if reconsider: self._reconsider()             # ORDER-SYM-01: a measured book lets its deferred candidates retry
         return n
 
-    # ------------------------------------------------------------ FEE-RECOVER-01: commissions whose reads timed out (#172)
+    # REDACTED_VALUE
     # A fill whose enrichment ended commission_missing (timeout / outage) left its lot / row fees_actual_partial for good,
     # and TRUE-BOOK admission refused its whole book. PAPER/testnet only: the missing fill's own evidence (symbol, side,
     # quantity, time, from its fills.jsonl record found by cost_ref) is matched against ONE bounded userTrades time-window
@@ -3402,7 +3402,7 @@ class Engine:
             self.save_state()
         return status
 
-    # ------------------------------------------------------------ TRUE-BOOK-01: five isolated $2,000 PAPER books
+    # REDACTED_VALUE
     # Opt-in (TRUE_BOOKS + PAPER_BOOKS) and PAPER/testnet only. Each book is valued from its own lots / rows of the current
     # cohort (true_books.compute); sizing, the 4-lot cap, leverage and stop-risk use that book's NAV. HALT is sticky for the
     # cohort (state['true_books']['halted']); other books keep trading. Strategy logic and risk % are unchanged.
@@ -3584,7 +3584,7 @@ class Engine:
         # A fill's commission is enriched off-thread.  Fold anything that has already arrived before judging the next
         # candidate in this cycle; this is non-blocking and still fails closed while the record is genuinely pending.
         self.apply_costs(reconsider=False)              # ORDER-SYM-01: inside entry_block - never a nested open_lot
-        if sym and side and self._tb_opposite(sym, side, skip_pending): return 'true_book/opposite_side_funding_ambiguity'
+        if sym and side and self._tb_opposite(sym, side, skip_pending): return 'REDACTED_VALUE'
         book = TB.book_of(sl.get('key'))
         if book is None: return f"true books: strategy {sl.get('key')} has no book (refused, never booked to Discovery)"
         b = self.true_books().get(book)
@@ -3778,7 +3778,7 @@ class Engine:
         10 most recent, and the telemetry's own health."""
         return self._fillw.summary()
 
-    # ------------------------------------------------------------ T05a: causal trade audit (observe only)
+    # REDACTED_VALUE
     # Every audit step builds an event in memory and hands it to the non-blocking writer (put_nowait): no disk or network
     # I/O in the mark loop or in an order path, no extra save_state(), and an audit failure is swallowed (and counted by the
     # writer) - it can never delay or alter fills, stops, closes, reconciliation or the normal history persistence.
@@ -3995,7 +3995,7 @@ class Engine:
         rec = (lo or {}).get('rec') or {}
         return rec.get('outcome') in ('filled', 'partial') and bool(rec.get('qty_fill'))
 
-    # ------------------------------------------------------------ order helpers
+    # REDACTED_VALUE
     def err(self, msg, key=None):
         """Recent Activity entry. T05b: a repeat of an OPEN incident (same key; default = the exact message) updates that
         one entry in place (latest text, count, first time) instead of adding a new line. Known floods pass a key."""
@@ -4134,7 +4134,7 @@ class Engine:
             except Exception as ex: log.warning(f"{lot['symbol']} resting take-profit resize failed ({ex}) - retried by the verifier")
         return True
 
-    # ------------------------------------------------------------ resting exchange take-profit (mgmt.resting_tp, default OFF)
+    # REDACTED_VALUE
     # A plain fixed tp_r target can rest on Binance as a reduce-only TAKE_PROFIT_MARKET (mark-price trigger) instead of being
     # checked on the manage poll and closed at market. The protective stop is never touched, widened or delayed for it: the TP
     # is placed only AFTER the stop is confirmed, and a TP that cannot be placed falls back to the poll path for good.
@@ -4557,7 +4557,7 @@ class Engine:
         res.update(state='final', qty=q, px=self._fill_px(o) if q > 0 else None)
         return res
 
-    # ------------------------------------------------------------ RISK-FILL-01 (#179): post-fill risk budget
+    # REDACTED_VALUE
     RISK_FILL_RETRIES = 1                 # one bounded reconciliation / retry, then residual risk + alert (never a loop)
 
     def risk_fill_view(self, lot):
@@ -4911,7 +4911,7 @@ class Engine:
             self._measured_done(row, w, v, 'MEASURED')
         except Exception as e: log.warning(f'measured close follow-up failed ({e})')
 
-    # ------------------------------------------------------------ ML-SHADOW-01 hooks (observation only)
+    # REDACTED_VALUE
     # The lot -> decision link lives in the lot record itself (lot['ml_decision_id'], survives restarts with state.json).
     # Lots opened while ML_SHADOW was off carry no id and never get a label. Pending decisions (resting maker / armed
     # trailing entry) are linked when they fill; if they are cancelled or expire nothing more is written (stay unlabeled).
@@ -5087,7 +5087,7 @@ class Engine:
             try: self._ml_health()['errors'] += 1
             except Exception: pass
 
-    # ------------------------------------------------------------ TRUE-BOOK-02: strategy shadow observer (observe only)
+    # REDACTED_VALUE
     STRAT_SHADOW_DIR = 'strategy_shadow'
     SHADOW_Q_MAX = 5000
 
@@ -5350,7 +5350,7 @@ class Engine:
         self._audit_fill(lot)                                      # T05a: cohort event (memory + queue only)
         log.info(f"{why.upper()} {lot['symbol']} {lot['side']} [{lot['sleeve']}] +{q} @ {px} (avg {lot['avg']:.6g})")
 
-    # ------------------------------------------------------------ fast loop: soft management on mark price
+    # REDACTED_VALUE
     def manage(self, marks):
         with self.lock:
             self.marks, self.marks_t = dict(marks), time.time()
@@ -5575,7 +5575,7 @@ class Engine:
                     self.resolve(key, f"{sym} {l['side']}: stop seen among open orders again")
         return waiting
 
-    # ------------------------------------------------------------ AUD-04: routine verification + repair of protective stops
+    # REDACTED_VALUE
     @staticmethod
     def _fast(fn, *a, **k):
         """Call an exchange read with retry=False when it takes that parameter: the verifier holds the engine lock, so one
@@ -6048,7 +6048,7 @@ class Engine:
             self.missed.append(rec); self.missed = self.missed[-600:]; self._save_aux('missed', self.missed)
         return True
 
-    # ------------------------------------------------------------ reconcile with exchange
+    # REDACTED_VALUE
     def reconcile(self, eq, live=None):
         """Match engine lots to what Binance actually holds.
         - less on the exchange: the lots whose stop order is no longer open were stopped out (identified by stop-order id);
@@ -6194,7 +6194,7 @@ class Engine:
                 self.notify(f'⚠️ Untracked position on Binance: {k} qty {q}. It has no bot stop - check it.')
         self.untracked = new
 
-    # ------------------------------------------------------------ safety limits (run every cycle and every few minutes)
+    # REDACTED_VALUE
     def check_guards(self):
         """Daily loss halt (resets at midnight Cairo) and peak-drawdown flatten, both on bot capital incl. open P&L."""
         st, Sg, g = self.state, self.S, self.guard_eq
@@ -6238,7 +6238,7 @@ class Engine:
                         + (f" ({p} pending measurement)" if p else '') + f" · {len(self.state['lots'])} open")
         except Exception: pass
 
-    # ------------------------------------------------------------ candle-close cycle
+    # REDACTED_VALUE
     def cycle(self, tf, reason='candle close'):
         with self.lock:
             st, Sg = self.state, self.S
@@ -7046,7 +7046,7 @@ class Engine:
                     books=PB.summary(eq, cap, view, self.history),
                     candidates=CD.summary(self.S.get('SLEEVES'), view, self.history, self.state.get('candidate_disabled')))
 
-    # ------------------------------------------------------------ RUN-PACK-01 / BOOK-LEDGER-01 (PAPER books, observe only)
+    # REDACTED_VALUE
     # Evidence never feeds trading: self.history keeps its 3000-row trading window untouched; the open cohort's closed rows
     # live in their own append-only cohort_rows.jsonl (self.cohort_rows), which only the ledger and the pack read.
     COHORT_CODE = ('engine.py', 'strategies.py', 'paper_books.py', 'book_ledger.py', 'backtest.py',
@@ -7438,7 +7438,7 @@ class Engine:
             return False
         return self._create_lot(plan, got, fill, cost_ref=((self._last_order or {}).get('rec') or {}).get('cost_ref'))
 
-    # ------------------------------------------------------------ AUD-03b: entries whose answer was lost
+    # REDACTED_VALUE
     # An entry whose order answer is lost (or not final) is remembered with its client order id. Every reconcile pass:
     #   1. its FINAL order record decides: executed > 0 -> booked as a lot (exact qty and price), 0 -> forgotten;
     #   2. until then, size on the exchange beyond the lots is protected AT ONCE by a provisional stop at the planned stop
@@ -7687,7 +7687,7 @@ class Engine:
         self.save_state()
         return True
 
-    # ------------------------------------------------------------ v3.1: market data for the entry rules (cached)
+    # REDACTED_VALUE
     def regime_now(self):
         """BTC market regime of the last closed 4h candle: dict(bull, bear, range) - strategies.regime (shared with the backtest)."""
         df = self.candles('BTCUSDT', '4h')
@@ -7728,7 +7728,7 @@ class Engine:
         if not c or a not in c.get('symbols', []) or b not in c.get('symbols', []): return None
         return c['m'][c['symbols'].index(a)][c['symbols'].index(b)]
 
-    # ------------------------------------------------------------ v3.1: portfolio risk rules
+    # REDACTED_VALUE
     def _rules_eval(self, sl, sym, side, size=None, manual=False, add=False):
         """[(rule, mode, message)] for every rule (not 'off') the entry would break. Data problems never block (logged)."""
         R, out = self.risk_rules_cfg(), []
@@ -7835,7 +7835,7 @@ class Engine:
         out['funding_filter'] = dict(mode=rf['mode'], value=round(worst[1], 6), limit=rf['rate'], ok=abs(worst[1]) <= rf['rate'], detail=worst[0])
         return out
 
-    # ------------------------------------------------------------ v3.1: risk governor (equity rules)
+    # REDACTED_VALUE
     def _gov_rules(self):
         G = self.S.get('GOVERNOR') or {}
         out = []
@@ -7915,7 +7915,7 @@ class Engine:
                                      suggestion=(mode == 'suggest' and bool(st_.get('on')))))
         return out
 
-    # ------------------------------------------------------------ v3.1: trailing entries (checked on marks)
+    # REDACTED_VALUE
     def _trail_entries(self, marks):
         changed = False
         pe = self.state['pending_entries']
@@ -7949,7 +7949,7 @@ class Engine:
             else: self._audit_opened(sl, sym, side, sg)          # T05a: terminal 'taken' (or 'order_placed' for a maker order)
         return changed
 
-    # ------------------------------------------------------------ v3.1: maker (post-only) entries
+    # REDACTED_VALUE
     # A resting entry lives in state['resting_entries'] from BEFORE its order is sent until its fills became a lot:
     # polled by client order id every manage pass, cancelled on timeout, re-priced up to MAKER_REPRICE times within
     # MAKER_WAIT_S seconds, then (MAKER_FALLBACK) the rest goes at market. Partial fills always become a lot.
@@ -8065,7 +8065,7 @@ class Engine:
                 blk = (self.entry_block(sl, rec['symbol'], rec['side'], manual=True)
                        or self._lev_exception_block(rec['symbol'], bool(plan.get('lev_exception')))
                        or (self._tb_on() and self._tb_opposite(rec['symbol'], rec['side'])     # TRUE-BOOK-03: no remainder into
-                           and 'true_book/opposite_side_funding_ambiguity')                     # an opposite-side symbol
+                           and 'REDACTED_VALUE')                     # an opposite-side symbol
                        or self._tb_add_block(lot, rem, px)) if ok and lot else None      # TRUE-BOOK-01: the book's limits too
                 if not (ok and lot): st['fallback_skipped'] = 'maker lot not created'
                 elif blk: st['fallback_blocked'] = blk
@@ -8114,7 +8114,7 @@ class Engine:
         finally:
             self._fill_emit(mrec)
 
-    # ------------------------------------------------------------ panel actions
+    # REDACTED_VALUE
     def manual_trade(self, sym, side, risk_pct, stop_atr, tp_r=None):
         risk_pct, stop_atr = float(risk_pct), float(stop_atr)
         if not 0 < risk_pct <= MANUAL_MAX_RISK: raise ValueError(f'manual risk must be between 0 and {MANUAL_MAX_RISK * 100:.0f}% of bot capital')

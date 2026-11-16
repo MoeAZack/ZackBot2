@@ -1,23 +1,4 @@
-"""Market-data collector core (observe-only): public Binance USD-M futures market data -> CSV files + a manifest.
-
-One implementation shared by the standalone tool (tools/collect_market_data.py, plain `requests`) and the in-app
-background collector (market_collector.py, its OWN keyless RequestsTransport - never the engine's client or circuit).
-Public endpoints only: no API key is ever sent, nothing here can place, change or read orders.
-
-Datasets (one CSV per dataset / symbol / period under <out>/<dataset>/):
-  open_interest_hist   /futures/data/openInterestHist             1h, 4h   last 30 days only (Binance limit)
-  global_ls_account    /futures/data/globalLongShortAccountRatio  1h, 4h   last 30 days only
-  top_ls_position      /futures/data/topLongShortPositionRatio    1h, 4h   last 30 days only
-  taker_ls_ratio       /futures/data/takerlongshortRatio          1h, 4h   last 30 days only
-  funding_rate         /fapi/v1/fundingRate                       full history from the symbol's onboard date
-  mark_klines          /fapi/v1/markPriceKlines                   1h, 4h   full history (closed candles only)
-  funding_info         /fapi/v1/fundingInfo                       change log of funding interval / cap / floor
-  exchange_info        /fapi/v1/exchangeInfo                      raw JSON snapshot (new file only when it changed)
-
-Every run back-fills what is missing and appends what is new; rows are de-duplicated by their timestamp, so running
-twice (or after a crash) never duplicates anything. Each file is rewritten atomically (temp file + os.replace): a
-crash mid-write leaves the previous complete file. All file I/O is UTF-8 (Windows CP1252 safe).
-"""
+'REDACTED_VALUE'
 import csv, hashlib, json, os, random, time, uuid
 from datetime import datetime, timezone
 
@@ -39,7 +20,7 @@ LOCK_STALE_S = 6 * 3600
 DATASETS = {
     'open_interest_hist': dict(kind='window', path='/futures/data/openInterestHist', limit=500, ts='timestamp', periods=('1h', '4h'),
                                cols=['timestamp', 'sumOpenInterest', 'sumOpenInterestValue', 'CMCCirculatingSupply']),   # exact Binance key (2 Cs)
-    'global_ls_account': dict(kind='window', path='/futures/data/globalLongShortAccountRatio', limit=500, ts='timestamp', periods=('1h', '4h'),
+    'global_ls_account': dict(kind='window', path='REDACTED_VALUE', limit=500, ts='timestamp', periods=('1h', '4h'),
                               cols=['timestamp', 'longShortRatio', 'longAccount', 'shortAccount']),
     'top_ls_position': dict(kind='window', path='/futures/data/topLongShortPositionRatio', limit=500, ts='timestamp', periods=('1h', '4h'),
                             cols=['timestamp', 'longShortRatio', 'longAccount', 'shortAccount']),
@@ -57,7 +38,7 @@ ENDPOINT_WEIGHT = {'/fapi/v1/markPriceKlines': 10, '/fapi/v1/exchangeInfo': 1, '
 ENDPOINT_MIN_GAP = {'/fapi/v1/fundingRate': 0.7, '/fapi/v1/fundingInfo': 0.7, '/futures/data/': 0.35}
 
 
-# ------------------------------------------------------------------ errors raised by transports
+# REDACTED_VALUE
 class RateLimited(Exception):
     """HTTP 429 (or code -1003 without a ban): back off and retry, honouring Retry-After."""
     def __init__(self, retry_after=0.0, msg=''):
@@ -84,7 +65,7 @@ class StopRun(Exception):
     """Abort the whole run (ban, rate limit that does not clear, or the caller's circuit says Binance is down)."""
 
 
-# ------------------------------------------------------------------ helpers
+# REDACTED_VALUE
 def utc_iso(ms):
     if ms in (None, ''): return ''
     return datetime.fromtimestamp(int(ms) / 1000, timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -178,7 +159,7 @@ def normalise(dataset, raw):
     return rows
 
 
-# ------------------------------------------------------------------ transports
+# REDACTED_VALUE
 class RequestsTransport:
     """Plain `requests` transport for the standalone tool. Never sends an API key."""
     def __init__(self, base=MAINNET, session=None, timeout=20):
@@ -207,7 +188,7 @@ class RequestsTransport:
         return data
 
 
-# ------------------------------------------------------------------ the collector
+# REDACTED_VALUE
 class Collector:
     """One collection run over a universe. `transport.get(path, params)` returns the decoded JSON or raises one of the
     errors above. `sleep` / `clock` are injectable (tests). `gate()` (optional) is checked before every request: a
@@ -228,7 +209,7 @@ class Collector:
         self.manifest = read_json(os.path.join(out, 'manifest.json'), {}) or {}
         self.manifest.setdefault('series', {})
 
-    # -------------------------------------------------------------- request with pacing / back-off
+    # REDACTED_VALUE
     def _pace(self, path):
         """Sleep so that: any two requests are >= min_gap apart, and requests to the same endpoint respect its weight
         share of `weight_per_min` and its own per-endpoint minimum gap."""
@@ -270,7 +251,7 @@ class Collector:
         self.errors.append(str(msg)[:200]); del self.errors[:-50]
         if self.log: self.log(f'market data: {msg}')
 
-    # -------------------------------------------------------------- series
+    # REDACTED_VALUE
     def _store(self, dataset, symbol, period, existing, new_rows):
         """Merge new rows over the existing ones (same timestamp -> the newer answer wins), write atomically, update the
         manifest entry. Returns the number of NEW timestamps."""
@@ -351,7 +332,7 @@ class Collector:
             if buf or not existing: added += self._store(dataset, symbol, period, existing, buf)
         return added
 
-    # -------------------------------------------------------------- snapshots
+    # REDACTED_VALUE
     def snapshot_exchange_info(self, env='mainnet'):
         """Raw exchangeInfo JSON. <out>/exchange_info/<env>_exchangeInfo_latest.json is always the newest answer (the
         input format of exchange_rules.py `build`); a timestamped copy is kept only when the content changed."""
@@ -419,7 +400,7 @@ class Collector:
                     except OSError:
                         pass
 
-    # -------------------------------------------------------------- one run
+    # REDACTED_VALUE
     def run(self, symbols, datasets=SERIES_DATASETS, periods=None, exchange_info=True, funding_info=True, run_kind='once'):
         """Back-fill + append everything for `symbols`. Returns a summary dict (also stored in the manifest)."""
         self.t0 = self.clock()
@@ -474,7 +455,7 @@ class Collector:
         return summary
 
 
-# ------------------------------------------------------------------ single-writer lock (standalone tool vs. in-app thread)
+# REDACTED_VALUE
 def pid_alive(pid):
     """True if a process with this pid is running (False for a dead / invalid pid). Windows: OpenProcess +
     GetExitCodeProcess - never os.kill(pid, 0), which on Windows TERMINATES the process. Unsure -> True (keep the lock)."""
