@@ -212,13 +212,24 @@ def test_the_order_record_books_the_lot_which_inherits_the_provisional_stop():
     assert prov not in e.trade.stops and list(e.trade.stops) == [lot['stop_id']], 'exactly one stop: the lot\'s own'
 
 
-def test_a_lost_entry_that_never_reached_binance_is_forgotten(monkeypatch):
+def test_a_lost_entry_not_found_on_binance_is_held_never_forgotten(monkeypatch):
+    """LANE3-F1-entry (Codex #360 ruling 1, 6925134894): 'not found' + no position are two negatives, not proof the entry
+    never executed. It stays owned (no second entry on the coin/side), alerted once after 5 min, and a late record decides."""
     e, _ = mk_engine(); uk, u = _lost_entry(e, fill=False)
     e.trade.get_order = lambda s, cid: None                                    # Binance: no such order
+    pushed = []; e.notify = lambda m: pushed.append(m)
     e.manage(e.trade.marks())
-    assert uk in e.state['unconfirmed_entries'], 'not before the short grace period'
+    assert uk in e.state['unconfirmed_entries']
     _later(monkeypatch, E.UNCONF_DROP_S + 1); e.manage(e.trade.marks())
+    assert uk in e.state['unconfirmed_entries'] and e.state['lots'] == {} and not pushed
+    assert 'not confirmed' in (e.entry_block(SL, 'BTCUSDT', 'LONG') or '')
+    _later(monkeypatch, E.UNCONF_ADOPT_S + 1); e.manage(e.trade.marks()); e.manage(e.trade.marks())
+    assert uk in e.state['unconfirmed_entries'] and len(pushed) == 1 and 'not found on Binance' in pushed[0]
+    assert (e.health['incidents'].get(f'entry-unknown|{uk}') or {}).get('open')
+    e.trade.get_order = lambda s, cid: {'status': 'EXPIRED', 'executedQty': '0', 'avgPrice': '0', 'clientOrderId': cid}
+    e.manage(e.trade.marks())                                                  # the record finally decides: nothing executed
     assert e.state['unconfirmed_entries'] == {} and e.state['lots'] == {} and e.trade.stops == {}
+    assert not e.health['incidents'][f'entry-unknown|{uk}']['open']
 
 
 def test_a_record_with_nothing_executed_cancels_the_provisional_stop():

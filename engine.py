@@ -6027,6 +6027,8 @@ class Engine:
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if self.exchange_state().get('state') == 'outage': return OUTAGE_ADD     # T05b final: an add is new exposure
         if lot.get('stop_dirty'): return 'stop not confirmed yet'
+        if (lot['symbol'], lot['side']) in self._unconfirmed_claims():   # LANE3-F1-entry: an entry there may still execute
+            return 'an unconfirmed entry on this coin/side is not resolved yet'
         blk = self.stop_missing_block(lot['symbol'])               # AUD-04: a stop on this coin is missing on Binance
         if blk: return blk
         if lot.get('manual'): return 'manual trade (no adds)'
@@ -6111,7 +6113,9 @@ class Engine:
         resting = {}                       # maker entry orders still working: their fills are not in a lot yet
         for r_ in st.get('resting_entries', {}).values():
             resting[(r_['symbol'], r_['side'])] = resting.get((r_['symbol'], r_['side']), 0.0) + r_['qty']
-        for k_, q_ in self._unconfirmed_claims().items(): resting[k_] = resting.get(k_, 0.0) + q_   # AUD-03b: not untracked
+        for u_ in (st.get('unconfirmed_entries') or {}).values():     # AUD-03b: not untracked - except (LANE3-F1-entry r2)
+            if u_.get('unknown_origin'): continue                         # a quarantined id with a position it cannot claim
+            k_ = (u_['symbol'], u_['side']); resting[k_] = resting.get(k_, 0.0) + u_['qty']
         for (sym, side), have in live.items():
             if (sym, side) not in groups and have > 0:
                 # one whole step of a position with no lot is real (e.g. 0.001 BTC = a tradable ~$120 orphan): the same sub-step
@@ -7518,6 +7522,21 @@ class Engine:
         cid = str(r.get('client_id') or '')
         return r['tag'] in owned or bool(cid and (f'c:{cid}' in owned or f'ac:{cid}' in owned))
 
+    def _entry_quarantine_alert(self, uk, u, state, age, extra=0.0):
+        """LANE3-F1-entry: one keyed alert (and one push) for an unconfirmed entry held as unresolved."""
+        key = f'entry-unknown|{uk}'
+        what = 'not found on Binance' if state == 'notfound' else f'order record {state} on Binance'
+        if (self.health.get('incidents', {}).get(key) or {}).get('open'):
+            more = f' - a position of {extra:g} of unknown origin is NOT adopted (reported as untracked)' if extra > 0 else ''
+            self.err(f"ENTRY {u['symbol']} {u['side']} {u.get('cid')}: still {what}{more}", key=key); return
+        pos = (f'a position of {extra:g} of unknown origin is on Binance (NOT adopted as this entry; reported as untracked, '
+               'its provisional stop kept)') if extra > 0 else 'no position has appeared'
+        msg = (f"ENTRY {u['symbol']} {u['side']}: unconfirmed entry (client id {u.get('cid')}) {what} for {int(age // 60)} min "
+               f'and {pos} - held as unresolved: no second entry on this coin/side while it could still '
+               'execute. Check the order history on Binance')
+        self.err(msg, key=key)
+        self.notify(f'⚠️ {msg}.')
+
     def _unconfirmed_claims(self):
         out = {}
         for u in (self.state.get('unconfirmed_entries') or {}).values():
@@ -7637,7 +7656,7 @@ class Engine:
             fr = self._order_result(sym, u.get('cid'), u['qty'])
             if fr['state'] == 'final':                                     # 1. the order's final record decides
                 got = fr['qty']
-                ue.pop(uk, None)
+                ue.pop(uk, None); self.resolve(f'entry-unknown|{uk}', f'ENTRY {sym} {side}: order record found')
                 if got > 0:
                     px = fr['px'] or plan['px']
                     log.info(f"ENTRY {sym} {side} unconfirmed -> confirmed from its order record: {got} @ {px}")
@@ -7657,15 +7676,32 @@ class Engine:
             extra = self._rd(min(u['qty'], max(0.0, live.get((sym, side), 0.0) - lots_q - rest_q - add_q)), r['step'])
             u['seen_qty'] = extra                                          # AUD-04: size this entry owns NOW (stop verifier)
             self._prov_set(uk, u, extra)                                   # 2. protect exactly what is unresolved
-            if extra > 0:
+            known = bool(u.get('cid')) and fr['state'] != 'nosource'
+            if extra > 0 and known:                                        # 3b'. LANE3-F1-entry r2 (Codex #366 ruling)
+                # a KNOWN client id whose record is not final: a position on this coin/side is NOT proof that it is this
+                # order's fill (a manual / foreign position can match by coin, side and time) - never adopted on a timer or an
+                # aggregate match. The entry stays quarantined until its final record; after 5 min the unidentified size is
+                # reported UNTRACKED (reconcile: alert + no new risk on that coin/side) while its provisional stop stays
+                if age > UNCONF_ADOPT_S:
+                    if not u.get('unknown_origin'): u['unknown_origin'] = True; self.save_state()
+                    self._entry_quarantine_alert(uk, u, fr['state'], age, extra=extra)
+            elif extra > 0:
                 if age > UNCONF_ADOPT_S:                                   # 3b. no record in 5 min: adopt the position
-                    ue.pop(uk, None)
+                    ue.pop(uk, None); self.resolve(f'entry-unknown|{uk}', f'ENTRY {sym} {side}: adopted from the position')
                     px = (self.marks or {}).get(sym) or plan['px']
                     self.err(f"ENTRY {sym} {side} could not be confirmed from its order record ({fr['state']}) - adopted from "
                              f"the position ({extra} @ mark {px})")
                     self._create_lot(plan, extra, px, adopt_stop=u.get('prov'))
                     self._px_unmeasured(self.state['lots'].get(self._last_lot_key))   # FILL-PNL-01: adopted at the mark
                     self.save_state()
+            elif known:                                                    # 3a'. LANE3-F1-entry (Codex #360 ruling 1)
+                if u.pop('unknown_origin', None): self.save_state()        # the unidentified size is gone again
+                # a KNOWN client id that Binance does not show (not found, a record that is not final, or unreadable) and no
+                # position yet is NOT proof that it never executed: the intent stays owned (it keeps blocking a second entry
+                # on this coin/side and its provisional protection follows any late fill), and after 5 min the owner is
+                # alerted - never forgotten on a timer or on two negatives. A crash before the send stays here too (fail closed)
+                if age > UNCONF_ADOPT_S:
+                    self._entry_quarantine_alert(uk, u, fr['state'], age)
             elif age > (UNCONF_DROP_S if fr['state'] in ('notfound', 'nosource') else UNCONF_ADOPT_S):   # 3a. never executed
                 ue.pop(uk, None)
                 if u.get('prov'): self._cancel_or_park(sym, u['prov'])
