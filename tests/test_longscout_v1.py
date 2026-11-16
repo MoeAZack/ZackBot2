@@ -5448,3 +5448,142 @@ def test_v85_return_uses_day_j_minus_30(monkeypatch):
     D2 = pd.DataFrame(dict(h=c2, l=c2, c=c2, v=1.0), index=D.index)
     monkeypatch.setattr(L85, '_rho', lambda D, k: pd.Series(np.r_[np.full(31, np.nan), -0.3, -0.5, -0.3, -0.3, -0.3], index=D.index))
     assert not L85._pv_v(D2, L85.IP, False).any()
+
+
+import longscout_v86 as L86
+L86.register()
+
+_V86_COIN = {'l86_smooth_uptrend_4h': lambda: _ms(_mk(2600, '4h', 40)),
+             's86_smooth_downtrend_4h': lambda: _ms(_mk(2600, '4h', 40))}
+
+
+@pytest.mark.parametrize('key', sorted(L86.CANDIDATES))
+def test_v86_cut_right_after_signals_and_prefixes_on_ms_timestamps(key):
+    coin, btc = _V86_COIN[key](), _ms(_mk(2600, '4h', 52))
+    full = _sig(key, coin, btc)
+    le, se = np.asarray(full['le']), np.asarray(full['se'])
+    assert {'l86': le.sum() and not se.any(), 's86': se.sum() and not le.any()}[key[:3]]
+    ent = np.flatnonzero(le | se)
+    bars = sorted(set(ent - 1) | set(ent) | {1300, 2563, 2599} | set(range(2500, 2600, 5)))
+    for i in bars:
+        part = _sig(key, coin.iloc[:i + 1].reset_index(drop=True), btc.iloc[:i + 1].reset_index(drop=True))
+        for k in ('le', 'se', 'lx', 'sx'):
+            assert (part[k] == full[k][:i + 1]).all(), (key, k, i)
+
+
+def _v86_ref(D, up, k=14, m=30, n=90):
+    days = list(D.index); c = [float(x) for x in D.c]; L = len(c)
+    dd = [None] * L
+    for t in range(k - 1, L):
+        w = c[t - k + 1:t + 1]
+        dd[t] = c[t] / (max(w) if up else min(w)) - 1
+    U = [None] * L
+    for t in range(k + m - 2, L):
+        U[t] = math.sqrt(sum(dd[s] ** 2 for s in range(t - m + 1, t + 1)) / m)
+
+    def low(t):
+        return U[t] < min(U[t - n:t])
+
+    res = np.zeros(L, bool)
+    for j in range(k + m + n - 1, L):
+        if days[j] - days[j - (k + m + n - 1)] != pd.Timedelta(days=k + m + n - 1):
+            continue
+        w = c[j - k + 1:j + 1]
+        ext = c[j] >= max(w) if up else c[j] <= min(w)
+        tr = c[j] > c[j - m] if up else c[j] < c[j - m]
+        res[j] = low(j) and not low(j - 1) and ext and tr
+    return res
+
+
+def test_v86_flags_match_an_independent_loop_and_prefixes():
+    hits = {}
+    for seed in (40, 42, 44, 48):
+        D = L27._days_v(S.indicators(_ms(_mk(2600, '4h', seed))))
+        for up in (True, False):
+            v = L86._smooth_v(D, L86.IP, up).values
+            np.testing.assert_array_equal(v, _v86_ref(D, up), err_msg=str((seed, up)))
+            hits[up] = hits.get(up, 0) + int(v.sum())
+            if seed == 40:
+                for cut in range(140, len(D), 37):
+                    np.testing.assert_array_equal(L86._smooth_v(D.iloc[:cut], L86.IP, up).values, v[:cut])
+                gap = D.drop(D.index[len(D) // 2])
+                np.testing.assert_array_equal(L86._smooth_v(gap, L86.IP, up).values, _v86_ref(gap, up))
+    assert all(hits.values()), hits
+
+
+def _v86_days(c):
+    c = np.asarray(c, float)
+    return pd.DataFrame(dict(h=c, l=c, c=c, v=1.0), index=pd.date_range('2022-01-01', periods=len(c), freq='D'))
+
+
+def test_v86_synthetic_choppy_then_smooth():
+    # 150 flat choppy days (3-day cycle +3%, -3%, back), then +5% and a steady +1% climb: no pullbacks, UI drops to a new
+    # 90-day low on the first climb day (151), which is also a 14-day closing high above the close 30 days earlier
+    chop = np.cumprod(np.tile([1.03, 0.97, 1 / (1.03 * 0.97)], 50))
+    c = np.r_[chop, chop[-1] * 1.05 * np.cumprod(np.full(40, 1.01))]
+    up = L86._smooth_v(_v86_days(c), L86.IP, True).values
+    U = L86._ulcer(_v86_days(c), 14, 30, True)
+    assert np.flatnonzero(up)[0] == 151 and not up[:151].any()
+    assert U.iloc[151] < U.iloc[61:151].min() and not U.iloc[150] < U.iloc[60:150].min()
+    assert not up[152]                                                        # day 152 is a low again but not the first day
+    assert U.iloc[152] < U.iloc[62:152].min()
+    assert not L86._smooth_v(_v86_days(c), L86.IP, False).any()
+    dn = L86._smooth_v(_v86_days(1.0 / c), L86.IP, False).values
+    assert np.flatnonzero(dn)[0] == 151 and not dn[:151].any()
+    assert not L86._smooth_v(_v86_days(1.0 / c), L86.IP, True).any()
+    g = _v86_days(c)
+    assert not L86._smooth_v(g.drop(g.index[151 - 133]), L86.IP, True).values[:151].any()   # day j-133 missing
+    c2 = c.copy(); c2[151] = c2[149] * 0.999                                   # close not at the 14-day high
+    assert not L86._smooth_v(_v86_days(c2), L86.IP, True).values[151]
+
+
+def test_v86_boundaries(monkeypatch):
+    L = 140
+    def run(Uv, c, up):
+        D = _v86_days(c)
+        monkeypatch.setattr(L86, '_ulcer', lambda D, k, m, u: pd.Series(Uv, index=D.index))
+        out = L86._smooth_v(D, L86.IP, up).values[134:].tolist()
+        monkeypatch.undo()
+        return out
+    U = np.r_[np.full(43, np.nan), np.full(91, 1.0), [0.9, 0.8, 0.8, 1.0, 1.0, 0.7]]   # rows 134..139
+    rise = np.r_[np.ones(104), np.linspace(1.0, 2.0, 36)]
+    assert run(U, rise, True) == [True, False, False, False, False, True]
+    U2 = U.copy(); U2[134] = 1.0                                                 # equal to the 90-day low is not lower
+    assert run(U2, rise, True) == [False, True, False, False, False, True]
+    flat = rise.copy(); flat[134] = flat[104]                                    # c_j == c_{j-30}: no 30-day gain
+    flat[121:134] = np.minimum(flat[121:134], flat[134])
+    assert run(U, flat, True)[0] is False
+    tie = rise.copy(); tie[134] = tie[133]                                       # close equal to the 14-day high still counts
+    assert run(U, tie, True)[0] is True
+    base = rise.copy(); base[105] = 3.0                                           # day j-29 above c_j; only day j-30 is the base
+    assert run(U, base, True)[0] is True
+    fall = 1.0 / rise
+    fb = fall.copy(); fb[105] = 0.1
+    assert run(U, fb, False)[0] is True
+    assert run(U, fall, False) == [True, False, False, False, False, True]
+    tie2 = fall.copy(); tie2[134] = tie2[133]
+    assert run(U, tie2, False)[0] is True
+    f2 = fall.copy(); f2[134] = f2[104]; f2[121:134] = np.maximum(f2[121:134], f2[134])
+    assert run(U, f2, False)[0] is False
+
+
+def test_v86_regime_gate_and_hour_zero(monkeypatch):
+    btc = _ms(_mk(2600, '4h', 52))
+    for key, up, ok in (('l86_smooth_uptrend_4h', True, (1,)), ('s86_smooth_downtrend_4h', False, (-1,))):
+        coin = _V86_COIN[key](); d = S.indicators(coin); cr = L.coin_regime(d)
+        f = np.asarray(L86._smooth(d, L86.IP, up))
+        full = _sig(key, coin, btc); got = np.asarray(full['le']) | np.asarray(full['se'])
+        assert got.any(), key
+        np.testing.assert_array_equal(got, f & np.isin(cr, ok), err_msg=key)
+        t = pd.to_datetime(coin.t).dt.normalize()
+        for i in np.flatnonzero(got)[:15]:
+            assert pd.Timestamp(coin.t.iloc[i]).hour == 0
+            cut = coin[t != t.iloc[i] - pd.Timedelta(days=100)].reset_index(drop=True)
+            k0 = np.flatnonzero(pd.to_datetime(cut.t).values == coin.t.values[i])[0]
+            g = _sig(key, cut, btc)
+            assert not (np.asarray(g['le'])[k0] or np.asarray(g['se'])[k0]), key
+        for forced in (1.0, 0.0, -1.0):
+            monkeypatch.setattr(L86.L1, 'coin_regime', lambda d, v=forced: np.full(len(d), v))
+            g = _sig(key, coin, btc)
+            assert (np.asarray(g['le']) | np.asarray(g['se'])).any() == (forced in ok), (key, forced)
+            monkeypatch.undo()
