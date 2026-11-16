@@ -102,7 +102,9 @@ def main():
     df = pd.DataFrame(rows); df.to_csv(os.path.join(a.out, 'rows.csv'), index=False, encoding='utf-8')
     sub, bad = _sub_paths()
     meta = dict(head=os.popen(f'git -C "{ROOT}" rev-parse HEAD').read().strip(), jobs=len(jobs), candles_resolved=len(sub),
-                candles_unresolved=bad, start=str(_books()[1]))
+                candles_unresolved=bad, start=str(_books()[1]),
+                data_long_1h_sha256=PC._hash(os.path.join(ROOT, 'data_long', '1h', '*_1h.csv')),
+                data_long_4h_sha256=PC._hash(os.path.join(ROOT, 'data_long', '4h', '*_4h.csv')))
     json.dump(meta, open(os.path.join(a.out, 'meta.json'), 'w', encoding='utf-8'), indent=1)
     print(json.dumps(meta)); print(df.groupby(['variant', 'cost_bp', 'mode'])['sumR'].sum(min_count=1).unstack().round(1))
     if 'error' in df and df['error'].notna().any(): print('ERRORS:', df[df['error'].notna()][['strategy', 'variant', 'error']])

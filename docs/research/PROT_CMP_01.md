@@ -38,7 +38,7 @@ after fees, slippage and funding?
 - **On:** bear_breakdown, ema_st, exp_breakout, exp_mom_short, exp_range, exp_trend, hot_coin, pullback_rsi.
 - **Unchanged:**
   - donchian_ens, ema_mom, rotation and squeeze_tp did worse on period A, and the exclusion was chosen on A only.
-  - breakout_pyramid was better on A and B but -101R on the 1h path check. That is mixed, so it waits for PYR-01.
+  - breakout_pyramid was better on A and B but -76R on the 1h path check (15 bp). That is mixed, so it waits for PYR-01.
 
 ΔR is the change in total R against `BASE`, summed over the 8 strategies. A red loss is a trade that reached +1R and
 closed below -0.25R.
@@ -64,8 +64,8 @@ closed below -0.25R.
 ### What does not work
 - **A tight trail on everything** (`prot` with a 2 or 3 ATR trail, which is what PR #333's tests used) costs the trend
   strategies their fat tails. On the real 1h path at 15 bp, across all 13 strategies, it lost 187R (3 ATR) and 369R (2 ATR)
-  against BASE. It lost most on rotation (-125 to
-  -165R), breakout_pyramid (-101 to -120R) and ema_mom (-50 to -64R).
+  against BASE. It lost most on rotation (-128 to
+  -165R), breakout_pyramid (-76 to -115R) and ema_mom (-51 to -64R).
 - **The runner lock-step** looked best on A and B, but it is negative on L and on the real 1h path.
 - **Activation at 1.5 or 2R** leaves the +1R-to-1.5R winners unprotected, so red losses do not fall.
 
@@ -94,6 +94,9 @@ should be made only when that book is flat.
 - Each strategy runs alone. The account caps (2.5% open risk, 3% daily halt) and slot interactions are not modelled.
 - MFE is measured on candle highs and lows from the entry fill to the exit candle. That is slightly generous on the exit
   candle, and equally so for every variant.
+- **Selection caveat (Codex review):** the period A selection is not provably made before the other results existed. All
+  periods were run in one job, so the record shows the rule (pick on A, confirm on B / L / 1h) but cannot prove the order.
+  Treat B, L and the 1h check as supporting evidence, not as a sealed holdout. The forward books are the real test.
 - The exclusion list for the 4 strategies was chosen on period A. The breakout_pyramid exclusion was chosen after seeing
   the 1h path check, and is stated as such.
 - The 1h path check covers 8 coins only.
