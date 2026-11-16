@@ -144,8 +144,13 @@ def test_sent_but_already_booked_is_never_resent():
     d.update(state='sent', cid='zbrfdead', send_qty=d['trim_qty'], qty_before=lot['qty'], attempts=1)
     e._apply_close(lot, d['trim_qty'], e.marks['BTCUSDT'], 'resync')      # a resync / pending resolve booked it
     n = len(e.trade.cids)
+    # LANE3-F1-trim r2: an untagged shrink is not attributable to this trim - while its record is missing it stays held
     e._risk_fill_run(k, lot, e.marks['BTCUSDT'])
-    assert d['state'] == 'done' and len(e.trade.cids) == n and d['trimmed'] == pytest.approx(d['trim_qty'])
+    assert d['state'] == 'sent' and len(e.trade.cids) == n
+    e.trade.orders['zbrfdead'] = dict(status='FILLED', executedQty=str(d['send_qty']), avgPrice=str(e.marks['BTCUSDT']))
+    q = lot['qty']
+    e._risk_fill_run(k, lot, e.marks['BTCUSDT'])                          # its final record decides; never booked twice
+    assert d['state'] == 'done' and len(e.trade.cids) == n and d['trimmed'] == pytest.approx(d['trim_qty']) and lot['qty'] == q
 
 
 def test_never_reached_exchange_resends_once_then_residual_alert_no_loop():
@@ -153,11 +158,13 @@ def test_never_reached_exchange_resends_once_then_residual_alert_no_loop():
     e = eng(); k, lot = opened(e)
     d = measure(e, lot, adverse(lot, 0.5))
     d.update(state='sent', cid='zbrfgone', send_qty=d['trim_qty'], qty_before=lot['qty'], attempts=1)
+    # LANE3-F1-trim (Codex #360 ruling 2): only Binance's FINAL record that nothing executed allows one more send
+    e.trade.orders['zbrfgone'] = dict(status='EXPIRED', executedQty='0', avgPrice='0')
 
     def unfilled(*a, **kw): raise E.UnfilledOrder('nothing executed')
     e._market_close = unfilled
     errs = []; e.err = lambda msg, **kw: errs.append(msg)
-    e._risk_fill_run(k, lot, e.marks['BTCUSDT'])                         # notfound -> one more send (attempt 2), unfilled
+    e._risk_fill_run(k, lot, e.marks['BTCUSDT'])                         # final, nothing executed -> one more send (attempt 2), unfilled
     assert d['attempts'] == 2 and d['state'] == 'due'
     e._risk_fill_run(k, lot, e.marks['BTCUSDT'])                         # bounded: residual + alert, nothing more sent
     assert d['state'] == 'residual' and d['residual'] > d['planned'] and any('residual' in x for x in errs)

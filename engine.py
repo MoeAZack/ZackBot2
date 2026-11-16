@@ -4703,20 +4703,37 @@ class Engine:
             return True
         if d['state'] == 'sent':                             # write-ahead found: settle it, never send blind
             qb = d.get('qty_before')
-            if qb is not None and lot['qty'] < qb - 1e-12:   # already booked (order record / resync / pending resolve)
-                return self._risk_fill_done(lot, d, qb)
+            shrunk = qb is not None and lot['qty'] < qb - 1e-12
+            if shrunk and (not d.get('cid') or self._trim_booked(lot, d)):   # already booked (order record / resync / pending
+                return self._risk_fill_done(lot, d, qb)                       # resolve) - tagged as THIS trim when its id is known
             res = self._order_result(sym, d.get('cid'), d.get('send_qty'))
-            if res['state'] in ('pending', 'unreadable'): return False      # not final yet - asked again next pass
+            if shrunk and res['state'] == 'final':
+                # LANE3-F1-trim r2: the lot shrank, but not by a booking tagged as this trim (another exit / a resync): only the
+                # trim's own final record decides. Executed -> settled (the shrink is never booked a second time here;
+                # reconcile owns any remaining position difference); nothing executed -> the shrink was something else
+                if res['qty'] > 0: return self._risk_fill_done(lot, d, qb)
+                self.resolve(f'risk-trim-unknown|{key}', 'risk trim: order record shows nothing executed')
+                d['state'] = 'due'; self.save_state(); return True
+            if d.get('cid') and res['state'] in ('pending', 'unreadable', 'notfound'):
+                # LANE3-F1-trim (Codex #360 ruling 2): a known trim id that is not final, unreadable or NOT FOUND is not proof
+                # that it never executed (a crash can fall between the durable 'sent' write and lot['pending']) - it stays
+                # owned: never re-sent under a new id, adds stay blocked, the stop and every exit keep running; the owner is
+                # alerted once after 5 min. Only Binance's final record (or the lot's own booking) settles it
+                t0 = d.setdefault('sent_t', time.time())     # records written before this field: the first pass that sees them
+                if time.time() - t0 > 300: self._trim_quarantine_alert(key, lot, d, res['state'], time.time() - t0)
+                return False
             if res['state'] == 'final' and res['qty'] > 0:
                 self._apply_close(lot, res['qty'], res['px'] or m, 'risk_trim')
                 return self._risk_fill_done(lot, d, qb)
-            d['state'] = 'due'                               # nothing executed / never reached Binance: one more send
+            self.resolve(f'risk-trim-unknown|{key}', 'risk trim: order record shows nothing executed')
+            d['state'] = 'due'                               # nothing executed (final record) / no source (simulation): one more send
             if d['attempts'] >= 1 + self.RISK_FILL_RETRIES: return self._risk_fill_run(key, lot, m)
         qty = self._rd(min(d['trim_qty'] - d.get('trimmed', 0.0), lot['qty']), r['step'])
         if qty <= 0: d['state'] = 'done'; self.save_state(); return True
         d['attempts'] += 1
         cid = f"zbrf{zlib.crc32(f'{key}|{i}|{d['attempts']}'.encode()):08x}"
-        d.update(state='sent', cid=cid, send_qty=qty, qty_before=lot['qty']); self.save_state()      # write-ahead
+        d.update(state='sent', cid=cid, send_qty=qty, qty_before=lot['qty'], sent_t=time.time(),
+                 fills_n=len(lot.get('fills') or [])); self.save_state()   # write-ahead
         try:
             self._market_close(lot, qty, 'risk_trim', m, cid=cid)
         except AmbiguousOrder:
@@ -4728,7 +4745,26 @@ class Engine:
             d['state'] = 'due'; self.save_state(); return True
         return self._risk_fill_done(lot, d, d['qty_before'])
 
+    @staticmethod
+    def _trim_booked(lot, d):
+        """LANE3-F1-trim r2: a 'risk_trim' booking on the lot after this trim's write-ahead (records older than fills_n: no)."""
+        n = d.get('fills_n')
+        return isinstance(n, int) and any(f[1] == 'risk_trim' for f in (lot.get('fills') or [])[n:])
+
+    def _trim_quarantine_alert(self, key, lot, d, state, age):
+        """LANE3-F1-trim: one keyed alert (and one push) for a post-fill trim held as unresolved."""
+        k = f'risk-trim-unknown|{key}'
+        what = 'not found on Binance' if state == 'notfound' else f'order record {state} on Binance'
+        if (self.health.get('incidents', {}).get(k) or {}).get('open'):
+            self.err(f"{lot['symbol']} [{lot['sleeve']}] risk trim {d.get('cid')}: still {what}", key=k); return
+        msg = (f"{lot['symbol']} {lot['side']} [{lot['sleeve']}]: post-fill risk trim (client id {d.get('cid')}, "
+               f"{d.get('send_qty')}) {what} for {int(age // 60)} min - held as unresolved: never re-sent while it could still "
+               'execute; the stop stays, adds are blocked. Check the order history on Binance')
+        self.err(msg, key=k)
+        self.notify(f'⚠️ {msg}.')
+
     def _risk_fill_done(self, lot, d, qty_before):
+        self.resolve(f"risk-trim-unknown|{next((k for k, l in self.state['lots'].items() if l is lot), '')}", 'risk trim settled')
         d['trimmed'] = round(d.get('trimmed', 0.0) + max(0.0, (qty_before or lot['qty']) - lot['qty']), 12)
         d['residual'] = RF.residual(lot['side'], lot['qty'], d['measured_px'], lot['stop'], d.get('fee_unit'))
         d['state'] = 'done'
@@ -4810,6 +4846,7 @@ class Engine:
         lot = self.state['lots'].pop(key, None)
         if not lot: return
         self.resolve(f'stop-missing|{key}', f"{lot['symbol']} {lot['side']} [{lot['sleeve']}]: trade closed ({why}) - stop check ended")
+        self.resolve(f'risk-trim-unknown|{key}', f"{lot['symbol']} {lot['side']} [{lot['sleeve']}]: trade closed ({why}) - risk trim check ended")
         if why != 'stop': self._cancel_or_park(lot['symbol'], lot.get('stop_id'))   # no stale stop may survive its lot
         if lot.get('tp_id') and why != TP_EXIT:            # resting TP: cancelled on every other close (a failed cancel is
             self._cancel_or_park(lot['symbol'], lot['tp_id'])   # parked and retried - it never blocks the close)
