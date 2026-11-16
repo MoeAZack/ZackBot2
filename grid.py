@@ -924,7 +924,8 @@ class GridManager:
             st = self._stop_ok(g, side, m)
             # CAPS-01 r4: the order's own stop risk must fit the portfolio open-risk budget (lots + every reserved intent,
             # other grids' in-flight orders included; this grid's own in-flight op is this order - not counted twice)
-            room = self.e.open_risk_room(q * abs(m - st), skip_op=(g.get('op') or {}).get('id'))
+            add = self.e._side_risk(side, m, st, q)                  # r5: validated operands; None -> refused below
+            room = self.e.open_risk_room(add, skip_op=(g.get('op') or {}).get('id'))
             if room: raise ValueError(f'{room} - not sent')
         if not (g['stop_lo'] <= m <= g['stop_hi']): raise ValueError(f"mark {m:g} outside the grid's stops - not sent")
         cap = g['capital'] * float(g['cfg'].get('capital_frac', 1.0)) * (g['hi'] / g['lo']) * 1.05

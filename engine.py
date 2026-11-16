@@ -928,6 +928,15 @@ RISK_RULE_DEFAULTS = dict(
 # warns - refuses every new entry and add with a named reason (Engine.risk_caps_block). Exits, stops and the management
 # of open positions are never blocked by it.
 RISK_CAP_POLICY = dict(open_risk_pct=2.5, daily_loss_halt=0.03, peak_dd_flatten=0.10)
+
+
+def _finite_num(v):
+    """CAPS-01 r5: a finite float (bool / non-number / NaN / inf -> None)."""
+    if isinstance(v, bool): return None
+    try: f = float(v)
+    except (TypeError, ValueError): return None
+    return f if math.isfinite(f) else None
+
 OPEN_RISK_UNKNOWN = ('open risk of a pending entry / add cannot be computed (missing stop distance, price or size) - '
                      'no new risk until it is resolved')
 _REAL_FUTURES = Futures                                 # CAPS-01: the real Binance client, captured before any test/replay swap
@@ -7502,7 +7511,7 @@ class Engine:
     #      {UNCONF_ADOPT_S} s -> adopted from the position at the mark price.
     # The lot inherits the provisional stop (_replace_stop places the real one first, then cancels it). New entries on that
     # coin/side wait until it is settled. Engine._owned_stop_tags lists every stop the bot owns (for AUD-04's verifier).
-    def _remember_unconfirmed(self, plan, cid, strict=False):
+    def _remember_unconfirmed(self, plan, cid, strict=False, save=True):
         """Record an entry by its client id. strict=True (AUD-05 r2 write-ahead): raises if the record is not durable - the
         record is then removed from memory too and the caller must not send."""
         sl = plan.get('sl') or {}
@@ -7511,6 +7520,7 @@ class Engine:
         while k in ue: k += '+'
         ue[k] = dict(symbol=plan['sym'], side=plan['side'], cid=cid, qty=plan['qty'], t=time.time(), prov=None, prov_qty=0.0,
                      plan=plan)
+        if not save: return k                                 # CAPS-01 r5: the caller saves it in ONE write with its own change
         try:
             self._save_wal() if strict else self.save_state()
         except Exception:
@@ -7640,6 +7650,7 @@ class Engine:
         return False
 
     def _settle_unconfirmed(self, live):
+        self._normalize_order_owners()                           # CAPS-01 r5: one owner per order before fills / protection
         ue = self.state.get('unconfirmed_entries') or {}
         for uk, u in list(ue.items()):
             sym, side = u['symbol'], u['side']
@@ -7783,16 +7794,14 @@ class Engine:
     @staticmethod
     def _plan_risk(plan, qty):
         """Risk to the stop of `qty` of an entry plan (its stop distance; an older plan without one: its full planned risk).
-        None = NOT computable (CAPS-01 r4: unknown risk is never counted as zero - the caller fails closed)."""
+        None = NOT computable (CAPS-01 r4/r5: unknown or invalid risk is never counted as zero - the caller fails closed)."""
         plan = plan if isinstance(plan, dict) else {}
-        try:
-            d = float(plan['stop_dist']); q = float(qty)
-            if math.isfinite(d) and math.isfinite(q) and d >= 0 and q >= 0: return d * q
-        except (KeyError, TypeError, ValueError): pass
-        try:
-            v = float(plan.get('risk_usd'))
-            return v if math.isfinite(v) and v >= 0 else None
-        except (TypeError, ValueError): return None
+        d, q = _finite_num(plan.get('stop_dist')), _finite_num(qty)
+        if d is not None and q is not None and d >= 0 and q >= 0:
+            v = d * q
+            if math.isfinite(v): return v
+        v = _finite_num(plan.get('risk_usd'))
+        return v if v is not None and v >= 0 else None
 
     def _reserved_risk(self, skip_op=None):
         """CAPS-01 r2 (Codex #365): open risk of entry intents that are not lots yet, so the open-risk cap counts them -
@@ -7831,12 +7840,13 @@ class Engine:
 
     @staticmethod
     def _side_risk(side, px, stop, qty):
-        """max(0, signed px - stop) * qty, or None when any input is missing / not finite (CAPS-01 r4)."""
-        try:
-            sd = {'LONG': 1, 'SHORT': -1}[side]
-            v = max(0.0, sd * (float(px) - float(stop))) * float(qty)
-        except (KeyError, TypeError, ValueError): return None
-        return v if math.isfinite(v) and float(qty) >= 0 else None
+        """max(0, signed px - stop) * qty, or None when any operand is missing or invalid (CAPS-01 r4/r5): each of price,
+        stop and quantity is validated (finite, price > 0, stop > 0, qty >= 0) BEFORE a profitable stop is clamped to 0."""
+        sd = {'LONG': 1, 'SHORT': -1}.get(side) if isinstance(side, str) else None
+        px, stop, qty = _finite_num(px), _finite_num(stop), _finite_num(qty)
+        if sd is None or px is None or stop is None or qty is None or px <= 0 or stop <= 0 or qty < 0: return None
+        v = max(0.0, sd * (px - stop)) * qty
+        return v if math.isfinite(v) else None
 
     def open_risk_room(self, add_risk, skip_op=None):
         """CAPS-01 r4: None when `add_risk` more stop risk fits under the open-risk cap (lots + every reserved intent);
@@ -7848,9 +7858,8 @@ class Engine:
         if not (isinstance(cap, (int, float)) and math.isfinite(cap) and cap > 0): return 'bot capital unknown - no new risk'
         res = self._reserved_risk(skip_op=skip_op)
         if res is None: return OPEN_RISK_UNKNOWN
-        try: add = float(add_risk)
-        except (TypeError, ValueError): add = float('nan')
-        if not (math.isfinite(add) and add >= 0): return 'risk of this order cannot be computed - not sent'
+        add = _finite_num(add_risk)
+        if add is None or add < 0: return 'risk of this order cannot be computed - not sent'
         tot = sum(self._lot_risk(l) for l in self.state['lots'].values()) + res + add
         if tot > pct / 100 * cap + 1e-9:
             return f'risk rule open_risk_cap: open risk to stops {tot / cap * 100:.2f}% > {pct:g}% of bot capital'
@@ -8198,6 +8207,8 @@ class Engine:
         if not legacy:                                               # CAPS-01 r2: caps looser than policy -> the resting
             cb = self.risk_caps_block()                              # order is cancelled, never re-priced, no market fallback
             if cb: legacy = f'{cb} - maker entry not re-priced, no market fallback'
+        if rec.get('status') == 'handed' or self._ue_by_cid(rec.get('cid')):   # CAPS-01 r5: finish an interrupted handover
+            self._normalize_order_owners(); return True
         if rec['status'] in ('open', 'cancelling'):
             o = self.trade.get_order(sym, rec['cid'])
             age = time.time() - rec['placed_t']
@@ -8230,19 +8241,70 @@ class Engine:
         produced with a provisional stop and settles it from its order record. Fills already known from earlier final
         records still become a lot through the normal finalize path (no market fallback)."""
         sym, r = rec['symbol'], self.rules[rec['symbol']]
-        try: self.trade.cancel(sym, f"c:{rec['cid']}")
-        except Exception as ex: log.info(f"maker entry {sym}: cancel of unknown order {rec['cid']} failed ({type(ex).__name__})")
-        unk = self._rd(rec['qty'] - rec['filled'], r['step'])
-        if unk > 0:
-            self._remember_unconfirmed(dict(rec['plan'], qty=unk), rec['cid'], strict=True)   # durable before the handover
-        msg = 'maker order record not found on Binance - handed to unconfirmed-entry reconciliation, no market fallback'
-        self.err(f"maker entry {sym} {rec['side']}: {msg} (client id {rec['cid']}, {unk:g})")
+        if rec.get('status') != 'handed':
+            try: self.trade.cancel(sym, f"c:{rec['cid']}")
+            except Exception as ex: log.info(f"maker entry {sym}: cancel of unknown order {rec['cid']} failed ({type(ex).__name__})")
+            unk = self._rd(rec['qty'] - rec['filled'], r['step'])
+            # CAPS-01 r5 (Codex): ONE durable write moves the unknown order to its unconfirmed entry AND reduces the resting
+            # record to the fills it already knows (status 'handed') - a restart from any snapshot sees either the old
+            # resting order or the finished handover, never two owners of one order; idempotent by client id as well
+            prev = {f: rec.get(f) for f in ('status', 'qty')}
+            uk = None
+            if unk > 0 and not self._ue_by_cid(rec['cid']):
+                uk = self._remember_unconfirmed(dict(rec['plan'], qty=unk), rec['cid'], save=False)
+            rec.update(status='handed', qty=rec['filled'])
+            try:
+                self._save_wal()
+            except Exception:
+                rec.update(prev)
+                if uk: self.state['unconfirmed_entries'].pop(uk, None)
+                raise                                                # not durable: nothing handed over (polled again)
+            self.err(f"maker entry {sym} {rec['side']}: maker order record not found on Binance - handed to unconfirmed-entry "
+                     f"reconciliation, no market fallback (client id {rec['cid']}, {unk:g})")
+        return self._maker_handed_finish(k, rec)
+
+    def _ue_by_cid(self, cid):
+        return [uk for uk, u in (self.state.get('unconfirmed_entries') or {}).items() if cid and u.get('cid') == cid]
+
+    def _maker_handed_finish(self, k, rec):
+        """CAPS-01 r5: a handed-over maker record keeps only the fills already known from final records: they become a lot
+        through the normal finalize path (no market fallback); nothing left -> the record goes."""
+        sym = rec['symbol']
         if rec['filled'] > 0:
-            self._maker_finalize(k, 0.0, True, (self.marks or {}).get(sym) or rec.get('price') or rec['plan']['px'], no_fallback=msg)
+            self._maker_finalize(k, 0.0, True, (self.marks or {}).get(sym) or rec.get('price') or rec['plan']['px'],
+                                 no_fallback='maker order record not found - its remainder is settled as an unconfirmed entry')
         else:
             self.state['resting_entries'].pop(k, None); self._mk_refs.pop(self._mk_key(rec), None)
         self.save_state()
         return True
+
+    def _normalize_order_owners(self):
+        """CAPS-01 r5 (Codex #365): one exchange order has ONE owner before fills or protection are reconciled. A resting
+        maker record whose client id an unconfirmed entry already owns (a state saved mid-handover by older code) finishes
+        the handover - the record keeps only its known fills, the unconfirmed entry owns the order; two unconfirmed entries
+        with one client id merge into the oldest (its provisional stop kept; a second provisional stop is cancelled)."""
+        changed = False
+        ue = self.state.get('unconfirmed_entries') or {}
+        for k, rec in list((self.state.get('resting_entries') or {}).items()):
+            if rec.get('status') == 'handed' or self._ue_by_cid(rec.get('cid')):
+                if rec.get('status') != 'handed': rec.update(status='handed', qty=rec.get('filled') or 0.0)
+                try: self._maker_handed_finish(k, rec)
+                except Exception as e: self.err(f'maker entry {k}: handover not finished ({e}) - retried next pass')
+                changed = True
+        seen = {}
+        for uk in sorted(ue, key=lambda x: (ue[x].get('t') or 0, x)):
+            cid = ue[uk].get('cid')
+            if not cid: continue
+            if cid not in seen: seen[cid] = uk; continue
+            keep, dup = ue[seen[cid]], ue.pop(uk)
+            if dup.get('prov') and not keep.get('prov'):
+                keep['prov'], keep['prov_qty'] = dup['prov'], dup.get('prov_qty', 0.0)
+            elif dup.get('prov') and dup['prov'] != keep.get('prov'):
+                self._cancel_or_park(dup['symbol'], dup['prov'])
+            self.err(f"ENTRY {dup['symbol']} {dup['side']}: duplicate owner of order {cid} merged (one order, one owner)")
+            changed = True
+        if changed: self.save_state()
+        return changed
 
     def _maker_finalize(self, k, rem, small, px, no_fallback=None):
         rec = self.state['resting_entries'].pop(k)
