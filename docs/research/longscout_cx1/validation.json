@@ -1,0 +1,16 @@
+{
+  "native_windows_cp1252_tests": 8,
+  "test_failures": 0,
+  "formula_reference_combinations": 6,
+  "missing_day_directions": 2,
+  "prefix_comparisons": 14,
+  "scenarios_per_case": 80,
+  "cases": 2,
+  "total_scenario_runs": 160,
+  "arithmetic_audits": 2,
+  "arithmetic_mismatches": 0,
+  "independent_execution_replay": false,
+  "source_manifests_verified": 2,
+  "source_csv_hashes_verified": 175,
+  "loaded_unique_csv_hashes_verified": 166
+}
