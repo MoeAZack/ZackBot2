@@ -1,0 +1,52 @@
+[
+  {
+    "id": "cx003_cusum_long_4h",
+    "status": "FAIL",
+    "n": 104.0,
+    "meanR7": -0.026433613404833207,
+    "meanR15": -0.040927221103664965,
+    "meanR23": -0.05542082880249673,
+    "meanR15_early": -0.087659136830664,
+    "meanR15_late": 0.07421026895295839,
+    "meanR15_ex_best": -0.08097537087047682,
+    "fresh134": -0.10205755310371956,
+    "extra31": 0.1434862095486341,
+    "subset_n": {
+      "fresh134": 79.0,
+      "extra31": 25.5
+    },
+    "order0_early": 76,
+    "order0_late": 30,
+    "failed": [
+      "meanR15",
+      "early",
+      "ex_best_coin",
+      "meanR23",
+      "fresh134"
+    ]
+  },
+  {
+    "id": "cx004_cusum_short_4h",
+    "status": "FAIL",
+    "n": 47.0,
+    "meanR7": 0.12050099616793247,
+    "meanR15": 0.10096285968378238,
+    "meanR23": 0.08142472319963233,
+    "meanR15_early": 0.2475077642784518,
+    "meanR15_late": -0.03677681040018847,
+    "meanR15_ex_best": 0.039767276906612636,
+    "fresh134": 0.0482706572449684,
+    "extra31": 0.3464384344400504,
+    "subset_n": {
+      "fresh134": 38.0,
+      "extra31": 9.0
+    },
+    "order0_early": 21,
+    "order0_late": 24,
+    "failed": [
+      "trades",
+      "late",
+      "order0_30_per_half"
+    ]
+  }
+]

@@ -1,0 +1,151 @@
+{
+  "independent_signal_checks": [
+    {
+      "coin": "AAVEUSDT",
+      "module": "longscout_cx2",
+      "side": "short",
+      "signals": 3,
+      "prefix_checks": 5,
+      "matches": true
+    },
+    {
+      "coin": "AAVEUSDT",
+      "module": "longscout_cx2",
+      "side": "long",
+      "signals": 3,
+      "prefix_checks": 5,
+      "matches": true
+    },
+    {
+      "coin": "AAVEUSDT",
+      "module": "longscout_cx3",
+      "side": "short",
+      "signals": 58,
+      "prefix_checks": 5,
+      "matches": true
+    },
+    {
+      "coin": "AAVEUSDT",
+      "module": "longscout_cx3",
+      "side": "long",
+      "signals": 58,
+      "prefix_checks": 5,
+      "matches": true
+    },
+    {
+      "coin": "AAVEUSDT",
+      "module": "longscout_cx4",
+      "side": "short",
+      "signals": 3,
+      "prefix_checks": 5,
+      "matches": true
+    },
+    {
+      "coin": "AAVEUSDT",
+      "module": "longscout_cx4",
+      "side": "long",
+      "signals": 0,
+      "prefix_checks": 2,
+      "matches": true
+    },
+    {
+      "coin": "BCHUSDT",
+      "module": "longscout_cx2",
+      "side": "short",
+      "signals": 4,
+      "prefix_checks": 5,
+      "matches": true
+    },
+    {
+      "coin": "BCHUSDT",
+      "module": "longscout_cx2",
+      "side": "long",
+      "signals": 3,
+      "prefix_checks": 5,
+      "matches": true
+    },
+    {
+      "coin": "BCHUSDT",
+      "module": "longscout_cx3",
+      "side": "short",
+      "signals": 61,
+      "prefix_checks": 5,
+      "matches": true
+    },
+    {
+      "coin": "BCHUSDT",
+      "module": "longscout_cx3",
+      "side": "long",
+      "signals": 67,
+      "prefix_checks": 5,
+      "matches": true
+    },
+    {
+      "coin": "BCHUSDT",
+      "module": "longscout_cx4",
+      "side": "short",
+      "signals": 3,
+      "prefix_checks": 5,
+      "matches": true
+    },
+    {
+      "coin": "BCHUSDT",
+      "module": "longscout_cx4",
+      "side": "long",
+      "signals": 1,
+      "prefix_checks": 3,
+      "matches": true
+    },
+    {
+      "coin": "UNIUSDT",
+      "module": "longscout_cx2",
+      "side": "short",
+      "signals": 4,
+      "prefix_checks": 5,
+      "matches": true
+    },
+    {
+      "coin": "UNIUSDT",
+      "module": "longscout_cx2",
+      "side": "long",
+      "signals": 2,
+      "prefix_checks": 4,
+      "matches": true
+    },
+    {
+      "coin": "UNIUSDT",
+      "module": "longscout_cx3",
+      "side": "short",
+      "signals": 83,
+      "prefix_checks": 5,
+      "matches": true
+    },
+    {
+      "coin": "UNIUSDT",
+      "module": "longscout_cx3",
+      "side": "long",
+      "signals": 59,
+      "prefix_checks": 5,
+      "matches": true
+    },
+    {
+      "coin": "UNIUSDT",
+      "module": "longscout_cx4",
+      "side": "short",
+      "signals": 1,
+      "prefix_checks": 3,
+      "matches": true
+    },
+    {
+      "coin": "UNIUSDT",
+      "module": "longscout_cx4",
+      "side": "long",
+      "signals": 0,
+      "prefix_checks": 2,
+      "matches": true
+    }
+  ],
+  "signal_mismatches": 0,
+  "prefix_mismatches": 0,
+  "execution_replay": false
+}

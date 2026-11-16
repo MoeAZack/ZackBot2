@@ -1,0 +1,68 @@
+{
+  "baseline_trials": 281,
+  "baseline_screen_passes": 11,
+  "new_trials": 2,
+  "new_passes": 0,
+  "total_excluding_parallel_lanes": 283,
+  "trials": [
+    {
+      "id": "cx001_entropy_collapse_long_4h",
+      "status": "FAIL",
+      "n": 62.0,
+      "meanR7": -0.06984740217733663,
+      "meanR15": -0.08881507653448616,
+      "meanR23": -0.10778275089163568,
+      "meanR15_early": -0.07318267925487416,
+      "meanR15_late": -0.13119575792843305,
+      "meanR15_ex_best": -0.15672813466133168,
+      "fresh134": -0.06692824743809464,
+      "extra31": -0.15912138620023925,
+      "subset_n": {
+        "fresh134": 46.0,
+        "extra31": 16.0
+      },
+      "order0_early": 45,
+      "order0_late": 17,
+      "failed": [
+        "trades",
+        "meanR15",
+        "early",
+        "late",
+        "ex_best_coin",
+        "meanR23",
+        "order0_30_per_half",
+        "fresh134",
+        "extra31"
+      ]
+    },
+    {
+      "id": "cx002_entropy_collapse_short_4h",
+      "status": "FAIL",
+      "n": 88.0,
+      "meanR7": -0.13662200207980102,
+      "meanR15": -0.16165755702502743,
+      "meanR23": -0.18672277757621678,
+      "meanR15_early": -0.035525767680985885,
+      "meanR15_late": -0.2888498015610174,
+      "meanR15_ex_best": -0.20820191332622617,
+      "fresh134": -0.10102979006459904,
+      "extra31": -0.3521984972148162,
+      "subset_n": {
+        "fresh134": 68.0,
+        "extra31": 20.0
+      },
+      "order0_early": 44,
+      "order0_late": 45,
+      "failed": [
+        "trades",
+        "meanR15",
+        "early",
+        "late",
+        "ex_best_coin",
+        "meanR23",
+        "fresh134",
+        "extra31"
+      ]
+    }
+  ]
+}

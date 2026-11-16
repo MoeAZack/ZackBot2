@@ -1,0 +1,34 @@
+{
+  "1": {
+    "rules": "2f4c4dc47c258440f1a323793daddd183cad5ded",
+    "cases": "d8efdf3676ca715d1d46dc5b1bba01c1379fd384",
+    "git_sha256": {
+      "research/longscout_cx1.py": "aa6965442d817a336f9715b99cf662042174f37001bc44a11bc05392b0518790",
+      "research/extra31_screen/longscout_cx1_cases.json": "471e22aefcfd895fccca25d810bf7c1effdf257c2ec32cb408fe4d9de3227cf7"
+    }
+  },
+  "2": {
+    "rules": "9b74b5da8b30714275d4337ad62a9bec82051f6c",
+    "cases": "50c3415651e8962afdbd1049e56cd1eaac357cb1",
+    "git_sha256": {
+      "research/longscout_cx2.py": "a81c61fe607369ac71a5523b742c06290f5387197c02b95e49e9992ec4a3abdf",
+      "research/extra31_screen/longscout_cx2_cases.json": "e1baa7b7875881dee3855cebe95ab1e56f781dcbbca5aa1be04da20f92eb43ab"
+    }
+  },
+  "3": {
+    "rules": "0324c7482667a049d1c0c464df537d5c8a874957",
+    "cases": "0c4d0af7a7baa732508533b5a7a8f3f7022e3b72",
+    "git_sha256": {
+      "research/longscout_cx3.py": "1426dd8ee0f2621330d329ed1f2361f543e99f46b0f3654b32c20dfafa584838",
+      "research/extra31_screen/longscout_cx3_cases.json": "7edecd7834b0f20371923e4e1be8860bccfd335f5a7057ec20cdbf52894bd08c"
+    }
+  },
+  "4": {
+    "rules": "c7bce19b7ffb66858dd156060863ef16b8bd118f",
+    "cases": "469d752f17fe33e94cd4e407359f524f1244a9cf",
+    "git_sha256": {
+      "research/longscout_cx4.py": "73b83932321bbf79a38459be47d0d419597ec7d68e3a86e9e3dc8050265a4259",
+      "research/extra31_screen/longscout_cx4_cases.json": "66bd7243fd12fb1fa1743bfc4872dbbdc68010df2184a9da4bbb3b838a4a20ac"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "command": [
+    "C:\\Users\\princ\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+    "research/extra31_screen/longscout_cx_transport.py",
+    "C:\\Dev\\ZackBot_research_cache\\longscout_fresh_20261114",
+    "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean",
+    "C:\\Dev\\ZackBot2_lane5_20261116\\.git\\lane5-output",
+    "--case",
+    "cx006_energy_concentration_short_4h",
+    "--orders",
+    "40"
+  ],
+  "started_cairo": "2026-11-16T17:18:37.137042+02:00",
+  "finished_cairo": "2026-11-16T17:20:23.389539+02:00",
+  "exit_code": 0,
+  "cases_sha256": "52be48edab1422a85eca58384413764777735dc879a1a2d6d7713cabd9413ce9",
+  "rules": "0324c7482667a049d1c0c464df537d5c8a874957"
+}

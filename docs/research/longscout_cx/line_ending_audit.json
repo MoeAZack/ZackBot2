@@ -1,0 +1,76 @@
+{
+  "checked_cairo": "2026-11-16T17:26:21.427112+02:00",
+  "original_effective_autocrlf": true,
+  "original_origin": "system Git configuration",
+  "rounds": [
+    {
+      "round": 1,
+      "rules_commit": "2f4c4dc47c258440f1a323793daddd183cad5ded",
+      "cases_commit": "d8efdf3676ca715d1d46dc5b1bba01c1379fd384",
+      "rule_working_and_git_sha256": "aa6965442d817a336f9715b99cf662042174f37001bc44a11bc05392b0518790",
+      "case_as_run_sha256": "ff38cee2db0f641d8478d41889464aabbe1705d9d7780960e9174874629fffa9",
+      "case_canonical_git_sha256": "471e22aefcfd895fccca25d810bf7c1effdf257c2ec32cb408fe4d9de3227cf7",
+      "case_crlf_count": 62,
+      "difference": "CRLF only; decoded JSON identical",
+      "all_result_receipts_match": true,
+      "case_receipts": {
+        "cx001_entropy_collapse_long_4h": "ff38cee2db0f641d8478d41889464aabbe1705d9d7780960e9174874629fffa9",
+        "cx002_entropy_collapse_short_4h": "ff38cee2db0f641d8478d41889464aabbe1705d9d7780960e9174874629fffa9"
+      },
+      "as_run_archive": "cx1_cases_as_run.json.gz"
+    },
+    {
+      "round": 2,
+      "rules_commit": "9b74b5da8b30714275d4337ad62a9bec82051f6c",
+      "cases_commit": "50c3415651e8962afdbd1049e56cd1eaac357cb1",
+      "rule_working_and_git_sha256": "a81c61fe607369ac71a5523b742c06290f5387197c02b95e49e9992ec4a3abdf",
+      "case_as_run_sha256": "bb7e6a823e2d3333f602d9786c06919d99b3fd8e66c41da81c6ad3748a9d21b6",
+      "case_canonical_git_sha256": "e1baa7b7875881dee3855cebe95ab1e56f781dcbbca5aa1be04da20f92eb43ab",
+      "case_crlf_count": 62,
+      "difference": "CRLF only; decoded JSON identical",
+      "all_result_receipts_match": true,
+      "case_receipts": {
+        "cx003_cusum_long_4h": "bb7e6a823e2d3333f602d9786c06919d99b3fd8e66c41da81c6ad3748a9d21b6",
+        "cx004_cusum_short_4h": "bb7e6a823e2d3333f602d9786c06919d99b3fd8e66c41da81c6ad3748a9d21b6"
+      },
+      "as_run_archive": "cx2_cases_as_run.json.gz"
+    },
+    {
+      "round": 3,
+      "rules_commit": "0324c7482667a049d1c0c464df537d5c8a874957",
+      "cases_commit": "0c4d0af7a7baa732508533b5a7a8f3f7022e3b72",
+      "rule_working_and_git_sha256": "1426dd8ee0f2621330d329ed1f2361f543e99f46b0f3654b32c20dfafa584838",
+      "case_as_run_sha256": "52be48edab1422a85eca58384413764777735dc879a1a2d6d7713cabd9413ce9",
+      "case_canonical_git_sha256": "7edecd7834b0f20371923e4e1be8860bccfd335f5a7057ec20cdbf52894bd08c",
+      "case_crlf_count": 58,
+      "difference": "CRLF only; decoded JSON identical",
+      "all_result_receipts_match": true,
+      "case_receipts": {
+        "cx005_energy_concentration_long_4h": "52be48edab1422a85eca58384413764777735dc879a1a2d6d7713cabd9413ce9",
+        "cx006_energy_concentration_short_4h": "52be48edab1422a85eca58384413764777735dc879a1a2d6d7713cabd9413ce9"
+      },
+      "as_run_archive": "cx3_cases_as_run.json.gz"
+    },
+    {
+      "round": 4,
+      "rules_commit": "c7bce19b7ffb66858dd156060863ef16b8bd118f",
+      "cases_commit": "469d752f17fe33e94cd4e407359f524f1244a9cf",
+      "rule_working_and_git_sha256": "73b83932321bbf79a38459be47d0d419597ec7d68e3a86e9e3dc8050265a4259",
+      "case_as_run_sha256": "2b2a2068c31069df2f10732cb05e2513c0a0e9215f0cdeca5c824a61b27c901a",
+      "case_canonical_git_sha256": "66bd7243fd12fb1fa1743bfc4872dbbdc68010df2184a9da4bbb3b838a4a20ac",
+      "case_crlf_count": 62,
+      "difference": "CRLF only; decoded JSON identical",
+      "all_result_receipts_match": true,
+      "case_receipts": {
+        "cx007_volatility_coupling_long_4h": "2b2a2068c31069df2f10732cb05e2513c0a0e9215f0cdeca5c824a61b27c901a",
+        "cx008_volatility_coupling_short_4h": "2b2a2068c31069df2f10732cb05e2513c0a0e9215f0cdeca5c824a61b27c901a"
+      },
+      "as_run_archive": "cx4_cases_as_run.json.gz"
+    }
+  ],
+  "findings": "No frozen rule or case Git blob changed. All exported alpha bytes match rule freezes. Every result cases hash matches the archived as-run bytes. Git-normalized case hashes differ solely by CRLF; no alpha/execution/gate change.",
+  "economic_rerun": false,
+  "current_local_autocrlf": false,
+  "all_four_canonical_rule_and_case_working_files_byte_identical_to_git": true,
+  "archives_reverified": true
+}

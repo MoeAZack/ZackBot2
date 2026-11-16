@@ -1,0 +1,18 @@
+{
+  "command": [
+    "C:\\Users\\princ\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+    "research/extra31_screen/longscout_cx_transport.py",
+    "C:\\Dev\\ZackBot_research_cache\\longscout_fresh_20261114",
+    "C:\\Dev\\ZackBot_research_cache\\h5_wide_d01_20261112\\clean",
+    "C:\\Dev\\ZackBot2_lane5_20261116\\.git\\lane5-output",
+    "--case",
+    "cx007_volatility_coupling_long_4h",
+    "--orders",
+    "40"
+  ],
+  "started_cairo": "2026-11-16T17:20:23.392135+02:00",
+  "finished_cairo": "2026-11-16T17:21:54.167343+02:00",
+  "exit_code": 0,
+  "cases_sha256": "2b2a2068c31069df2f10732cb05e2513c0a0e9215f0cdeca5c824a61b27c901a",
+  "rules": "c7bce19b7ffb66858dd156060863ef16b8bd118f"
+}
