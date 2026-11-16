@@ -2,9 +2,9 @@
   "baseline_trials": 281,
   "baseline_screen_passes": 11,
   "cx_registered": 8,
-  "cx_completed": 4,
+  "cx_completed": 6,
   "cx_passes": 0,
-  "total_completed_excluding_concurrent_lanes": 285,
+  "total_completed_excluding_concurrent_lanes": 287,
   "trials": [
     {
       "id": "cx001_entropy_collapse_long_4h",
@@ -113,6 +113,59 @@
         "trades",
         "late",
         "order0_30_per_half"
+      ]
+    },
+    {
+      "id": "cx005_energy_concentration_long_4h",
+      "status": "FAIL",
+      "n": 288.5,
+      "meanR7": -0.009980885999428183,
+      "meanR15": -0.03225134297958777,
+      "meanR23": -0.0548146273444586,
+      "meanR15_early": 0.03981750995183399,
+      "meanR15_late": -0.1487449682251038,
+      "meanR15_ex_best": -0.06088593539474682,
+      "fresh134": -0.042037026535880984,
+      "extra31": -0.0187850233637729,
+      "subset_n": {
+        "fresh134": 215.5,
+        "extra31": 74.5
+      },
+      "order0_early": 175,
+      "order0_late": 110,
+      "failed": [
+        "meanR15",
+        "late",
+        "ex_best_coin",
+        "meanR23",
+        "fresh134",
+        "extra31"
+      ]
+    },
+    {
+      "id": "cx006_energy_concentration_short_4h",
+      "status": "FAIL",
+      "n": 271.0,
+      "meanR7": 0.004850991713735715,
+      "meanR15": -0.019625479054018062,
+      "meanR23": -0.044101949821771846,
+      "meanR15_early": -0.05971528846705023,
+      "meanR15_late": 0.012190619482273155,
+      "meanR15_ex_best": -0.04444636261819964,
+      "fresh134": -0.025596163378057056,
+      "extra31": 0.011647678736586231,
+      "subset_n": {
+        "fresh134": 194.0,
+        "extra31": 76.5
+      },
+      "order0_early": 146,
+      "order0_late": 133,
+      "failed": [
+        "meanR15",
+        "early",
+        "ex_best_coin",
+        "meanR23",
+        "fresh134"
       ]
     }
   ]

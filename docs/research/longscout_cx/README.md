@@ -1,7 +1,7 @@
 # Lane 5 independent CX search
 
-Published 2026-11-16T17:17:16.241888+02:00 (Africa/Cairo). 4/8 registered trials completed, 0 screen passes.
-Baseline: 281 reported trials / 11 screen passes. Completed cumulative count: 285,
+Published 2026-11-16T17:21:16.817865+02:00 (Africa/Cairo). 6/8 registered trials completed, 0 screen passes.
+Baseline: 281 reported trials / 11 screen passes. Completed cumulative count: 287,
 excluding concurrent lanes. Independent passes increase the multiple-testing count.
 
 | trial | status | median n | R15 | fresh134 | extra31 |
@@ -10,6 +10,8 @@ excluding concurrent lanes. Independent passes increase the multiple-testing cou
 | cx002_entropy_collapse_short_4h | FAIL | 88.0 | -0.161658 | -0.101030 | -0.352198 |
 | cx003_cusum_long_4h | FAIL | 104.0 | -0.040927 | -0.102058 | +0.143486 |
 | cx004_cusum_short_4h | FAIL | 47.0 | +0.100963 | +0.048271 | +0.346438 |
+| cx005_energy_concentration_long_4h | FAIL | 288.5 | -0.032251 | -0.042037 | -0.018785 |
+| cx006_energy_concentration_short_4h | FAIL | 271.0 | -0.019625 | -0.025596 | +0.011648 |
 
 
 R15 and subset returns are mean per-trade R at 15 bp per side, medians across 40 seeded coin orders.

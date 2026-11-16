@@ -37,8 +37,9 @@ def main():
                 for p in (output/case).iterdir():
                     if p.is_file():shutil.copyfile(p,dest/p.name)
             (d/'ledger.json').write_text(json.dumps(current,indent=2)+'\n')
-            (d/'provenance.json').write_text(json.dumps(dict(freeze=frozen[str(n)],published_cairo=now,
-                note='Unchanged V2 worker, rule-v1 gates and 40 seeded orders; exact-blob transport. No tuning.'),indent=2)+'\n')
+            if not (d/'provenance.json').exists():
+                (d/'provenance.json').write_text(json.dumps(dict(freeze=frozen[str(n)],published_cairo=now,
+                    note='Unchanged V2 worker, rule-v1 gates and 40 seeded orders; exact-blob transport. No tuning.'),indent=2)+'\n')
             (d/'README.md').write_text(f'# CX{n}: '+str(sum(r['status']=='WIDE165_PASS' for r in current))+'/2 screen passes\n\n'+table(current)+
                 '\nFull-precision gates and failed-gate names: ledger.json. Frozen provenance: provenance.json.\n'
                 'All signals, both order-0 tapes and 40-order path/worst tapes are retained per case.\n'
