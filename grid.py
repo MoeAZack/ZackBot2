@@ -917,6 +917,8 @@ class GridManager:
         stop exactly as it will be placed (rounded to the tick) is valid. Raises ValueError (nothing is sent)."""
         pb = self.e.persist_block()
         if pb: raise ValueError(pb)
+        fb = self.e.new_risk_fence(g['sym'])                        # LANE3-F1 (Codex #368 r5): a staged send rechecks the
+        if fb: raise ValueError(f'{fb} - not sent')                  # ownership fences at its final dispatch
         if side: self._stop_ok(g, side, m)
         if not (g['stop_lo'] <= m <= g['stop_hi']): raise ValueError(f"mark {m:g} outside the grid's stops - not sent")
         cap = g['capital'] * float(g['cfg'].get('capital_frac', 1.0)) * (g['hi'] / g['lo']) * 1.05
