@@ -6027,6 +6027,8 @@ class Engine:
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if self.exchange_state().get('state') == 'outage': return OUTAGE_ADD     # T05b final: an add is new exposure
         if lot.get('stop_dirty'): return 'stop not confirmed yet'
+        if (lot['symbol'], lot['side']) in self._unconfirmed_claims():   # LANE3-F1-entry: an entry there may still execute
+            return 'an unconfirmed entry on this coin/side is not resolved yet'
         blk = self.stop_missing_block(lot['symbol'])               # AUD-04: a stop on this coin is missing on Binance
         if blk: return blk
         if lot.get('manual'): return 'manual trade (no adds)'
@@ -7518,6 +7520,18 @@ class Engine:
         cid = str(r.get('client_id') or '')
         return r['tag'] in owned or bool(cid and (f'c:{cid}' in owned or f'ac:{cid}' in owned))
 
+    def _entry_quarantine_alert(self, uk, u, state, age):
+        """LANE3-F1-entry: one keyed alert (and one push) for an unconfirmed entry held as unresolved."""
+        key = f'entry-unknown|{uk}'
+        what = 'not found on Binance' if state == 'notfound' else f'order record {state} on Binance'
+        if (self.health.get('incidents', {}).get(key) or {}).get('open'):
+            self.err(f"ENTRY {u['symbol']} {u['side']} {u.get('cid')}: still {what}", key=key); return
+        msg = (f"ENTRY {u['symbol']} {u['side']}: unconfirmed entry (client id {u.get('cid')}) {what} for {int(age // 60)} min "
+               'and no position has appeared - held as unresolved: no second entry on this coin/side while it could still '
+               'execute. Check the order history on Binance')
+        self.err(msg, key=key)
+        self.notify(f'⚠️ {msg}.')
+
     def _unconfirmed_claims(self):
         out = {}
         for u in (self.state.get('unconfirmed_entries') or {}).values():
@@ -7637,7 +7651,7 @@ class Engine:
             fr = self._order_result(sym, u.get('cid'), u['qty'])
             if fr['state'] == 'final':                                     # 1. the order's final record decides
                 got = fr['qty']
-                ue.pop(uk, None)
+                ue.pop(uk, None); self.resolve(f'entry-unknown|{uk}', f'ENTRY {sym} {side}: order record found')
                 if got > 0:
                     px = fr['px'] or plan['px']
                     log.info(f"ENTRY {sym} {side} unconfirmed -> confirmed from its order record: {got} @ {px}")
@@ -7659,13 +7673,20 @@ class Engine:
             self._prov_set(uk, u, extra)                                   # 2. protect exactly what is unresolved
             if extra > 0:
                 if age > UNCONF_ADOPT_S:                                   # 3b. no record in 5 min: adopt the position
-                    ue.pop(uk, None)
+                    ue.pop(uk, None); self.resolve(f'entry-unknown|{uk}', f'ENTRY {sym} {side}: adopted from the position')
                     px = (self.marks or {}).get(sym) or plan['px']
                     self.err(f"ENTRY {sym} {side} could not be confirmed from its order record ({fr['state']}) - adopted from "
                              f"the position ({extra} @ mark {px})")
                     self._create_lot(plan, extra, px, adopt_stop=u.get('prov'))
                     self._px_unmeasured(self.state['lots'].get(self._last_lot_key))   # FILL-PNL-01: adopted at the mark
                     self.save_state()
+            elif u.get('cid') and fr['state'] != 'nosource':                # 3a'. LANE3-F1-entry (Codex #360 ruling 1)
+                # a KNOWN client id that Binance does not show (not found, a record that is not final, or unreadable) and no
+                # position yet is NOT proof that it never executed: the intent stays owned (it keeps blocking a second entry
+                # on this coin/side and its provisional protection follows any late fill), and after 5 min the owner is
+                # alerted - never forgotten on a timer or on two negatives. A crash before the send stays here too (fail closed)
+                if age > UNCONF_ADOPT_S:
+                    self._entry_quarantine_alert(uk, u, fr['state'], age)
             elif age > (UNCONF_DROP_S if fr['state'] in ('notfound', 'nosource') else UNCONF_ADOPT_S):   # 3a. never executed
                 ue.pop(uk, None)
                 if u.get('prov'): self._cancel_or_park(sym, u['prov'])

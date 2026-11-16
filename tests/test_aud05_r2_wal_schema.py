@@ -135,8 +135,9 @@ def test_crash_around_the_send_is_settled_from_the_order_record(monkeypatch, whe
     e2.reconcile(e2.equity())
     if when == 'after_send':
         assert len(e2.state['lots']) == 1 and next(iter(e2.state['lots'].values()))['qty'] == pytest.approx(e.trade.pos[('BTCUSDT', 'LONG')])
-    else:
-        assert e2.state['lots'] == {} and not e2.state['unconfirmed_entries'] and not e.trade.pos.get(('BTCUSDT', 'LONG'))
+    else:   # LANE3-F1-entry (Codex #360 ruling 1): a crash before the send stays quarantined - a valid fail-closed outcome
+        assert e2.state['lots'] == {} and len(e2.state['unconfirmed_entries']) == 1 and not e.trade.pos.get(('BTCUSDT', 'LONG'))
+        assert 'not confirmed' in (e2.entry_block(SL, 'BTCUSDT', 'LONG') or '')
 
 
 def test_ambiguous_entry_answer_keeps_the_write_ahead_record(monkeypatch):
