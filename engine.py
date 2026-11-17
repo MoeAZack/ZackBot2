@@ -5716,8 +5716,17 @@ class Engine:
     def _emg_fence(self, sym):
         """CAPS-01 r10/r11: new-risk fence while emergency stops of this coin are not confirmed gone (stop_missing_block, and
         re-checked at every final risk-increasing send: market entry write-ahead, maker placement, adds, grid orders)."""
-        if any(c.get('symbol') == sym for c in ((getattr(self, 'state', None) or {}).get('emg_cleanup') or {}).values()):
+        st = getattr(self, 'state', None) or {}
+        if any(c.get('symbol') == sym for c in (st.get('emg_cleanup') or {}).values()):
             return EMG_CLEANUP_BLOCK
+        # CAPS-01 r12 (Codex #365): rebuilt from SURVIVING durable ownership too - right after a reload and while every scan
+        # is unknown - never from a successful adoption: an entry that was held (emg_check) or still is (a resting record
+        # owns its client id) may own emergency stops nothing on disk names yet. Released only by a confirmed scan
+        # (emg_check cleared in _emg_adopt) or a confirmed cleanup (the emg_cleanup record dropped in _emg_cleanup).
+        rest = {r_.get('cid') for r_ in (st.get('resting_entries') or {}).values() if r_.get('cid')}
+        for u in (st.get('unconfirmed_entries') or {}).values():
+            if u.get('symbol') == sym and (u.get('emg_check') or (u.get('cid') and u['cid'] in rest)):
+                return EMG_CLEANUP_BLOCK
         return None
 
     def stop_missing_on(self, sym):
@@ -7712,6 +7721,8 @@ class Engine:
         storage was down (possibly by an earlier process, so nothing on disk names it) is adopted as its provisional stop -
         the newest live generation; older live ones are cancelled (or parked) and stay owned by emg_cleanup until a scan
         confirms them gone. Returns False while that is unknown (the entry then waits: no second stop, no settlement)."""
+        if u['cid'] not in (self.state.get('emg_cleanup') or {}):     # r12: cleanup ownership BEFORE the scan (whatever it
+            self._emg_own(u); self.save_state()                       # answers), durable as soon as a write succeeds
         sc = self._emg_scan(sym, u['cid'])                            # r11: a client without typed lookups = UNKNOWN
         if not sc['ok']:
             self.err(f"{sym} {u['side']} unconfirmed entry: emergency-stop lookup failed ({sc['why']}) - not settled this pass, "
@@ -7765,7 +7776,8 @@ class Engine:
           older ones cancelled - the only confirmed stop is never dropped before its replacement is confirmed."""
         sym, side, r, plan = u['symbol'], u['side'], self.rules[u['symbol']], u['plan']
         if u.get('prov_pending') and not self._prov_pending_settled(sym, u): return   # a normal pending stop decides first
-        self._emg_own(u)
+        if u['cid'] not in (self.state.get('emg_cleanup') or {}):
+            self._emg_own(u); self.save_state()                        # r12: durable as soon as a write succeeds
         sc = self._emg_scan(sym, u['cid'])
         claims = list(sc['live'])
         if u.get('prov') and u['prov'] not in self._emg_tags(u['cid']):
