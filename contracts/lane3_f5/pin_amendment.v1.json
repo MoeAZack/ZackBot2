@@ -3,7 +3,7 @@
  "version": 1,
  "status": "ACCEPTED (code) - Codex #363 c6928954473 at exact head b2e41176cc0d6b4165c08863c3664394e3a491b3; APPLIED to the F01 cohort manifest and the pin-test amendment chain by the LANE3 F5+F6 integration PR, which needs explicit Codex Integration approval before it counts",
  "ticket": "#359 F5 / PR #363: a trade identity is never issued twice",
- "why_separate_file": "Documentation of the exact old/new AST pin of the changed function. The signed parity contract, the F01 cohort manifest and the C260 originals stay byte-identical in this PR",
+ "why_separate_file": "Documentation of the exact old/new AST pin of the changed function. The source ticket PR #363 (F5, accepted code head b2e41176) kept the signed parity contract, the F01 cohort manifest and the C260 originals byte-identical. The separate LANE3 F5+F6 integration PR (#369) applies only the two accepted pin changes (Engine._create_lot and feasibility.round_step) to the F01 cohort manifest pins_expected and the pin-test amendment chain; the signed parity contract and the C260 originals remain unchanged. Explicit Codex Integration approval and the full gates are separate and are not implied by this file",
  "rule": "sha256 of ast.get_source_segment (LF), as the contracts' pin rule",
  "amended": {
   "engine.py:Engine._create_lot": {

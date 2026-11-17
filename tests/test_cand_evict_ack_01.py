@@ -417,11 +417,15 @@ def test_the_cohort_manifest_changes_only_the_candidate_guard_pin_and_the_prefli
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     rel = 'contracts/factory_f01_impl_01/cohort_manifest.v1.json'
     cur = json.load(open(os.path.join(root, rel), encoding='utf-8'))['pins_expected']
+    # Codex #369 P2: the historical manifest is acceptance evidence - unavailable or invalid history FAILS (never a skip,
+    # never a fallback to current master/HEAD). The exact immutable commit is named in full.
+    base = 'e7e6550072933d07f12857e543cffc35772f3d9a'
     try:
-        old = json.loads(subprocess.run(['git', '-C', root, 'show', f'e7e6550:{rel}'], capture_output=True, check=True,
+        subprocess.run(['git', '-C', root, 'cat-file', '-e', f'{base}^{{commit}}'], capture_output=True, check=True, timeout=30)
+        old = json.loads(subprocess.run(['git', '-C', root, 'show', f'{base}:{rel}'], capture_output=True, check=True,
                                         timeout=30).stdout.decode('utf-8'))['pins_expected']
-    except (OSError, subprocess.SubprocessError, ValueError):
-        pytest.skip('git history of the manifest (master e7e6550) not available')
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError) as e:
+        pytest.fail(f'historical cohort manifest at {base} is unavailable or invalid: {e!r}')
     am = json.load(open(os.path.join(root, 'contracts', 'cand_evict_ack_01', 'pin_amendment.v1.json'), encoding='utf-8'))
     (gk, ch), = am['amended'].items()
     real = lambda d: {k: v for k, v in d.items() if not k.startswith('_')}
@@ -449,3 +453,24 @@ def test_the_cohort_manifest_changes_only_the_candidate_guard_pin_and_the_prefli
     assert {k: got[k] for k in real(cur)} == real(cur)
     pins_bad = sorted(k for k, v in cur.items() if not k.startswith('_') and got.get(k) != v)   # C9's pin part
     assert pins_bad == []
+
+
+@pytest.mark.parametrize('broken', ['missing', 'invalid'])
+def test_unavailable_or_invalid_historical_manifest_fails_never_skips(monkeypatch, broken):
+    """Codex #369 P2 regression: no history (shallow clone, wrong object) or unparsable history is a FAILURE."""
+    import subprocess
+    real_run = subprocess.run
+    def fake(args, *a, **k):
+        if 'e7e6550072933d07f12857e543cffc35772f3d9a' in ' '.join(map(str, args)):
+            if broken == 'missing':
+                raise subprocess.CalledProcessError(128, args)
+            if 'show' in args:
+                return subprocess.CompletedProcess(args, 0, b'{"not": "a manifest"', b'')
+        return real_run(args, *a, **k)
+    monkeypatch.setattr(subprocess, 'run', fake)
+    try:                                                                 # a Skipped outcome is caught here and FAILS this test
+        test_the_cohort_manifest_changes_only_the_candidate_guard_pin_and_the_preflight_accepts_it()
+        caught = None
+    except BaseException as e:                                           # noqa: B036 - pytest outcomes are BaseException
+        caught = e
+    assert isinstance(caught, pytest.fail.Exception) and 'unavailable or invalid' in str(caught), repr(caught)

@@ -3,7 +3,7 @@
  "version": 1,
  "status": "ACCEPTED (code) - Codex #364 round 3/#363 c6928954473 at exact head 28933a0e8df024cb45895d69173a56491f9b3f1e; APPLIED to the F01 cohort manifest and the pin-test amendment chain by the LANE3 F5+F6 integration PR, which needs explicit Codex Integration approval before it counts",
  "ticket": "#359 F6 / PR #364: round_step floors non-power-of-ten steps on the grid",
- "why_separate_file": "Documentation of the exact old/new AST pin of the changed function. The signed parity contract, the F01 cohort manifest and the C260 originals stay byte-identical in this PR",
+ "why_separate_file": "Documentation of the exact old/new AST pin of the changed function. The source ticket PR #364 (F6, accepted code head 28933a0e) kept the signed parity contract, the F01 cohort manifest and the C260 originals byte-identical. The separate LANE3 F5+F6 integration PR (#369) applies only the two accepted pin changes (Engine._create_lot and feasibility.round_step) to the F01 cohort manifest pins_expected and the pin-test amendment chain; the signed parity contract and the C260 originals remain unchanged. Explicit Codex Integration approval and the full gates are separate and are not implied by this file",
  "rule": "sha256 of ast.get_source_segment (LF), as the contracts' pin rule",
  "amended": {
   "feasibility.py:round_step": {
