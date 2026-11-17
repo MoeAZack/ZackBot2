@@ -25,6 +25,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MANIFEST = os.path.join(ROOT, 'contracts', 'factory_f01_impl_01', 'cohort_manifest.v1.json')
 AMEND = os.path.join(ROOT, 'contracts', 'factory_f01_impl_01', 'pin_amendment.v1.json')
 EVICT_AMEND = os.path.join(ROOT, 'contracts', 'cand_evict_ack_01', 'pin_amendment.v1.json')   # Codex 6518282215
+LANE3_F5_AMEND = os.path.join(ROOT, 'contracts', 'lane3_f5', 'pin_amendment.v1.json')   # LANE3-F5 (ACCEPTED, integration PR)
+F6_AMEND = os.path.join(ROOT, 'contracts', 'lane3_f6', 'pin_amendment.v1.json')            # LANE3-F6 (ACCEPTED, integration PR)
 
 
 def _manifest_pins():
@@ -33,6 +35,9 @@ def _manifest_pins():
     pins = dict(json.load(open(MANIFEST, encoding='utf-8'))['pins_expected'])
     for k, ch in json.load(open(EVICT_AMEND, encoding='utf-8'))['amended'].items():
         assert pins[k] == ch['to'] != ch['from'], k
+    for path in (LANE3_F5_AMEND, F6_AMEND):                          # LANE3 F5/F6 (ACCEPTED, applied by the integration PR)
+        for k, ch in json.load(open(path, encoding='utf-8'))['amended'].items():
+            assert pins[k] == ch['to'] != ch['from'], k
     return pins
 
 
@@ -536,7 +541,13 @@ def test_pinned_functions_equal_the_contract_plus_the_amendment_only():
     assert len(pins) == 34 and set(am['amended']) == {'engine.py:Engine.open_lot', 'engine.py:Engine._create_lot'}
     got = FC.function_pins(pins)
     assert {k for k in pins if got[k] != pins[k]} == set()                       # the running build == the amended pins
-    for k, ch in am['amended'].items(): assert pins[k] == ch['to'] != ch['from']
+    later = json.load(open(LANE3_F5_AMEND, encoding='utf-8'))['amended']        # LANE3-F5 (ACCEPTED) chains on top of this one
+    for k, ch in am['amended'].items():
+        assert ch['to'] != ch['from']
+        if k in later:
+            assert later[k]['from'] == ch['to'] and pins[k] == later[k]['to'] != ch['to']
+        else:
+            assert pins[k] == ch['to']
 
 
 def test_the_raw_sizing_capture_is_observe_only():

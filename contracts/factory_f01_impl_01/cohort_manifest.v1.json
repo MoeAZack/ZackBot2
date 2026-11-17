@@ -153,7 +153,8 @@
   "engine.py:Engine.entry_block": "2f43a3ef138e5f6f884ab64f1bbe0e981745b04738de4b8f72c0318e20b28a1b",
   "engine.py:Engine.open_lot": "7217d03a0a862a0edf40588946a6884017d8356b4b4ad486e6e83c6a161c3db0",
   "engine.py:Engine._market_entry": "e612630777dfd25fed883e77b73df95e503cdac89ced9fd4dd2b4b1eadca5bf2",
-  "engine.py:Engine._create_lot": "eb9ff2afca9194508438bd48ce6c723a4af0d5f661ada2b1a3b1c3e07ca9d5e5",
+  "_amended_lane3_f5": "engine.py:Engine._create_lot eb9ff2afca9194508438bd48ce6c723a4af0d5f661ada2b1a3b1c3e07ca9d5e5 -> 1356810e6f4b541368998e27afb72d2cf5c10096d6756f45745255759f117060 per contracts/lane3_f5/pin_amendment.v1.json - code ACCEPTED by Codex (#363 c6928954473, head b2e41176); applied by the LANE3 F5+F6 integration PR pending explicit Integration approval. Every other pin is unchanged",
+  "engine.py:Engine._create_lot": "1356810e6f4b541368998e27afb72d2cf5c10096d6756f45745255759f117060",
   "engine.py:Engine._finish": "8fc9ffc1c4dbe5f05781f6a99d2ccfbe844caeb2d29f67eef82fb1aab0ebfb60",
   "engine.py:Engine._cost_final": "fe43877088d0d86db2acc14f1fbf6896a03047a6661262bfbf5da0dc8dd45e2a",
   "engine.py:Engine.scalp_block": "fddafa504e5c5c96ae853d17e787c14dbc7dc9fa706edb41c613de130826e95c",
@@ -174,7 +175,8 @@
   "strategies.py:merge_mgmt": "5f7757b22e868ea04c305b5f5567e217cd29282f7b0cfed96396753fb58c121e",
   "feasibility.py:risk_qty": "915774c71722bcaf0f62773c13732b521b9de3381c501664d580ab760cb27821",
   "feasibility.py:size_check": "d1df693e6592f62fe5d812b2c8e51e334b119935c0e7532d74099229dc946429",
-  "feasibility.py:round_step": "8e0ec1641587267bdba6a69a1391c04ca62b1554333e55bd6947a3abe1bad60f"
+  "_amended_lane3_f6": "feasibility.py:round_step 8e0ec1641587267bdba6a69a1391c04ca62b1554333e55bd6947a3abe1bad60f -> 74a6198f6c7a343f9189f1584baf7bd27a7604f50a9639d16a52d0d3c325afbd (rounding places = feasibility.step_decimals; bit-identical for power-of-ten steps) per contracts/lane3_f6/pin_amendment.v1.json - code ACCEPTED by Codex (#364, head 28933a0e; #363 c6928954473); applied by the LANE3 F5+F6 integration PR pending explicit Integration approval. Every other pin is unchanged",
+  "feasibility.py:round_step": "74a6198f6c7a343f9189f1584baf7bd27a7604f50a9639d16a52d0d3c325afbd"
  },
  "open_questions": [],
  "roadmap_fit": "Strategy Factory -> rapid candidate-to-PAPER pipeline",

@@ -417,19 +417,60 @@ def test_the_cohort_manifest_changes_only_the_candidate_guard_pin_and_the_prefli
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     rel = 'contracts/factory_f01_impl_01/cohort_manifest.v1.json'
     cur = json.load(open(os.path.join(root, rel), encoding='utf-8'))['pins_expected']
+    # Codex #369 P2: the historical manifest is acceptance evidence - unavailable or invalid history FAILS (never a skip,
+    # never a fallback to current master/HEAD). The exact immutable commit is named in full.
+    base = 'e7e6550072933d07f12857e543cffc35772f3d9a'
     try:
-        old = json.loads(subprocess.run(['git', '-C', root, 'show', f'e7e6550:{rel}'], capture_output=True, check=True,
+        subprocess.run(['git', '-C', root, 'cat-file', '-e', f'{base}^{{commit}}'], capture_output=True, check=True, timeout=30)
+        old = json.loads(subprocess.run(['git', '-C', root, 'show', f'{base}:{rel}'], capture_output=True, check=True,
                                         timeout=30).stdout.decode('utf-8'))['pins_expected']
-    except (OSError, subprocess.SubprocessError, ValueError):
-        pytest.skip('git history of the manifest (master e7e6550) not available')
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError) as e:
+        pytest.fail(f'historical cohort manifest at {base} is unavailable or invalid: {e!r}')
     am = json.load(open(os.path.join(root, 'contracts', 'cand_evict_ack_01', 'pin_amendment.v1.json'), encoding='utf-8'))
     (gk, ch), = am['amended'].items()
     real = lambda d: {k: v for k, v in d.items() if not k.startswith('_')}
-    assert gk == 'engine.py:Engine.candidate_guard' and old[gk] == ch['from'] and cur[gk] == ch['to']
+    assert gk == 'engine.py:Engine.candidate_guard' and old[gk] == ch['from']
+    # LANE3 F5+F6 integration (Codex #363 c6928954473): the manifest is the e7e6550 pins with ONLY the explicitly ACCEPTED
+    # amendments applied, in order - CAND-EVICT-ACK-01, then LANE3-F5, then LANE3-F6 - each 'from' the pin then in force
+    chain = [('contracts/cand_evict_ack_01/pin_amendment.v1.json', {gk}),
+             ('contracts/lane3_f5/pin_amendment.v1.json', {'engine.py:Engine._create_lot'}),
+             ('contracts/lane3_f6/pin_amendment.v1.json', {'feasibility.py:round_step'})]
+    want = dict(real(old))
+    for rel_am, keys in chain:
+        doc = json.load(open(os.path.join(root, rel_am), encoding='utf-8'))
+        assert set(doc['amended']) == keys, rel_am
+        assert rel_am.startswith('contracts/cand_evict_ack_01/') or doc['status'].startswith('ACCEPTED'), rel_am
+        for k, c in doc['amended'].items():
+            assert want[k] == c['from'] != c['to'], (rel_am, k)
+            want[k] = c['to']
+    assert cur[gk] == ch['to']
     assert set(real(cur)) == set(real(old)) and len(real(cur)) == 34
-    assert {k for k in real(cur) if cur[k] != old[k]} == {gk}                  # (a) every other pin byte-identical
+    assert real(cur) == want                                                    # (a) every other pin byte-identical
+    assert {k for k in real(cur) if cur[k] != old[k]} == {gk, 'engine.py:Engine._create_lot', 'feasibility.py:round_step'}
     assert '6518282215' in cur['_amended_cand_evict_ack_01'] and cur['_source'] == old['_source']
+    assert 'ACCEPTED' in cur['_amended_lane3_f5'] and 'ACCEPTED' in cur['_amended_lane3_f6']
     got = FC.function_pins(cur)                                                  # (b) the bundled preflight's pin rule
     assert {k: got[k] for k in real(cur)} == real(cur)
     pins_bad = sorted(k for k, v in cur.items() if not k.startswith('_') and got.get(k) != v)   # C9's pin part
     assert pins_bad == []
+
+
+@pytest.mark.parametrize('broken', ['missing', 'invalid'])
+def test_unavailable_or_invalid_historical_manifest_fails_never_skips(monkeypatch, broken):
+    """Codex #369 P2 regression: no history (shallow clone, wrong object) or unparsable history is a FAILURE."""
+    import subprocess
+    real_run = subprocess.run
+    def fake(args, *a, **k):
+        if 'e7e6550072933d07f12857e543cffc35772f3d9a' in ' '.join(map(str, args)):
+            if broken == 'missing':
+                raise subprocess.CalledProcessError(128, args)
+            if 'show' in args:
+                return subprocess.CompletedProcess(args, 0, b'{"not": "a manifest"', b'')
+        return real_run(args, *a, **k)
+    monkeypatch.setattr(subprocess, 'run', fake)
+    try:                                                                 # a Skipped outcome is caught here and FAILS this test
+        test_the_cohort_manifest_changes_only_the_candidate_guard_pin_and_the_preflight_accepts_it()
+        caught = None
+    except BaseException as e:                                           # noqa: B036 - pytest outcomes are BaseException
+        caught = e
+    assert isinstance(caught, pytest.fail.Exception) and 'unavailable or invalid' in str(caught), repr(caught)

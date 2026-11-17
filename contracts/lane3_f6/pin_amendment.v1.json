@@ -1,0 +1,22 @@
+{
+ "amendment": "LANE3-F6 one-function pin amendment to FACTORY-F01-PARITY-01 code.pinned_function_sha256 and the FACTORY-F01-IMPL-01 cohort manifest pins_expected",
+ "version": 1,
+ "status": "ACCEPTED (code) - Codex #364 round 3/#363 c6928954473 at exact head 28933a0e8df024cb45895d69173a56491f9b3f1e; APPLIED to the F01 cohort manifest and the pin-test amendment chain by the LANE3 F5+F6 integration PR, which needs explicit Codex Integration approval before it counts",
+ "ticket": "#359 F6 / PR #364: round_step floors non-power-of-ten steps on the grid",
+ "why_separate_file": "Documentation of the exact old/new AST pin of the changed function. The source ticket PR #364 (F6, accepted code head 28933a0e) kept the signed parity contract, the F01 cohort manifest and the C260 originals byte-identical. The separate LANE3 F5+F6 integration PR (#369) applies only the two accepted pin changes (Engine._create_lot and feasibility.round_step) to the F01 cohort manifest pins_expected and the pin-test amendment chain; the signed parity contract and the C260 originals remain unchanged. Explicit Codex Integration approval and the full gates are separate and are not implied by this file",
+ "rule": "sha256 of ast.get_source_segment (LF), as the contracts' pin rule",
+ "amended": {
+  "feasibility.py:round_step": {
+   "from": "8e0ec1641587267bdba6a69a1391c04ca62b1554333e55bd6947a3abe1bad60f",
+   "to": "74a6198f6c7a343f9189f1584baf7bd27a7604f50a9639d16a52d0d3c325afbd"
+  }
+ },
+ "applies_to": [
+  "contracts/factory_f01_parity_01/factory_f01_parity_01_contract.v1.json",
+  "contracts/factory_f01_impl_01/cohort_manifest.v1.json"
+ ],
+ "change": {
+  "feasibility.py:round_step": "the rounding places are feasibility.step_decimals(step) (the step's own decimal places, never fewer than before); for a power-of-ten step - every current Binance step / tick - the result is bit-identical (property test tests/test_lane3_f6_step_grid.py)"
+ },
+ "unchanged": "every other pinned function; C-F01 sizing on every current symbol"
+}

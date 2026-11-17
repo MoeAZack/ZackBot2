@@ -85,6 +85,11 @@ jobs:
           git fetch --no-tags --depth=1 origin 64adf3a41d7a521d2af480adc7b2f23a8fa6a0c3 82d02b82b774e92ffa374e6ea1be8ba5c0cfb98c
           git cat-file -e '64adf3a41d7a521d2af480adc7b2f23a8fa6a0c3^{commit}'
           git cat-file -e '82d02b82b774e92ffa374e6ea1be8ba5c0cfb98c^{commit}'
+          # LANE3 F5+F6 integration: C260 positive tests run on the exact frozen C260 tree, and the
+          # CAND-EVICT pin-chain test reads the e7e6550 manifest.
+          git fetch --no-tags --depth=1 origin 42ef787f6b6e8c9363705b76df13cdb487f840f0 e7e6550072933d07f12857e543cffc35772f3d9a
+          git cat-file -e '42ef787f6b6e8c9363705b76df13cdb487f840f0^{commit}'
+          git cat-file -e 'e7e6550072933d07f12857e543cffc35772f3d9a^{commit}'
       - name: Fetch the breadth_static40 registration tag (annotated, peels to Y)
         run: |
           git fetch --no-tags --depth=2 origin +refs/tags/zb-breadth-static40-v1-registration-20261016:refs/tags/zb-breadth-static40-v1-registration-20261016
