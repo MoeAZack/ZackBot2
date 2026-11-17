@@ -136,9 +136,9 @@ def test_profit_and_daily(monkeypatch):
 
 
 def test_risk_and_signals():
-    e, tg, http, _ = setup(PEAK_DD_FLATTEN=0.2); opened(e)
+    e, tg, http, _ = setup(PEAK_DD_FLATTEN=0.1); opened(e)                 # CAPS-01: policy values
     r = say(tg, http, '/risk')
-    assert 'halt at -8.0%' in r and 'flatten at -20.0%' in r and 'Open risk to stops:' in r and 'Max leverage setting: 10x' in r
+    assert 'halt at -3.0%' in r and 'flatten at -10.0%' in r and 'Open risk to stops:' in r and 'Max leverage setting: 10x' in r
     assert 'No active entry signals' in say(tg, http, '/signals')
     e.signals = {'T|BTCUSDT': dict(le=True, se=False, close=100.0, time='2026-10-04 08:00:00'),
                  'T|ETHUSDT': dict(le=False, se=False, close=50.0, time='x')}

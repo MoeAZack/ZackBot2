@@ -122,7 +122,7 @@ def test_missing_account_margin_data_skips():
 
 def test_account_effective_leverage_above_the_cap_skips():
     e = refusing()
-    add_lot(e, qty=1000.0, avg=50.0, stop=49.99)                                  # 50 000 USDT open, protected
+    add_lot(e, qty=1000.0, avg=50.0, stop=49.997)                                 # 50 000 USDT open, protected (CAPS-01: 3 USDT risk)
     r = entry_skipped(e, 'effective leverage')
     assert r['exposure']['ok'] is False and r['exposure']['check'] == 'effective_leverage'
 
@@ -312,7 +312,7 @@ def test_g1_active_grid_and_future_adds_are_reserved():
 
 # ------------------------------------------------------------------ group 2: confirmed stops on every lot (any symbol)
 def test_g2_stop_dirty_lot_on_another_symbol_rejects():
-    e = refusing(); k, lot = add_lot(e); lot['stop_dirty'] = True
+    e = refusing(); k, lot = add_lot(e, stop=49.5); lot['stop_dirty'] = True      # CAPS-01: inside the open-risk cap
     ok, why, n = check(e); assert not ok and n['check'] == 'stops' and 'not confirmed' in why
     entry_skipped(e, 'stop not confirmed')
 
@@ -768,7 +768,7 @@ def test_g7_every_path_records_outcome_reason_and_counts(monkeypatch):
     e = refusing(cur=None); entry_skipped(e); paths['leverage_unknown'] = dict(e.lev_refusals['BTCUSDT'])
     e = refusing(mtype='ISOLATED'); entry_skipped(e); paths['margin_isolated'] = dict(e.lev_refusals['BTCUSDT'])
     e = refusing(mtype=None); entry_skipped(e); paths['margin_unknown'] = dict(e.lev_refusals['BTCUSDT'])
-    e = refusing(); k, lot = add_lot(e); lot['stop_dirty'] = True; entry_skipped(e); paths['exposure_rejected'] = dict(e.lev_refusals['BTCUSDT'])
+    e = refusing(); k, lot = add_lot(e, stop=49.5); lot['stop_dirty'] = True; entry_skipped(e); paths['exposure_rejected'] = dict(e.lev_refusals['BTCUSDT'])
     e = refusing(); opened(e); paths['exposure_ok'] = dict(e.lev_refusals['BTCUSDT'])
     for reason, r in paths.items():
         assert r['reason'] == reason and r['outcome'] == ('went_ahead' if reason in ('within_cap', 'exposure_ok') else 'skipped')

@@ -5,7 +5,7 @@ trailing, pyramiding adds, DCA safety orders, basket take-profit) is checked eve
 Signals (entries/exits) are evaluated right after each candle close of the sleeve's timeframe.
 Hedge mode is used so longs and shorts on the same coin can coexist.
 """
-import atexit, contextlib, csv, functools, inspect, json, math, os, queue, re, time, zlib, logging, threading, copy, collections
+import atexit, contextlib, csv, functools, hashlib, inspect, json, math, os, queue, re, time, zlib, logging, threading, copy, collections
 from datetime import datetime, timezone, timedelta
 import numpy as np
 import pandas as pd
@@ -895,7 +895,7 @@ def rotation_at(ts=None, tradfi=False):
                 since=iso(epoch * ROTATION_PERIOD_S), next_switch=iso((epoch + 1) * ROTATION_PERIOD_S),
                 period_h=ROTATION_PERIOD_S // 3600)
 
-GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], TELEGRAM_ON=False, TELEGRAM_CHAT='', MAX_LEVERAGE=10, DAILY_LOSS_HALT=0.08, PEAK_DD_FLATTEN=0.0, CAPITAL_CAP=500.0,
+GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], TELEGRAM_ON=False, TELEGRAM_CHAT='', MAX_LEVERAGE=10, DAILY_LOSS_HALT=0.03, PEAK_DD_FLATTEN=0.10, CAPITAL_CAP=500.0,   # CAPS-01: policy defaults
                        ENTRIES_PAUSED=False, AI_FILTER=False, PRESET='original', ROTATION_MGMT_OVERLAY={},
                        UNIVERSE=list(TOP40), SYMBOLS_ON={}, RUN_IN_BACKGROUND=True,
                        MARKET_COLLECTOR=True,         # observe-only public market-data collector (market_collector.py); owner: collect now
@@ -918,11 +918,28 @@ GLOBAL_DEFAULTS = dict(COMPOUND=False, CAP_SINCE='', CAP_ADJ=[], CAP_CYCLES=[], 
 # Portfolio risk rules: mode 'off' | 'warn' (log + 'WARNING:' entry on the missed list, still trades) | 'enforce' (entry refused)
 RISK_RULE_DEFAULTS = dict(
     coin_cap=dict(mode='warn', x=3.0),                 # total notional on one coin (all slots) <= x * bot capital
-    open_risk_cap=dict(mode='warn', pct=15.0),         # open risk to stops incl. the new trade <= pct % of bot capital
+    open_risk_cap=dict(mode='enforce', pct=2.5),       # open risk to stops incl. the new trade <= pct % of bot capital (CAPS-01)
     correlated_cap=dict(mode='warn', n=3, rho=0.8),    # < n open same-direction trades on coins correlated > rho with the new coin
     btc_breaker=dict(mode='warn', pct=5.0, hours=4.0, tighten=False, dca='pause'),   # BTC moved > pct % in the last hour -> pause `hours`;
     #   while it is active (enforce): no pyramid adds; DCA safety orders follow the lot's policy pause / half_size / continue_plan
     funding_filter=dict(mode='warn', rate=0.001))      # no longs when funding > rate, no shorts when < -rate
+# CAPS-01 (owner policy, moe 16 Nov 2026): the loosest risk caps any trading account may run with. A setting that is
+# missing takes the defaults above (which equal this policy); a setting that is LOOSER - or an open-risk cap that only
+# warns - refuses every new entry and add with a named reason (Engine.risk_caps_block). Exits, stops and the management
+# of open positions are never blocked by it.
+RISK_CAP_POLICY = dict(open_risk_pct=2.5, daily_loss_halt=0.03, peak_dd_flatten=0.10)
+
+
+def _finite_num(v):
+    """CAPS-01 r5: a finite float (bool / non-number / NaN / inf -> None)."""
+    if isinstance(v, bool): return None
+    try: f = float(v)
+    except (TypeError, ValueError): return None
+    return f if math.isfinite(f) else None
+
+OPEN_RISK_UNKNOWN = ('open risk of a pending entry / add cannot be computed (missing stop distance, price or size) - '
+                     'no new risk until it is resolved')
+_REAL_FUTURES = Futures                                 # CAPS-01: the real Binance client, captured before any test/replay swap
 GOV_COOLDOWN_S = 24 * 3600                             # minimum time between two automatic profile switches
 GOV_MULT_MAX = 2.0                                     # martingale-style recovery (risk_mult > 1) is capped here
 
@@ -1279,7 +1296,8 @@ def _validate_trail(k, p):
     for f in ('ext', 'atr', 'dev', 'until'): _num(p.get(f), f'{w}.{f}')
 
 
-OWNERSHIP_FAMILIES = ('lots', 'unconfirmed_entries', 'resting_entries', 'pending_entries', 'grids', 'orphans')
+OWNERSHIP_FAMILIES = ('lots', 'unconfirmed_entries', 'resting_entries', 'pending_entries', 'grids', 'orphans',
+                      'emg_cleanup')   # CAPS-01 r11: leftover emergency stops are exchange ownership too
 
 
 def ownership_present(state):
@@ -1404,6 +1422,10 @@ def validate_state(doc):
     for i, o in enumerate(orph):
         if not (isinstance(o, list) and len(o) == 2): _bad(f'orphans[{i}]', 'not a [symbol, tag] pair')
         _str(o[0], f'orphans[{i}].symbol', _SYM_RE); _str(o[1], f'orphans[{i}].tag', _TAG_RE)
+    for k, c in _dict(doc.get('emg_cleanup'), 'emg_cleanup', opt=True).items():       # CAPS-01 r10
+        _str(k, f'emg_cleanup[{k[:40]}]', _CID_RE); _dict(c, f'emg_cleanup[{k[:40]}]')
+        _str(c.get('symbol'), f'emg_cleanup[{k[:40]}].symbol', _SYM_RE); _str(c.get('side'), f'emg_cleanup[{k[:40]}].side', choices=SIDES)
+        _num(c.get('t'), f'emg_cleanup[{k[:40]}].t', lo=0)
     for f in ('short_seen', 'over_seen'):
         for k, n in _dict(doc.get(f), f, opt=True).items(): _int(n, f'{f}[{k[:40]}]')
     _bool(doc.get('halted'), 'halted', opt=True)
@@ -1633,6 +1655,9 @@ STOP_GONE = ('CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH')         # th
 STOP_FIRED = ('FILLED', 'PARTIALLY_FILLED', 'TRIGGERING', 'TRIGGERED', 'FINISHED')   # the stop fired: reconcile books it
 STOP_LIVE = ('NEW',)
 PROV_PENDING_S = 60          # AUD-04 r2: a provisional stop whose answer was lost: its status decides; unknown this long -> parked
+EMG_GENS = 4                 # CAPS-01 r9: deterministic emergency-stop generations per held order (classic + algo id each)
+EMG_CLEANUP_BLOCK = ('an emergency stop on this coin is still being cleaned up on Binance - no new entries or adds '
+                     'until Binance confirms it gone (exits and protection keep working)')
 STOP_TYPES = ('STOP_MARKET', 'STOP')
 BOT_STOP_CID_RE = re.compile(r'z[ab][0-9a-f]{22}')   # exact new_cid('zb'|'za') shape of the bot's own stop client ids
 #   (classic / algo); any other client id (manual, web, other bots, malformed) is never adopted or cancelled
@@ -1677,6 +1702,10 @@ def _sig_atr(raw, d):
     a = raw.get('atr')
     if a is not None and len(a) and np.isfinite(a[-1]) and a[-1] > 0: return float(a[-1])
     return float(d.atr)
+
+
+class NewRiskFenced(RuntimeError):
+    """CAPS-01 r11: a risk-increasing send refused at its final dispatch by a same-coin fence (nothing was sent)."""
 
 
 class Engine:
@@ -2555,6 +2584,9 @@ class Engine:
                 log.warning(f'hedge mode check failed: {e}')
             self.equity()
         self.connected = True
+        caps = self.risk_caps_block()                   # CAPS-01: say it at start, not first at the next signal
+        if caps:
+            log.error(caps); self.notify(f'⛔ {caps}. Open trades, stops and exits keep running.')
         if on: self.sync_tradfi_slots()
         self.sync_scalp_slots()                         # SCALP-4: PAPER rotation only; appends missing slots, idempotent
         self.sync_candidate_slots()                     # FACTORY-CAND-01: the same, for the factory candidate slots (off)
@@ -5342,6 +5374,8 @@ class Engine:
             if self._tier_block(lot['symbol'], q * px, px): return False     # MAXQTY-01: Binance -2027, nothing sent
             pb = self.persist_block()
             if pb: raise RuntimeError(f"{lot['symbol']} {why} not sent: {pb}")
+            sb = self.stop_missing_block(lot['symbol'])                    # CAPS-01 r11: final-dispatch recheck
+            if sb: raise RuntimeError(f"{lot['symbol']} {why} not sent: {sb}")
             # AUD-05 r2 write-ahead: the add is recorded durably as this lot's pending order (with its client id) BEFORE it
             # is sent; a crash / lost answer after the send is settled from its order record (_resolve_pending)
             cid = cid or new_cid()
@@ -5677,7 +5711,23 @@ class Engine:
         """Entry / add block text while a lot on this coin has a recorded stop the verifier did not find on Binance; the
         text follows the most severe lot state: owner_check > restoring > checking. None = not blocked."""
         whys = {l.get('stop_miss_why') or 'checking' for l in self.state['lots'].values() if l['symbol'] == sym and l.get('stop_miss')}
-        return next((STOP_MISSING_BLOCKS[w] for w in STOP_MISS_ORDER if w in whys), None)
+        return next((STOP_MISSING_BLOCKS[w] for w in STOP_MISS_ORDER if w in whys), None) or self._emg_fence(sym)
+
+    def _emg_fence(self, sym):
+        """CAPS-01 r10/r11: new-risk fence while emergency stops of this coin are not confirmed gone (stop_missing_block, and
+        re-checked at every final risk-increasing send: market entry write-ahead, maker placement, adds, grid orders)."""
+        st = getattr(self, 'state', None) or {}
+        if any(c.get('symbol') == sym for c in (st.get('emg_cleanup') or {}).values()):
+            return EMG_CLEANUP_BLOCK
+        # CAPS-01 r12 (Codex #365): rebuilt from SURVIVING durable ownership too - right after a reload and while every scan
+        # is unknown - never from a successful adoption: an entry that was held (emg_check) or still is (a resting record
+        # owns its client id) may own emergency stops nothing on disk names yet. Released only by a confirmed scan
+        # (emg_check cleared in _emg_adopt) or a confirmed cleanup (the emg_cleanup record dropped in _emg_cleanup).
+        rest = {r_.get('cid') for r_ in (st.get('resting_entries') or {}).values() if r_.get('cid')}
+        for u in (st.get('unconfirmed_entries') or {}).values():
+            if u.get('symbol') == sym and (u.get('emg_check') or (u.get('cid') and u['cid'] in rest)):
+                return EMG_CLEANUP_BLOCK
+        return None
 
     def stop_missing_on(self, sym):
         return self.stop_missing_block(sym) is not None
@@ -6023,6 +6073,8 @@ class Engine:
         if pb: return pb
         rb = self._risk_fill_block(lot)                           # RISK-FILL-01: no new risk on an unmeasured / over-budget lot
         if rb: return rb
+        caps = self.risk_caps_block()                             # CAPS-01: an add is new exposure
+        if caps: return caps
         if st.get('halted'): return 'daily loss halt is active'
         if Sg.get('ENTRIES_PAUSED'): return 'entries paused'
         if self.exchange_state().get('state') == 'outage': return OUTAGE_ADD     # T05b final: an add is new exposure
@@ -6101,6 +6153,7 @@ class Engine:
         live = self.trade.positions() if live is None else live
         if fetched: self.health.setdefault('confirmed', {})['positions'] = now_utc().isoformat(timespec='seconds')
         if self.state.get('unconfirmed_entries'): self._settle_unconfirmed(live)   # AUD-03b
+        if self.state.get('emg_cleanup'): self._emg_cleanup()               # CAPS-01 r10: leftover emergency stops
         st = self.state
         groups = {}
         for k, l in st['lots'].items(): groups.setdefault((l['symbol'], l['side']), []).append(k)
@@ -7489,7 +7542,10 @@ class Engine:
     #      {UNCONF_ADOPT_S} s -> adopted from the position at the mark price.
     # The lot inherits the provisional stop (_replace_stop places the real one first, then cancels it). New entries on that
     # coin/side wait until it is settled. Engine._owned_stop_tags lists every stop the bot owns (for AUD-04's verifier).
-    def _remember_unconfirmed(self, plan, cid, strict=False):
+    def _remember_unconfirmed(self, plan, cid, strict=False, save=True):
+        if strict:                                                 # CAPS-01 r11: the market entry's final-dispatch recheck
+            sb = self.stop_missing_block(plan['sym'])              # (raised before anything is recorded or sent)
+            if sb: raise NewRiskFenced(sb)
         """Record an entry by its client id. strict=True (AUD-05 r2 write-ahead): raises if the record is not durable - the
         record is then removed from memory too and the caller must not send."""
         sl = plan.get('sl') or {}
@@ -7498,6 +7554,7 @@ class Engine:
         while k in ue: k += '+'
         ue[k] = dict(symbol=plan['sym'], side=plan['side'], cid=cid, qty=plan['qty'], t=time.time(), prov=None, prov_qty=0.0,
                      plan=plan)
+        if not save: return k                                 # CAPS-01 r5: the caller saves it in ONE write with its own change
         try:
             self._save_wal() if strict else self.save_state()
         except Exception:
@@ -7510,6 +7567,9 @@ class Engine:
         for u in (self.state.get('unconfirmed_entries') or {}).values():
             if sym in (None, u['symbol']):
                 tags.add(u.get('prov')); tags.add((u.get('prov_pending') or {}).get('tag'))   # AUD-04 r2: lost answer = still ours
+                if u.get('cid'): tags |= self._emg_tags(u['cid'])             # CAPS-01 r9: its emergency stops (fenced)
+        for cid, c in (self.state.get('emg_cleanup') or {}).items():         # r10: ... and leftovers being cleaned up
+            if sym in (None, c.get('symbol')): tags |= self._emg_tags(cid)
         return {t for t in tags if t}
 
     @staticmethod
@@ -7588,6 +7648,192 @@ class Engine:
         if old and old != tag: self._cancel_or_park(sym, old)
         log.info(f"ENTRY {sym} {side} unconfirmed: {qty} on Binance protected by a provisional stop at {stop}")
 
+    def _emg_mem(self, k):
+        """CAPS-01 r9/r10: memory only - 'pend': cid -> (generation, time) of a send whose answer was lost or refused as a
+        duplicate id; 'fired': emergency tags already seen fired once (the next pass decides on a fresh position read)."""
+        return vars(self).setdefault(f'_emg_{k}', set() if k == 'fired' else {})
+
+    @staticmethod
+    def _emg_ids(cid, g):
+        """CAPS-01 r9 (Codex #365): the DETERMINISTIC client ids (classic, algo fallback) of generation g of the emergency stop
+        that protects a held order's observed exposure - derived only from that order's durable client id, so a new process
+        finds the same ids without any write. Same shape as new_cid('zb'/'za') (BOT_STOP_CID_RE: the bot's own, 24 chars)."""
+        h = hashlib.sha256(f'caps01-emg|{cid}|{g}'.encode('utf-8')).hexdigest()
+        return f'zb{h[:22]}', f'za{h[22:44]}'
+
+    def _emg_tags(self, cid):
+        return {t for g in range(EMG_GENS) for c, a in [self._emg_ids(cid, g)] for t in (f'c:{c}', f'ac:{a}')}
+
+    def _emg_state(self, sym, tag):
+        """CAPS-01 r10 (ruling a): typed status of one deterministic id: live / gone / fired / absent (ONLY Binance's explicit
+        no-such-order) / unknown (anything else: no typed lookup, a failed read, unsupported, missing or unrecognized)."""
+        fn = getattr(self.trade, 'stop_state', None)
+        if not callable(fn): return 'unknown'
+        try: k = fn(sym, tag)[0]
+        except Exception: return 'unknown'
+        return k if k in ('live', 'gone', 'fired', 'absent') else 'unknown'
+
+    def _emg_scan(self, sym, cid):
+        """CAPS-01 r10: every claim of one held order's emergency stops -> dict(ok, why, live [dict(g, tag, qty|None)],
+        fired [tag], nxt). The detailed open-order listing (classic + algo, strict) is read first and an EXACT id there is
+        live whatever a lookup says; then typed lookups per generation, classic AND algo, until a generation is explicitly
+        absent on both (nxt). Any unknown answer -> ok False (no new generation is ever unlocked by it)."""
+        out = dict(ok=False, why='', live=[], fired=[], nxt=None)
+        try: rows = list(self.trade.open_stop_orders(sym, strict_algo=True, retry=False))
+        except Exception as ex:
+            out['why'] = f'open-order listing unreadable ({type(ex).__name__})'; return out
+        by_id = {str(x.get('client_id')): x for x in rows if isinstance(x, dict) and x.get('client_id')}
+        for g in range(EMG_GENS):                                   # listed = live, every generation (a lookup gap or an
+            for kind, id_ in zip(('c', 'ac'), self._emg_ids(cid, g)):   # absent older one never hides a live newer one)
+                if id_ in by_id: out['live'].append(dict(g=g, tag=f'{kind}:{id_}', qty=by_id[id_].get('qty')))
+        listed = {x['tag'] for x in out['live']}
+        for g in range(EMG_GENS):
+            ks = []
+            for kind, id_ in zip(('c', 'ac'), self._emg_ids(cid, g)):
+                tag = f'{kind}:{id_}'
+                k = 'live' if tag in listed else self._emg_state(sym, tag)
+                if k == 'unknown':
+                    out['why'] = f'status of {tag} unknown'; return out
+                if k == 'live' and tag not in listed: out['live'].append(dict(g=g, tag=tag, qty=None))   # size not listed yet
+                if k == 'fired': out['fired'].append(tag)
+                ks.append(k)
+            if ks == ['absent', 'absent']: out['nxt'] = g; break
+        out['ok'] = True
+        return out
+
+    def _emg_own(self, u):
+        """CAPS-01 r10 (P2): durable cleanup ownership of one held order's emergency ids - kept past settlement until a scan
+        confirms none of them is live (and the coin is fenced against new risk until then: stop_missing_block)."""
+        cl = self.state.setdefault('emg_cleanup', {})
+        if u['cid'] not in cl: cl[u['cid']] = dict(symbol=u['symbol'], side=u['side'], t=round(time.time(), 3))
+
+    def _emg_unprotected(self, uk, u, qty, why):
+        """An explicit incident (never 'safe') while observed exposure of a held order has no confirmed stop."""
+        msg = (f"{u['symbol']} {u['side']}: {qty} of a held entry has NO confirmed stop ({why}) - nothing new is sent while "
+               'that is unknown; retried every pass')
+        first = not (self.health.get('incidents', {}).get(f'emg-unprotected|{uk}') or {}).get('open')
+        self.err(msg, key=f'emg-unprotected|{uk}')
+        if first: self.notify(f"🆘 {u['side']} {u['symbol']}: {qty} has NO confirmed stop ({why}). The bot keeps checking - look at it.")
+
+    def _emg_adopt(self, sym, uk, u):
+        """CAPS-01 r9/r10: once, before an entry that WAS held (emg_check: set in memory by the dual-owner handover and made
+        durable by that handover's own strict write) is settled or protected the normal way, an emergency stop sent while
+        storage was down (possibly by an earlier process, so nothing on disk names it) is adopted as its provisional stop -
+        the newest live generation; older live ones are cancelled (or parked) and stay owned by emg_cleanup until a scan
+        confirms them gone. Returns False while that is unknown (the entry then waits: no second stop, no settlement)."""
+        if u['cid'] not in (self.state.get('emg_cleanup') or {}):     # r12: cleanup ownership BEFORE the scan (whatever it
+            self._emg_own(u); self.save_state()                       # answers), durable as soon as a write succeeds
+        sc = self._emg_scan(sym, u['cid'])                            # r11: a client without typed lookups = UNKNOWN
+        if not sc['ok']:
+            self.err(f"{sym} {u['side']} unconfirmed entry: emergency-stop lookup failed ({sc['why']}) - not settled this pass, "
+                     'no new stop sent; its claim is kept', key=f'emg-unknown|{uk}')
+            return False
+        self._emg_own(u)
+        u.pop('emg_check', None)
+        keep = max(sc['live'], key=lambda x: x['g']) if sc['live'] else None
+        if keep:
+            if u.get('prov') and u['prov'] not in self._emg_tags(u['cid']): self._cancel_or_park(sym, u['prov'])
+            u['prov'], u['prov_qty'] = keep['tag'], keep['qty'] if keep['qty'] is not None else u.get('prov_qty', 0.0)
+        self.save_state()
+        for x in sc['live']:
+            if x is not keep: self._cancel_or_park(sym, x['tag'])
+        if keep: log.warning(f"{sym} {u['side']} unconfirmed entry: emergency stop {keep['tag']} found on Binance - adopted")
+        return True
+
+    def _emg_cleanup(self):
+        """CAPS-01 r10 (P2): emergency ids whose entry is gone (settled, adopted, forgotten) are cancelled until a scan of
+        Binance confirms none is live; only then is the record (and with it the coin's new-risk fence) dropped. A lot's own
+        recorded stop is never touched. Unknown -> kept, re-checked next pass."""
+        cl = self.state.get('emg_cleanup') or {}
+        held = {u.get('cid') for u in (self.state.get('unconfirmed_entries') or {}).values()}
+        lot_tags = {l.get('stop_id') for l in self.state['lots'].values()}
+        changed = False
+        for cid, c in list(cl.items()):
+            if cid in held: continue                                  # its entry still owns and protects it
+            sc = self._emg_scan(c['symbol'], cid)
+            left = [x for x in sc['live'] if x['tag'] not in lot_tags]
+            if sc['ok'] and not left:
+                cl.pop(cid, None); changed = True
+                self.resolve(f"emg-cleanup|{cid}", f"{c['symbol']}: leftover emergency stops confirmed gone - new risk allowed again")
+                continue
+            for x in left: self._cancel_or_park(c['symbol'], x['tag'])
+            self.err(f"{c['symbol']} {c['side']}: leftover emergency stop(s) "
+                     f"{', '.join(x['tag'] for x in left) or '(status unknown: ' + sc['why'] + ')'} being cancelled - no new "
+                     'risk on this coin until Binance confirms them gone', key=f'emg-cleanup|{cid}')
+        if not cl: self.state.pop('emg_cleanup', None)
+        if changed: self.save_state()
+
+    def _prov_held(self, uk, u, qty):
+        """CAPS-01 r9/r10 (Codex #365): protection of a HELD order's observed exposure (its dual-owner handover not durable -
+        e.g. storage down). The one exception to the provisional stop's write-ahead rule, and only for exposure already seen
+        on Binance: the stop's identity is deterministic (_emg_ids) instead of durable, and every pass re-derives the truth
+        from Binance by those ids (_emg_scan) - so a restart or a lost answer finds the same stop and never sends a second.
+        - unknown (a lookup, the listing), a size not listed yet, a send not answered or refused as a duplicate id -> nothing
+          new is sent, and uncovered exposure is an explicit incident;
+        - a claim that FIRED -> nothing is decided on this pass's (possibly stale) position: the next pass's fresh read does;
+        - a live stop at the size -> kept (extra generations cancelled or parked, owned by emg_cleanup until gone);
+        - none, or a wrong size -> the next explicitly absent generation is sent FIRST; only once Binance accepted it are
+          older ones cancelled - the only confirmed stop is never dropped before its replacement is confirmed."""
+        sym, side, r, plan = u['symbol'], u['side'], self.rules[u['symbol']], u['plan']
+        if u.get('prov_pending') and not self._prov_pending_settled(sym, u): return   # a normal pending stop decides first
+        if u['cid'] not in (self.state.get('emg_cleanup') or {}):
+            self._emg_own(u); self.save_state()                        # r12: durable as soon as a write succeeds
+        sc = self._emg_scan(sym, u['cid'])
+        claims = list(sc['live'])
+        if u.get('prov') and u['prov'] not in self._emg_tags(u['cid']):
+            claims.append(dict(g=-1, tag=u['prov'], qty=u.get('prov_qty')))          # an earlier normal provisional stop
+        covered = any(x['qty'] is not None and x['qty'] >= qty - 1e-12 for x in claims)
+        def hold_off(why):
+            if qty > 0 and not covered: self._emg_unprotected(uk, u, qty, why)
+            else: self.err(f"{sym} {side} held entry: {why} - nothing new sent", key=f'prov|{uk}')
+        if not sc['ok']: return hold_off(sc['why'])
+        seen = self._emg_mem('fired')
+        new_fired = [t for t in sc['fired'] if t not in seen]
+        if new_fired:
+            seen.update(new_fired)
+            return hold_off(f"emergency stop {', '.join(new_fired)} fired - decided on the next fresh position read")
+        def drop(xs):
+            for x in xs: self._cancel_or_park(sym, x['tag'])
+        if qty <= 0:
+            if claims:
+                u['prov'], u['prov_qty'] = None, 0.0; self.save_state(); drop(claims)
+            return
+        good = [x for x in claims if x['qty'] is not None and abs(x['qty'] - qty) < 1e-12]
+        if good:
+            keep = max(good, key=lambda x: x['g'])
+            u['prov'], u['prov_qty'] = keep['tag'], qty; self.save_state()
+            drop([x for x in claims if x is not keep])
+            self.resolve(f'emg-unprotected|{uk}', f'{sym} {side}: held entry protected by {keep["tag"]}')
+            return
+        if any(x['qty'] is None for x in claims): return hold_off("a live stop's size is not listed yet")
+        pend = self._emg_mem('pend').get(u['cid'])
+        if pend and pend[0] == sc['nxt'] and time.time() - pend[1] < PROV_PENDING_S:
+            return hold_off('the answer of its last send is not known yet')
+        if sc['nxt'] is None: return hold_off('no explicitly unused emergency-stop id left')
+        sd = 1 if side == 'LONG' else -1
+        stop = self._rd(plan['px'] - sd * plan['stop_dist'], r['tick'])
+        g = sc['nxt']; c, a = self._emg_ids(u['cid'], g)
+        try:
+            tag = self._send(self.trade.stop, sym, side, self._fmt(qty, r['step']), self._fmt(stop, r['tick']), cid=c, acid=a)
+        except AmbiguousOrder:
+            self._emg_mem('pend')[u['cid']] = (g, time.time())
+            return hold_off(f'emergency stop answer lost - recovered by its id {c} / {a}, never sent under another id')
+        except BinanceError as ex:
+            if ex.code == -4116:                                       # ruling b: that id already exists - recover it,
+                self._emg_mem('pend')[u['cid']] = (g, time.time())     # never advance to another generation
+                return hold_off(f'id {c} / {a} already exists on Binance - recovered by its status, never re-sent')
+            self._clock_alert(f'emergency stop {sym}', ex)
+            return hold_off(f'emergency stop for {qty} refused ({str(ex)[:120]})')
+        except Exception as ex:
+            return hold_off(f'emergency stop for {qty} failed ({type(ex).__name__})')
+        self._emg_mem('pend').pop(u['cid'], None)
+        u['prov'], u['prov_qty'], u['prov_stop'] = (f'ac:{a}' if str(tag).startswith('a') else f'c:{c}'), qty, stop
+        self.save_state()                                              # best effort: nothing depends on it
+        drop(claims)
+        self.resolve(f'emg-unprotected|{uk}', f'{sym} {side}: held entry protected by {u["prov"]}')
+        self.err(f"{sym} {side} held entry: {qty} on Binance protected by emergency stop {u['prov']} at {stop} (its order's "
+                 'handover is not durable yet)', key=f'prov|{uk}')
+
     def _prov_pending_settled(self, sym, u):
         """AUD-04 r2: a provisional stop whose placement answer was lost (c:/ac: client-id tag). Its exchange status decides:
         working -> it becomes the provisional stop (the old one, if any, is cancelled); gone / never reached Binance ->
@@ -7627,15 +7873,27 @@ class Engine:
         return False
 
     def _settle_unconfirmed(self, live):
+        self._normalize_order_owners()                           # CAPS-01 r5: one owner per order before fills / protection
         ue = self.state.get('unconfirmed_entries') or {}
+        # CAPS-01 r7 (Codex #365): an order still owned by a resting maker record (its handover not finished - e.g. the
+        # transfer's write failed) is settled by NOTHING here: that record stays its single owner (reserved, never polled by
+        # its old record) until the transfer is durable - so no client id can ever be booked twice
+        held = {r_.get('cid') for r_ in (self.state.get('resting_entries') or {}).values() if r_.get('cid')}
         for uk, u in list(ue.items()):
+            # CAPS-01 r8/r9 (Codex #365): a held order is still PROTECTED here (step 2: this entry is the one owner of its
+            # stop - the resting record never places one) but never booked, adopted or forgotten until its handover is
+            # durable; its exposure is not netted against its own resting record (the same order). Its stop has a
+            # deterministic identity (_prov_held), so protection never waits for storage and a restart never doubles it.
+            # An entry that was held first adopts any emergency stop left for it (_emg_adopt), once (emg_check).
+            hold = bool(u.get('cid')) and u['cid'] in held
             sym, side = u['symbol'], u['side']
             r = self.rules.get(sym)
             if r is None: continue
+            if not hold and u.get('emg_check') and not self._emg_adopt(sym, uk, u): continue
             age = time.time() - u.get('t', 0)
             plan = u['plan']
-            fr = self._order_result(sym, u.get('cid'), u['qty'])
-            if fr['state'] == 'final':                                     # 1. the order's final record decides
+            fr = None if hold else self._order_result(sym, u.get('cid'), u['qty'])
+            if fr and fr['state'] == 'final':                              # 1. the order's final record decides
                 got = fr['qty']
                 ue.pop(uk, None)
                 if got > 0:
@@ -7649,14 +7907,18 @@ class Engine:
                 self.save_state(); continue
             lots_q = sum(l['qty'] for l in self.state['lots'].values() if l['symbol'] == sym and l['side'] == side)
             rest_q = sum(x['qty'] for x in (self.state.get('resting_entries') or {}).values()
-                         if x['symbol'] == sym and x['side'] == side)
+                         if x['symbol'] == sym and x['side'] == side and not (hold and x.get('cid') == u['cid']))
+            cap = max([u['qty']] + [x['qty'] for x in (self.state.get('resting_entries') or {}).values()
+                                    if hold and x.get('cid') == u['cid']])   # r8: all a held order can have produced
             # Cowork #28 F1: a sibling lot's own unconfirmed ADD may already be on Binance before its lot grows - that size is
             # the add's, never this entry's (else it would get this entry's stop and, after 5 min, be adopted twice)
             add_q = sum((l.get('pending') or {}).get('qty', 0.0) for l in self.state['lots'].values()
                         if l['symbol'] == sym and l['side'] == side and (l.get('pending') or {}).get('kind') == 'add')
-            extra = self._rd(min(u['qty'], max(0.0, live.get((sym, side), 0.0) - lots_q - rest_q - add_q)), r['step'])
+            extra = self._rd(min(cap, max(0.0, live.get((sym, side), 0.0) - lots_q - rest_q - add_q)), r['step'])
             u['seen_qty'] = extra                                          # AUD-04: size this entry owns NOW (stop verifier)
-            self._prov_set(uk, u, extra)                                   # 2. protect exactly what is unresolved
+            if hold: self._prov_held(uk, u, extra)                         # 2. protect exactly what is unresolved
+            else: self._prov_set(uk, u, extra)
+            if hold: continue                                              # r7: settled only after a durable handover
             if extra > 0:
                 if age > UNCONF_ADOPT_S:                                   # 3b. no record in 5 min: adopt the position
                     ue.pop(uk, None)
@@ -7767,6 +8029,80 @@ class Engine:
                 r += l['q0'] * l['w'][k] * abs(l['levels'][k] - l['stop'])
         return r
 
+    @staticmethod
+    def _plan_risk(plan, qty):
+        """Risk to the stop of `qty` of an entry plan (its stop distance; an older plan without one: its full planned risk).
+        None = NOT computable (CAPS-01 r4/r5: unknown or invalid risk is never counted as zero - the caller fails closed)."""
+        plan = plan if isinstance(plan, dict) else {}
+        d, q = _finite_num(plan.get('stop_dist')), _finite_num(qty)
+        if d is not None and q is not None and d >= 0 and q >= 0:
+            v = d * q
+            if math.isfinite(v): return v
+        v = _finite_num(plan.get('risk_usd'))
+        return v if v is not None and v >= 0 else None
+
+    def _reserved_risk(self, skip_op=None):
+        """CAPS-01 r2 (Codex #365): open risk of entry intents that are not lots yet, so the open-risk cap counts them -
+        a resting maker entry (its full planned quantity: its fills only become a lot when the record is finalized and
+        removed), an unconfirmed entry (removed when it becomes a lot) and a lot's pending add (not in lot qty until
+        confirmed). Each intent is counted once: none of them is also in state['lots'] at the same time.
+        CAPS-01 r4: + a grid's in-flight risk-adding order (op) not yet in a lot's qty or pending add. Returns None when ANY
+        intent's risk cannot be computed (missing stop distance and planned risk, missing price/stop/qty): never zero."""
+        out = 0.0
+        for rec in (self.state.get('resting_entries') or {}).values():
+            v = self._plan_risk(rec.get('plan'), rec.get('qty'))
+            if v is None: return None
+            out += v
+        for u in (self.state.get('unconfirmed_entries') or {}).values():
+            v = self._plan_risk(u.get('plan'), u.get('qty'))
+            if v is None: return None
+            out += v
+        for l in self.state['lots'].values():
+            p = l.get('pending')
+            if isinstance(p, dict) and p.get('kind') == 'add':
+                v = self._side_risk(l.get('side'), p.get('px'), l.get('stop'), p.get('qty'))
+                if v is None: return None
+                out += v
+        for g in (self.state.get('grids') or {}).values():
+            op = g.get('op') if isinstance(g, dict) else None
+            if not isinstance(op, dict) or op.get('kind') not in ('open', 'add') or op.get('id') == skip_op: continue
+            lk = (g.get('lots') or {}).get(op.get('side'))
+            lot = self.state['lots'].get(lk) if lk else None
+            if op['kind'] == 'add' and lot and (lot.get('pending') or {}).get('kind') == 'add': continue   # counted above
+            if op['kind'] == 'open' and lot: continue                                                       # in its lot now
+            v = self._side_risk(op.get('side'), op.get('px'), g.get('stop_lo') if op.get('side') == 'LONG' else g.get('stop_hi'),
+                                op.get('qty'))
+            if v is None: return None
+            out += v
+        return out
+
+    @staticmethod
+    def _side_risk(side, px, stop, qty):
+        """max(0, signed px - stop) * qty, or None when any operand is missing or invalid (CAPS-01 r4/r5): each of price,
+        stop and quantity is validated (finite, price > 0, stop > 0, qty >= 0) BEFORE a profitable stop is clamped to 0."""
+        sd = {'LONG': 1, 'SHORT': -1}.get(side) if isinstance(side, str) else None
+        px, stop, qty = _finite_num(px), _finite_num(stop), _finite_num(qty)
+        if sd is None or px is None or stop is None or qty is None or px <= 0 or stop <= 0 or qty < 0: return None
+        v = max(0.0, sd * (px - stop)) * qty
+        return v if math.isfinite(v) else None
+
+    def open_risk_room(self, add_risk, skip_op=None):
+        """CAPS-01 r4: None when `add_risk` more stop risk fits under the open-risk cap (lots + every reserved intent);
+        else the refusal reason. Unknown capital, unknown reserved risk or unknown add_risk refuse (fail closed)."""
+        cap = self.guard_eq or self.last_eq or 0.0
+        pct = RISK_CAP_POLICY['open_risk_pct']
+        try: pct = min(pct, float(self.risk_rules_cfg()['open_risk_cap']['pct']))
+        except (KeyError, TypeError, ValueError): pass
+        if not (isinstance(cap, (int, float)) and math.isfinite(cap) and cap > 0): return 'bot capital unknown - no new risk'
+        res = self._reserved_risk(skip_op=skip_op)
+        if res is None: return OPEN_RISK_UNKNOWN
+        add = _finite_num(add_risk)
+        if add is None or add < 0: return 'risk of this order cannot be computed - not sent'
+        tot = sum(self._lot_risk(l) for l in self.state['lots'].values()) + res + add
+        if tot > pct / 100 * cap + 1e-9:
+            return f'risk rule open_risk_cap: open risk to stops {tot / cap * 100:.2f}% > {pct:g}% of bot capital'
+        return None
+
     def _corr(self, a, b):
         c = self.corr
         if not c or a not in c.get('symbols', []) or b not in c.get('symbols', []): return None
@@ -7786,8 +8122,12 @@ class Engine:
             if tot > r['x'] * cap: out.append(('coin_cap', r['mode'], f"{sym} exposure {tot:.0f} USDT > {r['x']:g}x bot capital ({r['x'] * cap:.0f})"))
         r = R['open_risk_cap']
         if r['mode'] != 'off' and cap > 0:
-            tot = sum(self._lot_risk(l) for l in lots) + size.get('risk', 0.0)
-            if tot > r['pct'] / 100 * cap: out.append(('open_risk_cap', r['mode'], f"open risk to stops {tot / cap * 100:.1f}% > {r['pct']:g}% of bot capital"))
+            res = self._reserved_risk()                                  # CAPS-01 r2: + intents; r4: unknown -> refused
+            if res is None:
+                out.append(('open_risk_cap', 'enforce', OPEN_RISK_UNKNOWN))
+            else:
+                tot = sum(self._lot_risk(l) for l in lots) + res + size.get('risk', 0.0)
+                if tot > r['pct'] / 100 * cap: out.append(('open_risk_cap', r['mode'], f"open risk to stops {tot / cap * 100:.1f}% > {r['pct']:g}% of bot capital"))
         if manual: return out
         r = R['correlated_cap']
         if r['mode'] != 'off' and self.corr and not add:     # an add does not open a new correlated position
@@ -7811,7 +8151,45 @@ class Engine:
             except Exception as e: log.info(f'funding filter: data unavailable ({e})')
         return out
 
+    def risk_caps_problems(self):
+        """CAPS-01: every way the effective risk caps are looser than RISK_CAP_POLICY (empty list = compliant).
+        One exemption: replay.run_replay - the offline engine-vs-backtest parity harness - sets offline_replay in code on an
+        engine whose exchange is its own in-memory fake. Both must hold; an engine holding the real Binance client is always
+        checked, and no setting, file or app path can set the flag."""
+        if getattr(self, 'offline_replay', False) is True and not isinstance(self.trade, _REAL_FUTURES):
+            return []
+        P, S, out = RISK_CAP_POLICY, self.S, []
+        def num(k):
+            v = S.get(k, GLOBAL_DEFAULTS.get(k))
+            try: v = float(v)
+            except (TypeError, ValueError): return None
+            return v if math.isfinite(v) else None
+        dh, dd = num('DAILY_LOSS_HALT'), num('PEAK_DD_FLATTEN')
+        if dh is None or not 0 < dh <= P['daily_loss_halt']:
+            out.append(f"daily loss halt {S.get('DAILY_LOSS_HALT')!r} (policy: on, at most {P['daily_loss_halt'] * 100:g}%)")
+        if dd is None or not 0 < dd <= P['peak_dd_flatten']:
+            out.append(f"drawdown stop {S.get('PEAK_DD_FLATTEN')!r} (policy: on, at most {P['peak_dd_flatten'] * 100:g}%)")
+        r = self.risk_rules_cfg()['open_risk_cap']
+        try: pct = float(r.get('pct'))
+        except (TypeError, ValueError): pct = None
+        if r.get('mode') != 'enforce' or pct is None or not math.isfinite(pct) or not 0 < pct <= P['open_risk_pct']:
+            out.append(f"open-risk cap {r.get('mode')} {r.get('pct')!r}% (policy: enforce, at most {P['open_risk_pct']:g}%)")
+        return out
+
+    def risk_caps_block(self):
+        """CAPS-01: the entry refusal while the caps are looser than policy (None = compliant). Alerted once per change."""
+        bad = self.risk_caps_problems()
+        if not bad:
+            self.resolve('risk-caps', 'risk caps meet the policy again'); return None
+        msg = 'risk caps looser than policy - no new entries: ' + '; '.join(bad)
+        self.err(msg, key='risk-caps')
+        return msg
+
     def _rules_block(self, sl, sym, side, size=None, manual=False):
+        caps = self.risk_caps_block()                   # CAPS-01: first, for every entry and add (manual too)
+        if caps:
+            self._rule_warns = []
+            return caps
         cb = None if manual else CA.runtime_block(self, sl, testnet=TESTNET)
         cb = cb or (None if manual else self.f01_canary_block(sl))  # legacy C-F01 bound during migration
         if cb:
@@ -8016,6 +8394,10 @@ class Engine:
         sym, r = rec['symbol'], self.rules[rec['symbol']]
         pb = self.persist_block()                                    # AUD-05 r2: no new resting order while state is untrusted
         if pb: raise RuntimeError(f'maker entry {sym} not sent: {pb}')
+        cb = self.risk_caps_block()                                  # CAPS-01 r2: no new or re-priced resting entry either
+        if cb: raise RuntimeError(f'maker entry {sym} not sent: {cb}')
+        sb = self.stop_missing_block(sym)                            # CAPS-01 r11: final-dispatch recheck
+        if sb: raise RuntimeError(f'maker entry {sym} not sent: {sb}')
         rem = self._rd(rec['qty'] - rec['filled'], r['step'])
         bt = self.trade._req('GET', '/fapi/v1/ticker/bookTicker', dict(symbol=sym))
         px = float(bt['bidPrice'] if rec['side'] == 'LONG' else bt['askPrice'])
@@ -8062,12 +8444,17 @@ class Engine:
         # re-priced on that old approval: its resting order is cancelled now and the record finalized without a market
         # fallback - whatever filled becomes a lot through the normal finalize path.
         legacy = LEGACY_LEV_EXC_MAKER if (rec.get('plan') or {}).get('lev_exception') else None
+        if not legacy:                                               # CAPS-01 r2: caps looser than policy -> the resting
+            cb = self.risk_caps_block() or self.stop_missing_block(sym)   # order is cancelled, never re-priced, no market fallback
+            if cb: legacy = f'{cb} - maker entry not re-priced, no market fallback'   # (r11: also a coin fenced for new risk)
+        if self._ue_by_cid(rec.get('cid')):                       # CAPS-01 r5: finish an interrupted handover
+            self._normalize_order_owners(); return True
         if rec['status'] in ('open', 'cancelling'):
             o = self.trade.get_order(sym, rec['cid'])
             age = time.time() - rec['placed_t']
             if o is None:
                 if age < 20: return False                            # may not be visible yet
-                rec['status'] = 'between'                            # never reached Binance
+                return self._maker_unknown(k, rec)                   # CAPS-01 r4: NOT proof it never reached Binance
             elif o.get('status') in ('FILLED', 'CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH'):
                 self._maker_done_order(rec, o)
             elif rec['status'] == 'open' and (age >= slice_s or legacy):
@@ -8085,6 +8472,74 @@ class Engine:
             self._maker_place(rec); return True
         self._maker_finalize(k, rem, small, px_, no_fallback=legacy)
         return True
+
+    def _maker_unknown(self, k, rec):
+        """CAPS-01 r4 (Codex #365): a sent maker order whose lookup says 'not found' is not proof that it never reached
+        Binance or did not (partly) fill. Its ownership is never dropped: a best-effort cancel by its client id, then the
+        unknown order (its client id, the quantity it was placed for) is written as an unconfirmed entry BEFORE the resting
+        record goes - the AUD-03b path keeps it reserved, blocks a second entry on the coin/side, protects any position it
+        produced with a provisional stop and settles it from its order record. Fills already known from earlier final
+        records still become a lot through the normal finalize path (no market fallback)."""
+        sym, r = rec['symbol'], self.rules[rec['symbol']]
+        try: self.trade.cancel(sym, f"c:{rec['cid']}")
+        except Exception as ex: log.info(f"maker entry {sym}: cancel of unknown order {rec['cid']} failed ({type(ex).__name__})")
+        unk = self._rd(rec['qty'] - rec['filled'], r['step'])
+        # CAPS-01 r5/r6 (Codex): no transitional record. The unconfirmed entry is inserted in memory only, then the resting
+        # record leaves memory in the SAME step that books its known fills: the FIRST durable write after this point
+        # (the lot's own write-ahead in _create_lot, or the strict save below when nothing was filled) already holds the
+        # finished handover - a state with the resting record gone, its known fills as a lot and the unconfirmed entry
+        # owning the order. Every snapshot is a state the loader accepts (no new status); idempotent by client id.
+        uk = None
+        if unk > 0 and not self._ue_by_cid(rec['cid']):
+            uk = self._remember_unconfirmed(dict(rec['plan'], qty=unk), rec['cid'], save=False)
+        if rec['filled'] <= 0:
+            self.state['resting_entries'].pop(k, None)
+            try:
+                self._save_wal()
+            except Exception:
+                self.state['resting_entries'][k] = rec                 # not durable: nothing handed over (polled again)
+                if uk: self.state['unconfirmed_entries'].pop(uk, None)
+                raise
+            self._mk_refs.pop(self._mk_key(rec), None)
+        else:
+            self._maker_finalize(k, 0.0, True, (self.marks or {}).get(sym) or rec.get('price') or rec['plan']['px'],
+                                 no_fallback='maker order record not found - its remainder is settled as an unconfirmed entry')
+            self._save_wal()                                           # strict: the finished handover is durable
+        self.err(f"maker entry {sym} {rec['side']}: maker order record not found on Binance - handed to unconfirmed-entry "
+                 f"reconciliation, no market fallback (client id {rec['cid']}, {unk:g})")
+        return True
+
+    def _ue_by_cid(self, cid):
+        return [uk for uk, u in (self.state.get('unconfirmed_entries') or {}).items() if cid and u.get('cid') == cid]
+
+    def _normalize_order_owners(self):
+        """CAPS-01 r5 (Codex #365): one exchange order has ONE owner before fills or protection are reconciled. A resting
+        maker record whose client id an unconfirmed entry already owns (a state saved mid-handover by older code) finishes
+        the handover - its known fills become a lot (no market fallback), the unconfirmed entry owns the order; until that
+        succeeds the record is left exactly as it is (valid, over-reserved, never polled again); two unconfirmed entries
+        with one client id merge into the oldest (its provisional stop kept; a second provisional stop is cancelled)."""
+        changed = False
+        ue = self.state.get('unconfirmed_entries') or {}
+        for k, rec in list((self.state.get('resting_entries') or {}).items()):
+            if self._ue_by_cid(rec.get('cid')):
+                for uk_ in self._ue_by_cid(rec.get('cid')): ue[uk_]['emg_check'] = True   # r9: carried by the transfer's own
+                try: self._maker_unknown(k, rec)                                       # write: may own an emergency stop
+                except Exception as e: self.err(f'maker entry {k}: handover not finished ({e}) - retried next pass')
+                changed = True
+        seen = {}
+        for uk in sorted(ue, key=lambda x: (ue[x].get('t') or 0, x)):
+            cid = ue[uk].get('cid')
+            if not cid: continue
+            if cid not in seen: seen[cid] = uk; continue
+            keep, dup = ue[seen[cid]], ue.pop(uk)
+            if dup.get('prov') and not keep.get('prov'):
+                keep['prov'], keep['prov_qty'] = dup['prov'], dup.get('prov_qty', 0.0)
+            elif dup.get('prov') and dup['prov'] != keep.get('prov'):
+                self._cancel_or_park(dup['symbol'], dup['prov'])
+            self.err(f"ENTRY {dup['symbol']} {dup['side']}: duplicate owner of order {cid} merged (one order, one owner)")
+            changed = True
+        if changed: self.save_state()
+        return changed
 
     def _maker_finalize(self, k, rem, small, px, no_fallback=None):
         rec = self.state['resting_entries'].pop(k)
