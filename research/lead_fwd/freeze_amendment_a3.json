@@ -1,0 +1,37 @@
+{
+ "id": "A3",
+ "kind": "integrity amendment (runner guards only)",
+ "at_utc": "2026-11-15 22:29:28",
+ "before_t_fwd": true,
+ "rows_existing": 0,
+ "trigger": "Codex HOLD on PR #351 comment 6902417655 at a999e332",
+ "parent_freeze_sha256": "6982499a355d4587162a0be006c8b41b414a864fbf9d8616b28100d4f8f9964f",
+ "parent_addenda_sha256": {
+  "freeze_a1_s54.json": "7941322e8c886f955547dab82abf06da979ab475270bfd45fb9128e0c5d98f76"
+ },
+ "parent_amendments_sha256": {
+  "freeze_amendment_a2.json": "ce7a15d8b4d5097080d6e4a221b9c98dd7096397789f619fce2b7d80b4305b9c"
+ },
+ "parent_head": "a999e3321ff13674c4f34400ff3c6ac53f351e19",
+ "unchanged": "t_fwd (2026-11-16 00:00 UTC), all seven book definitions, universe, base history, fetch start, costs/proxy, rule v1 accounting, clock and review rule; freeze.json, freeze_a1_s54.json and freeze_amendment_a2.json (+ sidecars) are byte-identical to their parents",
+ "changes": [
+  "parity: every immutable entry fact must be present and valid on BOTH the earlier and the later record (side +1/-1; entry_ref, entry_fill, qty, risk_usd, stop_dist finite and > 0; initial_stop and target finite; none nullable, since every frozen book has a stop and a tp_r target); missing, null, NaN, inf or non-numeric values never compare equal",
+  "coverage: common base/forward bars are compared first; any differing common bar is MISMATCH (which stops all books for the row) even when other overlap bars are missing; only then is missing overlap checked (OVERLAP_MISSING)",
+  "amendment chain: each integrity amendment must also bind the sha of every earlier one; the runner takes its code pins from the last"
+ ],
+ "code_sha256": {
+  "run_fwd.py": "16eea2a5a8d74afa25deafba1b8ae0563eeabc09fcf5fa138e436a916094447b",
+  "fetch_fwd.py": "8221f6562624a4ef22f959f2eed63176f76135cda822c4c51a53c83d7002300c",
+  "longscout_run.py": "5d569f51ea21e87930c712ba96ddf086d821a5b7f3f311db6c4d6c90200ab853",
+  "sieve_v1_panel.py": "6da5a8493a66015ebe2f16f1bb3dff62231b56b37b3b8a3f8b476e6baf5de075",
+  "sieve_v1.py": "49612393fb38b3208b30b42f629b6b9ca0fda5ef49d25a1824c9a45d70a41929",
+  "run_screen.py": "29e92fffec4fea4936330b7b965313a8e7ad5d084129cbb43d6d1969f142e42c",
+  "contract.json": "6ee9c4e6d5c04f26485b9db602e6519c5da0b34fba3495607e6170fdcedd9d57",
+  "sieve_v1_panel_cases.json": "ba3492bf53850e7bb5998a2112ac95179ea4b473d2e34f62c82ece1f2fe79752",
+  "sieve_v1_mp_variant.json": "6fd133b36a823aa05826b3ad4e21abfecc5ec384535c24d701d9c948ec7db2f2",
+  "longscout_v1_cases.json": "2da84a41f321a5a45403c7d81bf83d2ae4db61ed3856e25a01d5399e909a8def"
+ },
+ "test_sha256": {
+  "test_lead_fwd.py": "e203fa4f777f4ac636bc19f2e167198d2e1124dbfb8d3bd3eff1e7f9e920d20d"
+ }
+}

@@ -1,0 +1,34 @@
+{
+ "id": "A2",
+ "kind": "integrity amendment (runner guards only)",
+ "at_utc": "2026-11-15 22:17:58",
+ "before_t_fwd": true,
+ "rows_existing": 0,
+ "trigger": "Codex HOLD on PR #351 comment 6902262210 at 047349c4",
+ "parent_freeze_sha256": "6982499a355d4587162a0be006c8b41b414a864fbf9d8616b28100d4f8f9964f",
+ "parent_addenda_sha256": {
+  "freeze_a1_s54.json": "7941322e8c886f955547dab82abf06da979ab475270bfd45fb9128e0c5d98f76"
+ },
+ "parent_head": "047349c499ead756445c5996f66fad96dc70250d",
+ "unchanged": "t_fwd (2026-11-16 00:00 UTC), all seven book definitions (rules, params, management, commits), universe, base history, fetch start, costs/proxy, rule v1 accounting, clock and review rule; freeze.json and freeze_a1_s54.json are byte-identical to the parents above",
+ "changes": [
+  "parity: an earlier OPEN position must reappear (still open, or closed) with identical immutable entry facts: side, entry_ref, entry_fill, qty, risk_usd, stop_dist, initial_stop, target; closed records now carry the same entry facts (from the fill log), so OPEN->CLOSED is checked too; marks, age and exits may change",
+  "coverage: every base bar from the fetch start to the base last bar must be present in the forward data and identical, and at least one such bar must exist; otherwise the coin is OVERLAP_MISSING (missing prices: INCOMPLETE, left out of the row universe; BTC blocks the books); no price is invented",
+  "the runner takes its code pins from this amendment; the amendment is refused unless its parent freeze and addendum shas match"
+ ],
+ "code_sha256": {
+  "run_fwd.py": "456d98b7e18970659d688d8d56cdaafbc58fa98f43929c864402c70acdb481b8",
+  "fetch_fwd.py": "8221f6562624a4ef22f959f2eed63176f76135cda822c4c51a53c83d7002300c",
+  "longscout_run.py": "5d569f51ea21e87930c712ba96ddf086d821a5b7f3f311db6c4d6c90200ab853",
+  "sieve_v1_panel.py": "6da5a8493a66015ebe2f16f1bb3dff62231b56b37b3b8a3f8b476e6baf5de075",
+  "sieve_v1.py": "49612393fb38b3208b30b42f629b6b9ca0fda5ef49d25a1824c9a45d70a41929",
+  "run_screen.py": "29e92fffec4fea4936330b7b965313a8e7ad5d084129cbb43d6d1969f142e42c",
+  "contract.json": "6ee9c4e6d5c04f26485b9db602e6519c5da0b34fba3495607e6170fdcedd9d57",
+  "sieve_v1_panel_cases.json": "ba3492bf53850e7bb5998a2112ac95179ea4b473d2e34f62c82ece1f2fe79752",
+  "sieve_v1_mp_variant.json": "6fd133b36a823aa05826b3ad4e21abfecc5ec384535c24d701d9c948ec7db2f2",
+  "longscout_v1_cases.json": "2da84a41f321a5a45403c7d81bf83d2ae4db61ed3856e25a01d5399e909a8def"
+ },
+ "test_sha256": {
+  "test_lead_fwd.py": "48860678dcf845e187635e4ccd7c1f2d49f4e861e7dc992a1521377eb3bd4ba1"
+ }
+}

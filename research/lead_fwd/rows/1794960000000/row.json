@@ -1,0 +1,2740 @@
+{
+ "id": "LEADFWD-01",
+ "boundary_ms": 1794960000000,
+ "boundary_utc": "2026-11-18 00:00",
+ "t_fwd_utc": "2026-11-16 00:00",
+ "kind": "FORWARD",
+ "freeze_sha256": "6982499a355d4587162a0be006c8b41b414a864fbf9d8616b28100d4f8f9964f",
+ "integrity_amendments": [
+  "A2",
+  "A3",
+  "A4"
+ ],
+ "runner_sha256": "f63caa2023ee87b8ebce35e3491b8f8eb27f2683c9497c88f93d36bac4f8b708",
+ "code_sha256": {
+  "run_fwd.py": "f63caa2023ee87b8ebce35e3491b8f8eb27f2683c9497c88f93d36bac4f8b708",
+  "fetch_fwd.py": "8221f6562624a4ef22f959f2eed63176f76135cda822c4c51a53c83d7002300c",
+  "longscout_run.py": "5d569f51ea21e87930c712ba96ddf086d821a5b7f3f311db6c4d6c90200ab853",
+  "sieve_v1_panel.py": "6da5a8493a66015ebe2f16f1bb3dff62231b56b37b3b8a3f8b476e6baf5de075",
+  "sieve_v1.py": "49612393fb38b3208b30b42f629b6b9ca0fda5ef49d25a1824c9a45d70a41929",
+  "run_screen.py": "29e92fffec4fea4936330b7b965313a8e7ad5d084129cbb43d6d1969f142e42c",
+  "contract.json": "6ee9c4e6d5c04f26485b9db602e6519c5da0b34fba3495607e6170fdcedd9d57",
+  "sieve_v1_panel_cases.json": "ba3492bf53850e7bb5998a2112ac95179ea4b473d2e34f62c82ece1f2fe79752",
+  "sieve_v1_mp_variant.json": "6fd133b36a823aa05826b3ad4e21abfecc5ec384535c24d701d9c948ec7db2f2",
+  "longscout_v1_cases.json": "2da84a41f321a5a45403c7d81bf83d2ae4db61ed3856e25a01d5399e909a8def"
+ },
+ "fetch_manifest_sha256": "af210c36bdb0415318772038516f6aeda6ee168930e17516d10b45c8871e9d03",
+ "coverage": {
+  "1000BONKUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "1000FLOKIUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "1000LUNCUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "1000PEPEUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "1000RATSUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "1000SATSUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "1000SHIBUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "1000XECUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "1INCHUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "AAVEUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ACEUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ACHUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "AGLDUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ALGOUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ALICEUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ANKRUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "APEUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "API3USDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "APTUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ARBUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ARKMUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ARKUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ARPAUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ARUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ASTRUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ATOMUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "AUCTIONUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "AXSUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "BANDUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "BATUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "BCHUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "BEAMXUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "BELUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "BICOUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "BIGTIMEUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "BLURUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "BNTUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "BSVUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "BTCUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "C98USDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "CAKEUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "CELOUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "CELRUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "CFXUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "CHRUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "CHZUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "CKBUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "COMPUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "COTIUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "CRVUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "CTSIUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "CYBERUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "DASHUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "DODOXUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "DOTUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "DUSKUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "DYDXUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "EDUUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "EGLDUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ENAUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ENJUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ENSUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ETCUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ETHWUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "FETUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "FILUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "FLOWUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "GALAUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "GASUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "GMTUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "GMXUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "GRTUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "GTCUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "HBARUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "HOTUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ICPUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "IDUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ILVUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "IMXUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "INJUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "IOSTUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "IOTAUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "IOTXUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "JASMYUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "JOEUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "JTOUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "KASUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "KAVAUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "KNCUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "KSMUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "LDOUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "LPTUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "LQTYUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "LTCUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "LUNA2USDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "MAGICUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "MANAUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "MASKUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "MAVUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "MEMEUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "MINAUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "MOVRUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "MTLUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "NEARUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "NEOUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "NMRUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "OGNUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ONDOUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ONEUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ONGUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ONTUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "OPUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ORDIUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "PENDLEUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "PEOPLEUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "POLYXUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "POWRUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "PYTHUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "QNTUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "QTUMUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "RIFUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "RLCUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ROSEUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "RSRUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "RUNEUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "RVNUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "SANDUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "SEIUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "SFPUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "SKLUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "SNXUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "SPELLUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "SSVUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "STEEMUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "STRKUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "STXUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "SUIUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "SUPERUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "SUSHIUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "TAOUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "THETAUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "TIAUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "TLMUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "TRBUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "TRXUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "TUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "TWTUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "UMAUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "UNIUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "USTCUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "VETUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "WAXPUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "WLDUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "WOOUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "XLMUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "XMRUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "XTZUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "XVGUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "XVSUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "YFIUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "YGGUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ZECUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ZENUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ZILUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ZROUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  },
+  "ZRXUSDT": {
+   "base_last_ms": 1791086400000,
+   "overlap_bars": 77,
+   "overlap_expected": 77,
+   "status": "OK"
+  }
+ },
+ "dropped_from_universe": [],
+ "leads": {
+  "l24_breakaway_day_4h": {
+   "lead": "l24_breakaway_day_4h",
+   "label": "THIN WIDE165 PASS: research lead only (multiple testing; not a PAPER candidate)",
+   "t_fwd": "2026-11-16 00:00",
+   "last_closed_bar_open_utc": "2026-11-17 20:00:00",
+   "source_commit": "5a1cb5644dd22e9764afda03599224eeae3bd891",
+   "code_sha256": {
+    "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+    "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+    "longscout_v1.py": "20f432edfddd63afdf5419fc38b03597bfd4eaffc0937c993dc7bbbf69f90500",
+    "longscout_v24.py": "ba3461f9170929160127a79e7c2a95b5d0425651b51c45e6cd01462141d5a7fc"
+   },
+   "cases_sha256": "a48059e44ae14564bd861e72ac0ba09c4d4b820b69d5cca575dc618be97c3eb4",
+   "primary": {
+    "book": "order 0, path",
+    "closed": [
+     {
+      "sym": "ICPUSDT",
+      "t_in": "2026-11-17 04:00:00",
+      "t_out": "2026-11-17 16:00:00",
+      "why": "stop",
+      "R15": -1.02968,
+      "R7": -1.013793,
+      "R23": -1.045566,
+      "side": 1,
+      "entry_ref": 2.471,
+      "entry_fill": 2.4714942,
+      "qty": 33.76119300015464,
+      "risk_usd": 8.0,
+      "stop_dist": 0.23695845108208577,
+      "initial_stop": 2.234535748917914,
+      "target": 2.9454111021641713
+     }
+    ],
+    "stats": {
+     "n": 1,
+     "sumR15": -1.0297,
+     "meanR15": -1.0297,
+     "meanR23": -1.0456,
+     "wins": 0,
+     "maxdd_R15_closed": 1.0297
+    },
+    "open": []
+   },
+   "worst_path_order0": {
+    "stats": {
+     "n": 1,
+     "sumR15": -1.0297,
+     "meanR15": -1.0297,
+     "meanR23": -1.0456,
+     "wins": 0,
+     "maxdd_R15_closed": 1.0297
+    },
+    "open": []
+   },
+   "orders": {
+    "n_orders": 40,
+    "median_closes": 1.0,
+    "orders_with_closes": 40,
+    "median_meanR15": -1.0297,
+    "open_positions_by_order": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "signals": {
+    "n": 1,
+    "n_eligible": 1,
+    "rows": [
+     {
+      "sym": "ICPUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "long",
+      "eligible": true
+     }
+    ]
+   }
+  },
+  "s26_weekly_close_breakdown_4h": {
+   "lead": "s26_weekly_close_breakdown_4h",
+   "label": "THIN WIDE165 PASS: research lead only (multiple testing; not a PAPER candidate)",
+   "t_fwd": "2026-11-16 00:00",
+   "last_closed_bar_open_utc": "2026-11-17 20:00:00",
+   "source_commit": "6ae6612ec73e92f83b9efb2e4d79a18b1e1a0fe5",
+   "code_sha256": {
+    "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+    "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+    "longscout_v1.py": "20f432edfddd63afdf5419fc38b03597bfd4eaffc0937c993dc7bbbf69f90500",
+    "longscout_v26.py": "ebb4ca5ae1de1c1d2797499a50488c0a7e54a89b03b1c5265ed5f2615e5e9a1f"
+   },
+   "cases_sha256": "50f5b160a1df174bf3710a713a1c1f6ec4d86fcad37434d81fd769037514b773",
+   "primary": {
+    "book": "order 0, path",
+    "closed": [],
+    "stats": {
+     "n": 0
+    },
+    "open": [
+     {
+      "sym": "1000BONKUSDT",
+      "t_in": "2026-11-16 04:00:00",
+      "side": -1,
+      "entry_ref": 0.002353,
+      "entry_fill": 0.0023525294,
+      "qty": 30657.0,
+      "risk_usd": 8.0,
+      "stop_dist": 0.00026094675715877764,
+      "initial_stop": 0.0026134761571587777,
+      "target": 0.0015696891285236672,
+      "bars_held": 10,
+      "max_bars": 60,
+      "mark_t": "2026-11-17 20:00:00",
+      "mark": 0.002407,
+      "unrealized_R_before_costs": -0.2087,
+      "stale": false
+     }
+    ]
+   },
+   "worst_path_order0": {
+    "stats": {
+     "n": 0
+    },
+    "open": [
+     {
+      "sym": "1000BONKUSDT",
+      "t_in": "2026-11-16 04:00:00",
+      "side": -1,
+      "entry_ref": 0.002353,
+      "entry_fill": 0.0023525294,
+      "qty": 30657.0,
+      "risk_usd": 8.0,
+      "stop_dist": 0.00026094675715877764,
+      "initial_stop": 0.0026134761571587777,
+      "target": 0.0015696891285236672,
+      "bars_held": 10,
+      "max_bars": 60,
+      "mark_t": "2026-11-17 20:00:00",
+      "mark": 0.002407,
+      "unrealized_R_before_costs": -0.2087,
+      "stale": false
+     }
+    ]
+   },
+   "orders": {
+    "n_orders": 40,
+    "median_closes": 0.0,
+    "orders_with_closes": 2,
+    "median_meanR15": -1.0281,
+    "open_positions_by_order": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     0,
+     1,
+     1,
+     0,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1
+    ]
+   },
+   "signals": {
+    "n": 126,
+    "n_eligible": 24,
+    "rows": [
+     {
+      "sym": "1000BONKUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "1000FLOKIUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "1000LUNCUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "1000RATSUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "1000SATSUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "1000SHIBUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "1000XECUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "1INCHUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "AAVEUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "ACEUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ACHUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "AGLDUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ALGOUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ALICEUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ANKRUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "APEUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "API3USDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "APTUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "ARKMUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ARPAUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ASTRUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "AUCTIONUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "AXSUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "BANDUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "BCHUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "BELUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "BICOUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "BIGTIMEUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "BLURUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "BNTUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "BSVUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "C98USDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "CAKEUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "CELOUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "CELRUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "CFXUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "CHRUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "CHZUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "CKBUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "COTIUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "CRVUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "CTSIUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "CYBERUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "DASHUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "DOTUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "DUSKUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "DYDXUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "EGLDUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ENAUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "ENJUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ENSUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ETCUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "ETHWUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "FETUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "FILUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "FLOWUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "GALAUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "GASUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "GMTUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "GMXUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "HBARUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "ICPUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "IDUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ILVUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "IMXUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "IOTAUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "IOTXUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "JASMYUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "JOEUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "JTOUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "KAVAUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "KNCUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "KSMUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "LDOUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "LPTUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "LQTYUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "LTCUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "LUNA2USDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "MANAUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "MASKUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "MAVUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "MEMEUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "MINAUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "MTLUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "NEOUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "NMRUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ONDOUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "ONGUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ONTUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "OPUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "ORDIUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "PENDLEUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "PEOPLEUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "POLYXUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "POWRUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "QTUMUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "RIFUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ROSEUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "RVNUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "SEIUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "SFPUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "SKLUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "SNXUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "SPELLUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "SSVUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "SUSHIUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "TAOUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "THETAUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "TLMUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "TRBUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "TRXUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "TWTUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "UMAUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "USTCUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "VETUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "WAXPUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "WLDUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "WOOUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "XLMUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "XVGUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "XVSUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "YFIUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "YGGUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ZENUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ZILUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ZRXUSDT",
+      "decision_bar_open_utc": "2026-11-16 00:00:00",
+      "side": "short",
+      "eligible": false
+     }
+    ]
+   }
+  },
+  "s36_max_effect_4h": {
+   "lead": "s36_max_effect_4h",
+   "label": "COUNT-FAILED EXPLORATORY CONTROL (failed the closes-count gate in the screen; not a pass, not a lead)",
+   "t_fwd": "2026-11-16 00:00",
+   "last_closed_bar_open_utc": "2026-11-17 20:00:00",
+   "source_commit": "5da1ef80620ff9af4c7687f6e63bd96fb3a28332",
+   "code_sha256": {
+    "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+    "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+    "longscout_v1.py": "20f432edfddd63afdf5419fc38b03597bfd4eaffc0937c993dc7bbbf69f90500",
+    "longscout_v36.py": "f480d12d9302668e9367ee8f4e5b7c117eabed51d10bf5d4c5ead211e19dafd7"
+   },
+   "cases_sha256": "e0268e7f0d3bf48c7c79f4fd4c0abd288019503fd564c3c71ab67034a6289cfd",
+   "primary": {
+    "book": "order 0, path",
+    "closed": [],
+    "stats": {
+     "n": 0
+    },
+    "open": []
+   },
+   "worst_path_order0": {
+    "stats": {
+     "n": 0
+    },
+    "open": []
+   },
+   "orders": {
+    "n_orders": 40,
+    "median_closes": 0.0,
+    "orders_with_closes": 0,
+    "median_meanR15": null,
+    "open_positions_by_order": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "signals": {
+    "n": 0,
+    "n_eligible": 0,
+    "rows": []
+   }
+  },
+  "l40_dual_momentum_4h": {
+   "lead": "l40_dual_momentum_4h",
+   "label": "THIN WIDE165 PASS: research lead only (multiple testing; not a PAPER candidate)",
+   "t_fwd": "2026-11-16 00:00",
+   "last_closed_bar_open_utc": "2026-11-17 20:00:00",
+   "source_commit": "87b131b6467db6b83e82910b4fa102186f7b1dc3",
+   "code_sha256": {
+    "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+    "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+    "longscout_v1.py": "20f432edfddd63afdf5419fc38b03597bfd4eaffc0937c993dc7bbbf69f90500",
+    "longscout_v40.py": "45fd06fa92ed555ed7c7d7cc6d072a25746d6b6daf9d141ae9f7afa16390d883"
+   },
+   "cases_sha256": "f043630b8ee8674a4331754cde4455c9426aa32e973743a44458d9e7074771ea",
+   "primary": {
+    "book": "order 0, path",
+    "closed": [],
+    "stats": {
+     "n": 0
+    },
+    "open": []
+   },
+   "worst_path_order0": {
+    "stats": {
+     "n": 0
+    },
+    "open": []
+   },
+   "orders": {
+    "n_orders": 40,
+    "median_closes": 0.0,
+    "orders_with_closes": 0,
+    "median_meanR15": null,
+    "open_positions_by_order": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "signals": {
+    "n": 2,
+    "n_eligible": 0,
+    "rows": [
+     {
+      "sym": "ENSUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "long",
+      "eligible": false
+     },
+     {
+      "sym": "NMRUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "long",
+      "eligible": false
+     }
+    ]
+   }
+  },
+  "s40_relative_weakness_4h": {
+   "lead": "s40_relative_weakness_4h",
+   "label": "COUNT-FAILED EXPLORATORY CONTROL (failed the closes-count gate in the screen; not a pass, not a lead)",
+   "t_fwd": "2026-11-16 00:00",
+   "last_closed_bar_open_utc": "2026-11-17 20:00:00",
+   "source_commit": "87b131b6467db6b83e82910b4fa102186f7b1dc3",
+   "code_sha256": {
+    "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+    "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+    "longscout_v1.py": "20f432edfddd63afdf5419fc38b03597bfd4eaffc0937c993dc7bbbf69f90500",
+    "longscout_v40.py": "45fd06fa92ed555ed7c7d7cc6d072a25746d6b6daf9d141ae9f7afa16390d883"
+   },
+   "cases_sha256": "f043630b8ee8674a4331754cde4455c9426aa32e973743a44458d9e7074771ea",
+   "primary": {
+    "book": "order 0, path",
+    "closed": [],
+    "stats": {
+     "n": 0
+    },
+    "open": []
+   },
+   "worst_path_order0": {
+    "stats": {
+     "n": 0
+    },
+    "open": []
+   },
+   "orders": {
+    "n_orders": 40,
+    "median_closes": 0.0,
+    "orders_with_closes": 0,
+    "median_meanR15": null,
+    "open_positions_by_order": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "signals": {
+    "n": 0,
+    "n_eligible": 0,
+    "rows": []
+   }
+  },
+  "s51_momentum_accel_4h": {
+   "lead": "s51_momentum_accel_4h",
+   "label": "THIN WIDE165 PASS: research lead only (multiple testing; not a PAPER candidate)",
+   "t_fwd": "2026-11-16 00:00",
+   "last_closed_bar_open_utc": "2026-11-17 20:00:00",
+   "source_commit": "d7ad81672e3e02788e49c55e6d2af6ffc35110fc",
+   "code_sha256": {
+    "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+    "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+    "longscout_v1.py": "20f432edfddd63afdf5419fc38b03597bfd4eaffc0937c993dc7bbbf69f90500",
+    "longscout_v51.py": "6a9ce49303dcf2614e8c84c8821a0d1248cffd9acbe6feb40c74881485bd63e5"
+   },
+   "cases_sha256": "1d71955ef605e2fd52dab54f273a80ea09f5047ce920611d489d8ca5d648c060",
+   "primary": {
+    "book": "order 0, path",
+    "closed": [],
+    "stats": {
+     "n": 0
+    },
+    "open": [
+     {
+      "sym": "HBARUSDT",
+      "t_in": "2026-11-17 04:00:00",
+      "side": -1,
+      "entry_ref": 0.05751,
+      "entry_fill": 0.057498498,
+      "qty": 2123.0,
+      "risk_usd": 8.0,
+      "stop_dist": 0.0037679917748007106,
+      "initial_stop": 0.06126648977480071,
+      "target": 0.04996251445039858,
+      "bars_held": 4,
+      "max_bars": 30,
+      "mark_t": "2026-11-17 20:00:00",
+      "mark": 0.05831,
+      "unrealized_R_before_costs": -0.2154,
+      "stale": false
+     }
+    ]
+   },
+   "worst_path_order0": {
+    "stats": {
+     "n": 0
+    },
+    "open": [
+     {
+      "sym": "HBARUSDT",
+      "t_in": "2026-11-17 04:00:00",
+      "side": -1,
+      "entry_ref": 0.05751,
+      "entry_fill": 0.057498498,
+      "qty": 2123.0,
+      "risk_usd": 8.0,
+      "stop_dist": 0.0037679917748007106,
+      "initial_stop": 0.06126648977480071,
+      "target": 0.04996251445039858,
+      "bars_held": 4,
+      "max_bars": 30,
+      "mark_t": "2026-11-17 20:00:00",
+      "mark": 0.05831,
+      "unrealized_R_before_costs": -0.2154,
+      "stale": false
+     }
+    ]
+   },
+   "orders": {
+    "n_orders": 40,
+    "median_closes": 0.0,
+    "orders_with_closes": 0,
+    "median_meanR15": null,
+    "open_positions_by_order": [
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1,
+     1
+    ]
+   },
+   "signals": {
+    "n": 15,
+    "n_eligible": 3,
+    "rows": [
+     {
+      "sym": "1000RATSUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "BELUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "CHZUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "FLOWUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "GALAUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "GMTUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "HBARUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "JTOUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "LDOUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "short",
+      "eligible": true
+     },
+     {
+      "sym": "MEMEUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "MOVRUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "ORDIUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "SFPUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "SPELLUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "short",
+      "eligible": false
+     },
+     {
+      "sym": "XLMUSDT",
+      "decision_bar_open_utc": "2026-11-17 00:00:00",
+      "side": "short",
+      "eligible": true
+     }
+    ]
+   }
+  },
+  "s54_double_top_4h": {
+   "lead": "s54_double_top_4h",
+   "label": "WIDE165 PASS: research lead only (separately frozen 7th book; multiple testing; not a PAPER candidate)",
+   "t_fwd": "2026-11-16 00:00",
+   "last_closed_bar_open_utc": "2026-11-17 20:00:00",
+   "source_commit": "3fc8b5e571fa6cae9c2279e36b8acd43171036ac",
+   "code_sha256": {
+    "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+    "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+    "longscout_v1.py": "20f432edfddd63afdf5419fc38b03597bfd4eaffc0937c993dc7bbbf69f90500",
+    "longscout_v54.py": "df0d6c1eb9085220e909115ec0048bc3055385f04bbafd21f75623fbb35d5a16"
+   },
+   "cases_sha256": "9d9a68059931863d0f0fa106fdb7ee3898886f364aea16918fb1a0590db8ea35",
+   "primary": {
+    "book": "order 0, path",
+    "closed": [],
+    "stats": {
+     "n": 0
+    },
+    "open": []
+   },
+   "worst_path_order0": {
+    "stats": {
+     "n": 0
+    },
+    "open": []
+   },
+   "orders": {
+    "n_orders": 40,
+    "median_closes": 0.0,
+    "orders_with_closes": 0,
+    "median_meanR15": null,
+    "open_positions_by_order": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "signals": {
+    "n": 0,
+    "n_eligible": 0,
+    "rows": []
+   }
+  },
+  "s76_uptrend_line_break_4h": {
+   "lead": "s76_uptrend_line_break_4h",
+   "label": "WIDE165 PASS: research lead only (separately frozen 8th book; multiple testing; small edge; not a PAPER candidate)",
+   "t_fwd": "2026-11-17 00:00",
+   "last_closed_bar_open_utc": "2026-11-17 20:00:00",
+   "source_commit": "b528105db0ff5a2ca2999c72178cf7280dcadacb",
+   "code_sha256": {
+    "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+    "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+    "longscout_v1.py": "20f432edfddd63afdf5419fc38b03597bfd4eaffc0937c993dc7bbbf69f90500",
+    "longscout_v76.py": "874d12f221c8eb3ac89d51de344f1a11f7e7b0af7624263192a7fd4e429f6930"
+   },
+   "cases_sha256": "d7fefc84a97f5122c629bc6f6767d78745b8b6d09679ab715bc2883d2474c3fd",
+   "primary": {
+    "book": "order 0, path",
+    "closed": [],
+    "stats": {
+     "n": 0
+    },
+    "open": []
+   },
+   "worst_path_order0": {
+    "stats": {
+     "n": 0
+    },
+    "open": []
+   },
+   "orders": {
+    "n_orders": 40,
+    "median_closes": 0.0,
+    "orders_with_closes": 0,
+    "median_meanR15": null,
+    "open_positions_by_order": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "signals": {
+    "n": 0,
+    "n_eligible": 0,
+    "rows": []
+   }
+  },
+  "r74_prior_month_break_4h": {
+   "lead": "r74_prior_month_break_4h",
+   "label": "WIDE165 PASS (FRAGILE): research lead only (separately frozen 9th book, both sides exactly as frozen; no short-only variant; multiple testing; not a PAPER candidate)",
+   "t_fwd": "2026-11-17 00:00",
+   "last_closed_bar_open_utc": "2026-11-17 20:00:00",
+   "source_commit": "8d675af23a551f2e2aaf8d90a03febf214752f25",
+   "code_sha256": {
+    "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+    "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+    "longscout_v1.py": "20f432edfddd63afdf5419fc38b03597bfd4eaffc0937c993dc7bbbf69f90500",
+    "longscout_v74.py": "b2856615edfc189d9b6d423d56932f06fe877cedf906f61eace35ec4ff96a1e5"
+   },
+   "cases_sha256": "e1c39a7e811f84e19884a66f2098132b44df112a110dd8d7bc5f458ed5153d61",
+   "primary": {
+    "book": "order 0, path",
+    "closed": [],
+    "stats": {
+     "n": 0
+    },
+    "open": []
+   },
+   "worst_path_order0": {
+    "stats": {
+     "n": 0
+    },
+    "open": []
+   },
+   "orders": {
+    "n_orders": 40,
+    "median_closes": 0.0,
+    "orders_with_closes": 0,
+    "median_meanR15": null,
+    "open_positions_by_order": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ]
+   },
+   "signals": {
+    "n": 0,
+    "n_eligible": 0,
+    "rows": []
+   }
+  }
+ },
+ "pooled": {
+  "label": "DIAGNOSTIC ONLY: all scored books pooled, never a pass or decision",
+  "n": 1,
+  "sumR15": -1.0297
+ },
+ "problems": [],
+ "runtime_s": 474.1,
+ "parity_with_boundary_ms": 1794873600000,
+ "notes": [],
+ "flags": [],
+ "status": "COMPLETE"
+}

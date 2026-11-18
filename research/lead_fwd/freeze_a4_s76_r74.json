@@ -1,0 +1,61 @@
+{
+ "id": "LEADFWD-01-A4-S76-R74",
+ "status": "FROZEN before its first forward bar (t_fwd 2026-11-17 00:00 UTC); no row contains these books",
+ "approval": "moe 2026-11-16 08:36 UTC \"do the 4\" on the coordinator plan whose item 1 adds s76 and r74 as new forward books (relayed by the coordinator); Codex independent reproduction of both (all exact) and the order s76 first, r74 second: #347 comment 6901683042",
+ "t_fwd_utc": "2026-11-17 00:00",
+ "t_fwd_ms": 1794873600000,
+ "t_fwd_note": "first 00:00 UTC boundary after this addendum is pushed (pushed 16 Nov, before 17 Nov 00:00 UTC); later than the main t_fwd; starts flat; no retrospective backfill is scored; rows with B <= this t_fwd record these books as NOT_STARTED",
+ "leads": {
+  "s76_uptrend_line_break_4h": {
+   "cases_file": "research/extra31_screen/longscout_v76_cases.json",
+   "cases_sha256": "d7fefc84a97f5122c629bc6f6767d78745b8b6d09679ab715bc2883d2474c3fd",
+   "cases_commit": "8ab4ab22a1207df3b0d8ff711186c956ec691439",
+   "source": "longscout76",
+   "commit": "b528105db0ff5a2ca2999c72178cf7280dcadacb",
+   "modules": [
+    "longscout_v1",
+    "longscout_v76"
+   ],
+   "side": "short",
+   "tf": "4h",
+   "params": {
+    "n": 60,
+    "mid": 20,
+    "last": 3
+   },
+   "management": {
+    "stop_atr": 2.5,
+    "tp_r": 2.0,
+    "max_bars": 30
+   },
+   "screen": "WIDE165 pass: +0.035 R15, R23 +0.010, early +0.018 / late +0.063, ex-best +0.009, fresh134 +0.031, extra31 +0.056, median 223 closes; order 0 ex-top5 +0.018, every year positive; one of 261 consumed-calendar trials",
+   "screen_median_closes_2022_2026": 223,
+   "screen_closes_per_week_approx": 1.03,
+   "label": "WIDE165 PASS: research lead only (separately frozen 8th book; multiple testing; small edge; not a PAPER candidate)"
+  },
+  "r74_prior_month_break_4h": {
+   "cases_file": "research/extra31_screen/longscout_v74_cases.json",
+   "cases_sha256": "e1c39a7e811f84e19884a66f2098132b44df112a110dd8d7bc5f458ed5153d61",
+   "cases_commit": "3fbb578ec571293d212db7a9f4ff445b51cdc4fb",
+   "source": "longscout74",
+   "commit": "8d675af23a551f2e2aaf8d90a03febf214752f25",
+   "modules": [
+    "longscout_v1",
+    "longscout_v74"
+   ],
+   "side": "both",
+   "tf": "4h",
+   "params": {},
+   "management": {
+    "stop_atr": 2.5,
+    "tp_r": 2.0,
+    "max_bars": 30
+   },
+   "screen": "WIDE165 pass: +0.054 R15, R23 +0.033, early +0.054 / late +0.063, ex-best +0.027, fresh134 +0.073, extra31 +0.035, median 215 closes; FRAGILE: order 0 ex-top3 -0.005, carried by shorts (long legs negative); one of 261 consumed-calendar trials",
+   "screen_median_closes_2022_2026": 215,
+   "screen_closes_per_week_approx": 0.99,
+   "label": "WIDE165 PASS (FRAGILE): research lead only (separately frozen 9th book, both sides exactly as frozen; no short-only variant; multiple testing; not a PAPER candidate)"
+  }
+ },
+ "unchanged": "universe, base history, forward fetch, merge rules, rule v1 accounting (max1, $8, $3,333.33, 40 orders), costs/proxy, clock, rows, review rule: all exactly as in freeze.json; the seven existing books and their t_fwd are not changed"
+}

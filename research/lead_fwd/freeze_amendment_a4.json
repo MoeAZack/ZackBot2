@@ -1,0 +1,45 @@
+{
+ "id": "A4",
+ "kind": "book amendment + integrity pins: adds two NEW separately frozen books with a later flat start; no existing book, date, coin or cost changes",
+ "at_utc": "2026-11-16 09:16:45",
+ "at_ms": 1794820605000,
+ "after_main_t_fwd": true,
+ "rows_existing": "one uncommitted DRYRUN_BEFORE_START row at B=1794787200000 (pipeline check, not evidence); no FORWARD row exists yet",
+ "trigger": "moe 2026-11-16 08:36 UTC \"do the 4\" (coordinator plan item 1: add s76 and r74 as forward books); Codex reproduction #347 6901683042",
+ "parent_freeze_sha256": "6982499a355d4587162a0be006c8b41b414a864fbf9d8616b28100d4f8f9964f",
+ "parent_addenda_sha256": {
+  "freeze_a1_s54.json": "7941322e8c886f955547dab82abf06da979ab475270bfd45fb9128e0c5d98f76"
+ },
+ "parent_amendments_sha256": {
+  "freeze_amendment_a2.json": "ce7a15d8b4d5097080d6e4a221b9c98dd7096397789f619fce2b7d80b4305b9c",
+  "freeze_amendment_a3.json": "143427bd2d7d1c7f1f5b8846b21d93d2d053d935d5bbaaf369e2015b5777644a"
+ },
+ "parent_head": "52b389602ed4ce12bb42851cc56d40ef86d9dc86",
+ "addenda": [
+  {
+   "file": "freeze_a4_s76_r74.json",
+   "sha256": "7289809bacea43b2a72fb0a9b1f2ea8279b0bd085e7d4a57210ec2ed13f430e3"
+  }
+ ],
+ "unchanged": "main t_fwd (2026-11-16 00:00 UTC), the seven existing book definitions and starts, universe, base history, fetch start, costs/proxy, rule v1 accounting, clock and review rule; freeze.json, freeze_a1_s54.json, freeze_amendment_a2.json and freeze_amendment_a3.json (+ sidecars) are byte-identical to their parents",
+ "changes": [
+  "books: s76_uptrend_line_break_4h and r74_prior_month_break_4h are added from the separately frozen freeze_a4_s76_r74.json (rules b528105d / 8d675af2, cases 8ab4ab22 / 3fbb578e) with their own t_fwd 2026-11-17 00:00 UTC, flat, no backfill",
+  "loader: an integrity amendment may pin addenda; each must match its sha, may not touch an existing book, must start after the main t_fwd, on a 00:00 UTC boundary, and after the amendment time",
+  "rows: a book whose own t_fwd is at or after the boundary is recorded as NOT_STARTED (no run, no score); a book scored in an earlier row may never become NOT_STARTED or vanish (NONPARITY); the row records the integrity amendment ids"
+ ],
+ "code_sha256": {
+  "run_fwd.py": "f63caa2023ee87b8ebce35e3491b8f8eb27f2683c9497c88f93d36bac4f8b708",
+  "fetch_fwd.py": "8221f6562624a4ef22f959f2eed63176f76135cda822c4c51a53c83d7002300c",
+  "longscout_run.py": "5d569f51ea21e87930c712ba96ddf086d821a5b7f3f311db6c4d6c90200ab853",
+  "sieve_v1_panel.py": "6da5a8493a66015ebe2f16f1bb3dff62231b56b37b3b8a3f8b476e6baf5de075",
+  "sieve_v1.py": "49612393fb38b3208b30b42f629b6b9ca0fda5ef49d25a1824c9a45d70a41929",
+  "run_screen.py": "29e92fffec4fea4936330b7b965313a8e7ad5d084129cbb43d6d1969f142e42c",
+  "contract.json": "6ee9c4e6d5c04f26485b9db602e6519c5da0b34fba3495607e6170fdcedd9d57",
+  "sieve_v1_panel_cases.json": "ba3492bf53850e7bb5998a2112ac95179ea4b473d2e34f62c82ece1f2fe79752",
+  "sieve_v1_mp_variant.json": "6fd133b36a823aa05826b3ad4e21abfecc5ec384535c24d701d9c948ec7db2f2",
+  "longscout_v1_cases.json": "2da84a41f321a5a45403c7d81bf83d2ae4db61ed3856e25a01d5399e909a8def"
+ },
+ "test_sha256": {
+  "test_lead_fwd.py": "6f0e0a060cfd43e52134922d4050dcb2782d79ed0c73fc0d013223859fb8d2e7"
+ }
+}
