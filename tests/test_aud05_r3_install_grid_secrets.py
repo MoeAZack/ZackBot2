@@ -235,6 +235,9 @@ def _family_state(family):
     elif family == 'tp_quarantine':                                          # LANE3-F1-TP r3: a held TP of a closed trade
         e.state['tp_quarantine'] = {'zt0123456789abcdef012345': dict(symbol='BTCUSDT', side='LONG', tag='o:77',
                                     cid='zt0123456789abcdef012345', acid=None, lot='T|BTCUSDT|LONG|1', t=1.0, qty=1.0)}
+    elif family == 'trim_owned':                                             # integration: a risk trim of a closed trade
+        e.state['trim_owned'] = {'zbrf0000abcd': dict(cid='zbrf0000abcd', symbol='BTCUSDT', side='LONG', lot='T|BTCUSDT|LONG|1',
+                                 sleeve='T', send_qty=0.01, sent_t=1.0)}
     e.save_state()
     return e, tmp
 

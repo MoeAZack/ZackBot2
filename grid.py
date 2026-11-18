@@ -918,10 +918,8 @@ class GridManager:
         stop exactly as it will be placed (rounded to the tick) is valid. Raises ValueError (nothing is sent)."""
         pb = self.e.persist_block()
         if pb: raise ValueError(pb)
-        cb = self.e.risk_caps_block()                               # CAPS-01 r2: last check before the send too
-        if cb: raise ValueError(cb)
-        sb = self.e.new_risk_fence(g['sym'])                        # CAPS-01 r11 / LANE3-F1-trim r4: re-checked at the send (a
-        if sb: raise ValueError(f'{sb} - not sent')                 # staged op / an add past _can_add): same-coin new-risk fence
+        fb = self.e.new_risk_fence(g['sym'])                        # CAPS-01 r2/r11 + LANE3-F1: the account caps, then every
+        if fb: raise ValueError(f'{fb} - not sent')                 # same-coin fence - rechecked at the send (a staged op too)
         if side:
             st = self._stop_ok(g, side, m)
             # CAPS-01 r4: the order's own stop risk must fit the portfolio open-risk budget (lots + every reserved intent,

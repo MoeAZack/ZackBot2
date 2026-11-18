@@ -1311,7 +1311,8 @@ def _validate_trail(k, p):
 
 OWNERSHIP_FAMILIES = ('lots', 'unconfirmed_entries', 'resting_entries', 'pending_entries', 'grids', 'orphans',
                       'emg_cleanup',     # CAPS-01 r11: leftover emergency stops are exchange ownership too
-                      'tp_quarantine')   # LANE3-F1-TP r3: a held TP of a closed trade
+                      'tp_quarantine',   # LANE3-F1-TP r3: a held TP of a closed trade
+                      'trim_owned')      # integration: a post-fill risk trim's own client id (it outlives its lot)
 
 
 def ownership_present(state):
@@ -1432,6 +1433,7 @@ def _validate_trim_owned(k, o):
     _str(o.get('cid'), f'{w}.cid')
     if o.get('cid') != k: _bad(f'{w}.cid', 'does not match its key')
     _str(o.get('symbol'), f'{w}.symbol'); _str(o.get('side'), f'{w}.side', choices=('LONG', 'SHORT'))
+    _str(o.get('lot'), f'{w}.lot')                       # integration (Codex #367 nonblocking note): the owning lot's key
     _num(o.get('send_qty'), f'{w}.send_qty', gt=0); _num(o.get('sent_t'), f'{w}.sent_t')
 
 
@@ -5540,8 +5542,8 @@ class Engine:
             if self._tier_block(lot['symbol'], q * px, px): return False     # MAXQTY-01: Binance -2027, nothing sent
             pb = self.persist_block()
             if pb: raise RuntimeError(f"{lot['symbol']} {why} not sent: {pb}")
-            sb = self.stop_missing_block(lot['symbol'])          # CAPS-01 r11 / LANE3-F1-trim r4: final-dispatch recheck
-            if sb: raise RuntimeError(f"{lot['symbol']} {why} not sent: {sb}")   # (adds only - exits never pass here)
+            sb = self.new_risk_fence(lot['symbol'])              # CAPS-01 r11 / LANE3-F1: final-dispatch recheck (adds
+            if sb: raise RuntimeError(f"{lot['symbol']} {why} not sent: {sb}")   # only - exits never pass here)
             # AUD-05 r2 write-ahead: the add is recorded durably as this lot's pending order (with its client id) BEFORE it
             # is sent; a crash / lost answer after the send is settled from its order record (_resolve_pending)
             cid = cid or new_cid()
@@ -6027,11 +6029,22 @@ class Engine:
 
     def stop_missing_block(self, sym):
         """Entry / add block text while a lot on this coin has a recorded stop the verifier did not find on Binance; the
-        text follows the most severe lot state: owner_check > restoring > checking. None = not blocked."""
+        text follows the most severe lot state: owner_check > restoring > checking. None = not blocked.
+        CAPS-01 + LANE3-F1 integration: the gates that reach it (entry_block / add_block are pinned) get EVERY same-coin
+        new-risk fence through it - it is the shared _new_risk_block."""
+        return self._new_risk_block(sym)
+
+    def _new_risk_block(self, sym):
+        """CAPS-01 + LANE3-F1 integration (Codex #365 / #367 / #368): THE same-coin new-risk fence - the first reason, in
+        this order, why no risk may be added on `sym` (entries, adds, grid orders, maker placement; both sides):
+          1. a recorded stop not found on Binance (owner_check > restoring > checking)        AUD-04
+          2. emergency stops of this coin not confirmed gone (_emg_fence)                      CAPS-01 r10-r12
+          3. a post-fill risk trim of a CLOSED trade not resolved (trim_orphan_block)          LANE3-F1-trim r3/r5
+          4. a held take-profit of a CLOSED trade not proven gone (tp_quarantine_block)        LANE3-F1-TP r3
+        None = not fenced. Reducing orders, exits and stop placement / moves never consult it."""
         whys = {l.get('stop_miss_why') or 'checking' for l in self.state['lots'].values() if l['symbol'] == sym and l.get('stop_miss')}
-        return (next((STOP_MISSING_BLOCKS[w] for w in STOP_MISS_ORDER if w in whys), None) or self._emg_fence(sym)
-                or self.trim_orphan_block(sym)
-                or self.tp_quarantine_block(sym))      # LANE3-F1-TP r3: routed here (entry_block is pinned; adds + grid too)
+        return (next((STOP_MISSING_BLOCKS[w] for w in STOP_MISS_ORDER if w in whys), None)
+                or self._emg_fence(sym) or self.trim_orphan_block(sym) or self.tp_quarantine_block(sym))
 
     def _emg_fence(self, sym):
         """CAPS-01 r10/r11: new-risk fence while emergency stops of this coin are not confirmed gone (stop_missing_block, and
@@ -6050,10 +6063,12 @@ class Engine:
         return None
 
     def new_risk_fence(self, sym):
-        """LANE3-F1 (Codex #368 r5): every ownership fence that must still hold at the FINAL dispatch of a risk-adding order
-        on `sym` (a grid order already staged included). Reducing orders and protective exits never call it. Each lane-3
-        branch adds its own fence to stop_missing_block (here: the held take-profit quarantine)."""
-        return self.stop_missing_block(sym)
+        """LANE3-F1 (Codex #368 r5) + CAPS-01 r11, unified: THE recheck at the FINAL dispatch of every risk-adding order on
+        `sym` - the market entry's write-ahead (_remember_unconfirmed strict), an add (_add_qty), a maker placement or
+        re-price (_maker_place / _maker_poll) and a grid order, staged or not (GridManager._order_ok). The account risk
+        caps (CAPS-01) first, then every same-coin fence (_new_risk_block). Reducing orders and protective exits never
+        call it. None = the send may go."""
+        return self.risk_caps_block() or self._new_risk_block(sym)
 
     def stop_missing_on(self, sym):
         return self.stop_missing_block(sym) is not None
@@ -7869,11 +7884,11 @@ class Engine:
     # The lot inherits the provisional stop (_replace_stop places the real one first, then cancels it). New entries on that
     # coin/side wait until it is settled. Engine._owned_stop_tags lists every stop the bot owns (for AUD-04's verifier).
     def _remember_unconfirmed(self, plan, cid, strict=False, save=True):
-        if strict:                                                 # CAPS-01 r11: the market entry's final-dispatch recheck
-            sb = self.stop_missing_block(plan['sym'])              # (raised before anything is recorded or sent)
-            if sb: raise NewRiskFenced(sb)
         """Record an entry by its client id. strict=True (AUD-05 r2 write-ahead): raises if the record is not durable - the
         record is then removed from memory too and the caller must not send."""
+        if strict:                                                 # CAPS-01 r11 / LANE3-F1: the market entry's final-
+            sb = self.new_risk_fence(plan['sym'])                  # dispatch recheck (raised before anything is recorded
+            if sb: raise NewRiskFenced(sb)                         # or sent)
         sl = plan.get('sl') or {}
         ue = self.state.setdefault('unconfirmed_entries', {})
         k = f"UE|{'MAN' if plan.get('manual') else sl.get('id')}|{plan['sym']}|{plan['side']}|{int(time.time() * 1000)}"
@@ -8720,10 +8735,8 @@ class Engine:
         sym, r = rec['symbol'], self.rules[rec['symbol']]
         pb = self.persist_block()                                    # AUD-05 r2: no new resting order while state is untrusted
         if pb: raise RuntimeError(f'maker entry {sym} not sent: {pb}')
-        cb = self.risk_caps_block()                                  # CAPS-01 r2: no new or re-priced resting entry either
-        if cb: raise RuntimeError(f'maker entry {sym} not sent: {cb}')
-        sb = self.stop_missing_block(sym)                            # CAPS-01 r11 / LANE3-F1-trim r4: final-dispatch recheck
-        if sb: raise RuntimeError(f'maker entry {sym} not sent: {sb}')
+        sb = self.new_risk_fence(sym)                                # CAPS-01 r2/r11 + LANE3-F1: no new or re-priced resting
+        if sb: raise RuntimeError(f'maker entry {sym} not sent: {sb}')   # entry while capped or fenced (final dispatch)
         rem = self._rd(rec['qty'] - rec['filled'], r['step'])
         bt = self.trade._req('GET', '/fapi/v1/ticker/bookTicker', dict(symbol=sym))
         px = float(bt['bidPrice'] if rec['side'] == 'LONG' else bt['askPrice'])
@@ -8771,7 +8784,7 @@ class Engine:
         # fallback - whatever filled becomes a lot through the normal finalize path.
         legacy = LEGACY_LEV_EXC_MAKER if (rec.get('plan') or {}).get('lev_exception') else None
         if not legacy:                                               # CAPS-01 r2: caps looser than policy -> the resting
-            cb = self.risk_caps_block() or self.stop_missing_block(sym)   # order is cancelled, never re-priced, no market fallback
+            cb = self.new_risk_fence(sym)                                 # order is cancelled, never re-priced, no market fallback
             if cb: legacy = f'{cb} - maker entry not re-priced, no market fallback'   # (r11: also a coin fenced for new risk)
         if self._ue_by_cid(rec.get('cid')):                       # CAPS-01 r5: finish an interrupted handover
             self._normalize_order_owners(); return True

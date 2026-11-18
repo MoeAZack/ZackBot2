@@ -47,7 +47,10 @@ def test_r11_a_staged_grid_open_is_refused_at_its_final_dispatch():
     gm._open(g, op)
     assert sent == [] and g.get('op') is None
     with pytest.raises(ValueError, match='emergency stop'): gm._order_ok(g, q, m, 'LONG')
-    gm._order_ok(g, q, m)                                                      # no side (reducing): never fenced
+    # integration (#365 + #367 + #368, one shared fence): _order_ok guards risk-adding grid orders only (every caller passes
+    # the side; reducing grid orders never call it), and the unified fence holds whether or not a side is given - as the
+    # accepted #367 / #368 grid tests require. Exits stay unfenced: test_r11_exits_and_protection_stay_available_under_the_fence
+    with pytest.raises(ValueError, match='emergency stop'): gm._order_ok(g, q, m)
 
 
 def test_r11_an_add_is_refused_at_its_final_dispatch_but_not_on_another_coin():
