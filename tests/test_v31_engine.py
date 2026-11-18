@@ -308,7 +308,8 @@ def test_funding_filter():
 
 def test_rules_default_to_warn_and_status():
     e, _ = mk_engine()
-    assert {v['mode'] for v in e.risk_rules_cfg().values()} == {'warn'}
+    modes = {k: v['mode'] for k, v in e.risk_rules_cfg().items()}
+    assert modes.pop('open_risk_cap') == 'enforce' and set(modes.values()) == {'warn'}   # CAPS-01: open risk blocks by default
     e.S['RISK_RULES'] = {'coin_cap': {'mode': 'enforce'}}
     assert e.risk_rules_cfg()['coin_cap'] == dict(mode='enforce', x=3.0)          # partial setting keeps defaults
     opened(e); st = e.risk_rules_status()

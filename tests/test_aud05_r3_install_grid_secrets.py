@@ -230,6 +230,14 @@ def _family_state(family):
         e.state['pending_entries']['T|ETHUSDT'] = dict(sleeve='T', symbol='ETHUSDT', side='LONG', ext=50.0, atr=1.0, dev=0.5,
                                                        until=9e9, sg={}, tf='4h', created=1.0)
     elif family == 'orphans': e.state['orphans'] = [['BTCUSDT', 'o:99']]
+    elif family == 'emg_cleanup':                                      # CAPS-01 r11: leftover emergency stops being cleaned up
+        e.state['emg_cleanup'] = {'zm0123456789abcdef012345': dict(symbol='BTCUSDT', side='LONG', t=1.0)}
+    elif family == 'tp_quarantine':                                          # LANE3-F1-TP r3: a held TP of a closed trade
+        e.state['tp_quarantine'] = {'zt0123456789abcdef012345': dict(symbol='BTCUSDT', side='LONG', tag='o:77',
+                                    cid='zt0123456789abcdef012345', acid=None, lot='T|BTCUSDT|LONG|1', t=1.0, qty=1.0)}
+    elif family == 'trim_owned':                                             # integration: a risk trim of a closed trade
+        e.state['trim_owned'] = {'zbrf0000abcd': dict(cid='zbrf0000abcd', symbol='BTCUSDT', side='LONG', lot='T|BTCUSDT|LONG|1',
+                                 sleeve='T', send_qty=0.01, sent_t=1.0)}
     e.save_state()
     return e, tmp
 

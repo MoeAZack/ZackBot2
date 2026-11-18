@@ -173,7 +173,13 @@ def test_tp_fill_seen_by_the_verifier():
 def test_tp_fill_without_order_record_decided_by_position_while_stop_listed(monkeypatch):
     e, _ = mk(); k = open_(e); tag = e.state['lots'][k]['tp_id']
     e.trade.fill_tp(tag)
+    orig = e.trade.get_order
     monkeypatch.setattr(e.trade, 'get_order', lambda s, cid: (_ for _ in ()).throw(requests.Timeout('x')))
+    manage(e)
+    # LANE3-F1-TP r3 (Codex #368 case 1, stricter): a KNOWN client id is never credited with an aggregate shortfall while
+    # its record is unreadable - the TP is held (lot + stop kept, nothing booked); its own record then decides
+    assert k in e.state['lots'] and not e.history and e.state['lots'][k]['stop_id'] in e.trade.stops
+    monkeypatch.setattr(e.trade, 'get_order', orig)
     manage(e)
     assert k not in e.state['lots'] and e.history[-1]['exit_reason'] == 'take_profit_resting' and not e.trade.stops
 
@@ -283,8 +289,8 @@ def test_partial_tp_fill_reduces_qty_and_resizes_the_stop():
     assert old_stop not in e.trade.stops and e.trade.stops[lot['stop_id']][2] == pytest.approx(lot['qty'])
     assert lot['stop'] == 95.0                                          # resized, never moved
     assert lot['fills'][-1][1] == 'take_profit_resting' and lot['fills'][-1][2] == pytest.approx(half)
-    e.trade.fill_tp(tag); manage(e)                                     # the rest fills: booked once, lot finished
-    assert k not in e.state['lots'] and not e.trade.stops
+    e.trade.fill_tp(tag, qty=q0 - half); manage(e)                      # the rest fills (cumulative executedQty = q0, as on
+    assert k not in e.state['lots'] and not e.trade.stops               # Binance - LANE3-F1-TP r4 rejects executedQty > placed)
     h = e.history[-1]
     assert h['exit_reason'] == 'take_profit_resting' and sum(f[2] for f in h['fills'] if f[1] == 'take_profit_resting') == pytest.approx(q0)
 

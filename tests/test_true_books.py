@@ -179,6 +179,7 @@ def test_a_resting_entry_holds_a_slot_and_reserves_its_risk():
 
 def test_stop_risk_cap_is_eight_percent_of_book_nav():
     e, _ = tb_engine()
+    e.trade.balance = 10000.0; e.equity()      # CAPS-01: 2.5 % of 10 000 (250) stays above the 8 % book cap (160)
     e.state['lots']['x'] = fake_lot(e, 'B3_TREND', avg=100, stop=90, qty=15.5)      # 155 of 160 at risk already
     assert not e.open_lot(T_SL, 'BTCUSDT', 'LONG', SG, None, e.equity())
     assert e.last_skip.startswith('book B3_TREND stop-risk cap')
