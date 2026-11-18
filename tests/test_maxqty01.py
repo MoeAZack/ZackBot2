@@ -113,7 +113,7 @@ def test_engine_skip_text_is_the_shared_reason_and_maps_to_its_audit_code():
 # ------------------------------------------------------------------ grid preflight
 def test_grid_order_above_max_is_not_sent():
     import grid as G
-    e = types.SimpleNamespace(persist_block=lambda: None, risk_caps_block=lambda: None, stop_missing_block=lambda s: None,   # CAPS-01 r2: caps compliant
+    e = types.SimpleNamespace(persist_block=lambda: None, risk_caps_block=lambda: None, stop_missing_block=lambda s: None, new_risk_fence=lambda s: None,   # CAPS-01 r2: caps compliant
                               rules={'STRKUSDT': dict(step=1.0, min_qty=1.0, max_qty=1000.0, tick=0.00001, min_notional=5.0)})
     g = dict(sym='STRKUSDT', stop_lo=0.1, stop_hi=0.3, capital=1e6, cfg={}, hi=0.25, lo=0.15)
     gm = G.GridManager(e)
@@ -167,7 +167,7 @@ def test_unknown_bracket_schedule_never_blocks():
 
 def test_grid_order_over_the_leverage_tier_is_not_sent():
     import grid as G
-    e = types.SimpleNamespace(persist_block=lambda: None, risk_caps_block=lambda: None, stop_missing_block=lambda s: None, rules={'STRKUSDT': dict(step=1.0, min_qty=1.0, tick=0.00001, min_notional=5.0)},
+    e = types.SimpleNamespace(persist_block=lambda: None, risk_caps_block=lambda: None, stop_missing_block=lambda s: None, new_risk_fence=lambda s: None, rules={'STRKUSDT': dict(step=1.0, min_qty=1.0, tick=0.00001, min_notional=5.0)},
                               _tier_block=lambda s, n, p: 'leverage tier: STRKUSDT over' if n > 100 else None)
     g = dict(sym='STRKUSDT', stop_lo=0.1, stop_hi=0.3, capital=1e6, cfg={}, hi=0.25, lo=0.15)
     G.GridManager(e)._order_ok(g, 500, 0.2)                              # 100 USDT: fine

@@ -232,6 +232,9 @@ def _family_state(family):
     elif family == 'orphans': e.state['orphans'] = [['BTCUSDT', 'o:99']]
     elif family == 'emg_cleanup':                                      # CAPS-01 r11: leftover emergency stops being cleaned up
         e.state['emg_cleanup'] = {'zm0123456789abcdef012345': dict(symbol='BTCUSDT', side='LONG', t=1.0)}
+    elif family == 'tp_quarantine':                                          # LANE3-F1-TP r3: a held TP of a closed trade
+        e.state['tp_quarantine'] = {'zt0123456789abcdef012345': dict(symbol='BTCUSDT', side='LONG', tag='o:77',
+                                    cid='zt0123456789abcdef012345', acid=None, lot='T|BTCUSDT|LONG|1', t=1.0, qty=1.0)}
     e.save_state()
     return e, tmp
 

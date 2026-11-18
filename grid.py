@@ -920,7 +920,7 @@ class GridManager:
         if pb: raise ValueError(pb)
         cb = self.e.risk_caps_block()                               # CAPS-01 r2: last check before the send too
         if cb: raise ValueError(cb)
-        sb = self.e.stop_missing_block(g['sym'])                    # CAPS-01 r11 / LANE3-F1-trim r4: re-checked at the send (a
+        sb = self.e.new_risk_fence(g['sym'])                        # CAPS-01 r11 / LANE3-F1-trim r4: re-checked at the send (a
         if sb: raise ValueError(f'{sb} - not sent')                 # staged op / an add past _can_add): same-coin new-risk fence
         if side:
             st = self._stop_ok(g, side, m)
