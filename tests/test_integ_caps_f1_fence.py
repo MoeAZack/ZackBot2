@@ -259,3 +259,22 @@ def test_every_fence_family_survives_a_save_and_reload():
     e2, _ = TS.mk_engine(tmp)
     for f in ('emg_cleanup', 'trim_owned', 'tp_quarantine'): assert e2.state.get(f) == e.state[f], f
     assert 'emergency stop' in e2.new_risk_fence('BTCUSDT')
+
+
+def test_adv1_a_closed_trade_trim_on_a_coin_without_rules_never_stops_management():
+    """Adversarial ADV-1: a trim owner on a coin with no loaded exchange rules (a TradFi coin after a restart with TradFi
+    off) once crashed manage() with KeyError on every pass once its record was final. It stays owned (a fence on its
+    coin), is alerted as unreadable, and every other lot keeps being managed."""
+    e, _ = TS.mk_engine()
+    k = TS.opened(e)
+    e.state['trim_owned'] = {TRIM: dict(cid=TRIM, symbol='XAUUSDT', side='LONG', lot='T|XAUUSDT|LONG|1', sleeve='T',
+                                        send_qty=0.01, sent_t=1.0)}
+    assert 'XAUUSDT' not in e.rules
+    e.trade.get_order = lambda s, cid: dict(status='FILLED', executedQty='0.01', avgPrice='2000', clientOrderId=cid)
+    seen = []
+    orig = e.reconcile
+    e.reconcile = lambda *a, **kw: (seen.append(1), orig(*a, **kw))[1]
+    for _ in range(2): e.manage(e.trade.marks())
+    assert seen and k in e.state['lots']
+    assert TRIM in e.state['trim_owned'] and 'risk trim' in e.new_risk_fence('XAUUSDT')
+    assert any(x.startswith('risk-trim-unknown|') for x in (e.health.get('incidents') or {}))

@@ -5641,7 +5641,10 @@ class Engine:
                     own.pop(cid, None); changed = True               # settled on its lot (booked / final record / re-sent)
                 continue
             sym, ak = o['symbol'], f"risk-trim-unknown|{o.get('lot')}"
-            res = self._order_result(sym, cid, o.get('send_qty'))
+            # integration (adversarial ADV-1): a coin whose exchange rules are not loaded (e.g. a TradFi coin after a restart
+            # with TradFi off) cannot be read safely - kept owned and alerted as unreadable, never a crash of manage()
+            res = (self._order_result(sym, cid, o.get('send_qty')) if sym in self.rules
+                   else dict(state='unreadable', qty=0.0, px=None))
             if res['state'] in ('final', 'nosource'):
                 own.pop(cid, None); changed = True
                 if res['state'] == 'final' and (res['qty'] or 0) > 0:
