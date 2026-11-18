@@ -66,7 +66,7 @@ def test_an_unanswered_add_still_aborts_the_lot_for_this_pass():
     """AmbiguousOrder keeps its old meaning: the lot becomes pending and nothing else is done to it this pass."""
     e, _ = mk_engine(); k, lot = _trail_pyramid(e); stop0 = lot['stop']
     TS.ambiguous_once(e, 'open')
-    e.trade.mark['BTCUSDT'] = 130.0; e.manage(e.trade.marks())
+    e.trade.mark['BTCUSDT'] = 104.0; e.manage(e.trade.marks())       # CAPS-01: an add that fits the 2.5 % open-risk cap
     assert lot.get('pending') and lot['stop'] == stop0
 
 

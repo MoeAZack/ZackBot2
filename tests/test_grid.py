@@ -45,7 +45,7 @@ class FakeX:
 
 
 SLOT = dict(id='G1', enabled=True, auto=False, symbols=['BTCUSDT'], tf='4h', share=0.5, max_coins=1, mode='neutral',
-            range_kind='pct', range_value=10, levels=10, spacing='geom', capital_frac=1.0, stop_out_pct=3.0, max_lev=3.0,
+            range_kind='pct', range_value=10, levels=10, spacing='geom', capital_frac=0.6, stop_out_pct=3.0, max_lev=3.0,
             trend_bars=3, cooldown_bars=0, need_range=True, max_worst_loss_pct=25)
 DF = pd.DataFrame(dict(t=pd.date_range('2026-01-01', periods=50, freq='4h'), o=100.0, h=101.0, l=99.0, c=100.0, atr=2.0))
 

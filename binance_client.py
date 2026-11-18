@@ -837,6 +837,35 @@ class Futures:
             raise
         return str(st).upper() if st else None
 
+    STOP_ABSENT_CODES = (-2013,)                   # Binance's explicit "Order does not exist" (documented, both endpoints)
+
+    def stop_state(self, symbol, tag):
+        """CAPS-01 r10 (Codex #365 ruling a): TYPED lookup of ONE stop by its tag, for deterministic emergency-stop ids.
+        -> (kind, status): kind 'live' (NEW), 'gone' (CANCELED/EXPIRED/REJECTED...), 'fired' (FILLED/TRIGGERED/...),
+        'absent' (ONLY Binance's explicit no-such-order code - and that is no lifetime proof: history retention) or
+        'unknown' (a failed / transient read, an unsupported endpoint, a missing or unrecognized status, a malformed answer).
+        One attempt, never raises. Unlike stop_status, None never stands for several different things."""
+        kind, _, oid = (tag or '').partition(':')
+        if kind not in ('o', 'c', 'a', 'ac') or not oid: return 'unknown', None
+        try:
+            if kind in ('o', 'c'):
+                q = dict(symbol=symbol, orderId=oid) if kind == 'o' else dict(symbol=symbol, origClientOrderId=oid)
+                r = self._req('GET', '/fapi/v1/order', q, signed=True, retry=False); key = 'status'
+            else:
+                r = self._req('GET', '/fapi/v1/algoOrder', dict(algoId=oid) if kind == 'a' else dict(clientAlgoId=oid),
+                              signed=True, retry=False); key = 'algoStatus'
+        except BinanceError as e:
+            if not isinstance(e, ExchangeUnavailable) and not is_transient(e) and e.code in self.STOP_ABSENT_CODES:
+                return 'absent', None
+            return 'unknown', None
+        except Exception:
+            return 'unknown', None
+        st = str(r.get(key) or '').upper() if isinstance(r, dict) else ''
+        if st == 'NEW': return 'live', st
+        if st in ('CANCELED', 'EXPIRED', 'REJECTED', 'EXPIRED_IN_MATCH'): return 'gone', st
+        if st in ('FILLED', 'PARTIALLY_FILLED', 'TRIGGERING', 'TRIGGERED', 'FINISHED'): return 'fired', st
+        return 'unknown', st or None
+
     def stop_fill(self, symbol, tag):
         """Read-only. The executed order behind ONE stop tag, so a vanished exchange stop is booked at its actual fill:
         'o:' / 'c:' -> GET /fapi/v1/order; 'a:' / 'ac:' -> GET /fapi/v1/algoOrder, then the order it triggered

@@ -19,8 +19,11 @@ COMBOS = [(b, r) for b in E.CTRL_BIAS for r in E.CTRL_RISK]
 LOT_FIELDS = ('symbol', 'side', 'qty', 'stop', 'risk_usd', 'sleeve')
 
 
-def mk(**S):
+def mk(wide=False, **S):
+    if wide: S.setdefault('CAPITAL_CAP', 100000.0)
     e, tmp = TS.mk_engine(**S)
+    if wide:                      # CAPS-01: sizing streams pass their own eq (up to 2000 x 3 %); a 100 000 bot capital keeps
+        e.trade.balance = 100000.0; e.equity()    # every case inside the enforced 2.5 % open-risk cap, so the controls decide
     return e, tmp
 
 
@@ -81,7 +84,7 @@ def test_mapping_exact_and_monotonic():
 
 
 def test_risk_monotonic_on_real_sizing():
-    e, _ = mk()
+    e, _ = mk(wide=True)
     for b in ('neutral', 'bearish'):
         last = -1.0
         for r in ('low', 'medium', 'high', 'max_test'):
@@ -139,7 +142,7 @@ def test_every_level_is_a_subset_of_neutral_never_flips_never_widens():
 
 @pytest.mark.parametrize('bias,side', [('strong_bearish', 'LONG'), ('strong_bullish', 'SHORT')])
 def test_zero_multiplier_disables_never_inverts(bias, side):
-    e, _ = mk()
+    e, _ = mk(wide=True)
     for r in E.CTRL_RISK:
         set_ctrl(e, bias, r)
         n_open = e.trade.calls.count('open')
@@ -163,7 +166,7 @@ def test_scaled_below_minimum_is_skipped_never_rounded_up():
 
 # ---------------------------------------------------------------- 4) caps hold for bias x risk
 def test_caps_hold_for_every_combination():
-    e, _ = mk(MAX_LEVERAGE=1)
+    e, _ = mk(wide=True, MAX_LEVERAGE=1)
     s = dict(i=3, sym='BTCUSDT', side='LONG', eq=500.0, risk=0.3, atr=2.0)     # 150 / 5 = 30 BTC = 3000 USDT > 1x * 500
     set_ctrl(e, 'neutral', 'max_test'); bl = run(e, s)[0]
     assert bl['qty'] == 5.0
@@ -186,7 +189,7 @@ def test_enforced_rule_refusing_the_baseline_refuses_every_level():
 
 # ---------------------------------------------------------------- 5) open / pending / partially filled: untouched
 def test_existing_positions_pending_and_partial_are_byte_identical():
-    e, _ = mk()
+    e, _ = mk(wide=True)
     set_ctrl(e, 'neutral', 'max_test')
     for side in ('LONG', 'SHORT'):
         assert e.open_lot(E.sleeve('A' + side[0], 'ema_st', 1.0, 0.02, 4, 'all'), 'BTCUSDT', side, sig(5, 100.0, 2.0), None, 500.0), e.last_skip
@@ -273,7 +276,7 @@ def _ctrl_lines(caplog):
 
 def test_logging_only_when_the_control_had_an_effect(caplog):
     caplog.set_level(logging.INFO)
-    e, _ = mk()
+    e, _ = mk(wide=True)
     s = dict(i=9, sym='BTCUSDT', side='LONG', eq=500.0, risk=0.02, atr=2.0)
     set_ctrl(e, 'neutral', 'max_test'); caplog.clear(); run(e, s)
     assert _ctrl_lines(caplog) == [] and not getattr(e, 'ctrl_events', [])
