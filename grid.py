@@ -920,9 +920,9 @@ class GridManager:
         if pb: raise ValueError(pb)
         cb = self.e.risk_caps_block()                               # CAPS-01 r2: last check before the send too
         if cb: raise ValueError(cb)
+        sb = self.e.stop_missing_block(g['sym'])                    # CAPS-01 r11 / LANE3-F1-trim r4: re-checked at the send (a
+        if sb: raise ValueError(f'{sb} - not sent')                 # staged op / an add past _can_add): same-coin new-risk fence
         if side:
-            sb = getattr(self.e, 'stop_missing_block', lambda s_: None)(g['sym'])   # CAPS-01 r11: same-coin new-risk fence
-            if sb: raise ValueError(f'{sb} - not sent')                            # (risk-adding orders only)
             st = self._stop_ok(g, side, m)
             # CAPS-01 r4: the order's own stop risk must fit the portfolio open-risk budget (lots + every reserved intent,
             # other grids' in-flight orders included; this grid's own in-flight op is this order - not counted twice)
