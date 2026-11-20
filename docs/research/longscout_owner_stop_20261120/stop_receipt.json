@@ -1,0 +1,62 @@
+{
+ "stopped_cairo": "2026-11-20T18:13:21+02:00",
+ "rearm_not_before_cairo": "2026-11-24T12:00:00+02:00",
+ "automatic_restart": false,
+ "ledger": {
+  "at_cairo": "2026-11-20T18:13:21+02:00",
+  "registered_trials": 303,
+  "completed_trials": 301,
+  "historical_screen_passes": 11,
+  "batch_completed_trials": 20,
+  "batch_screen_passes": 0,
+  "incomplete_trials": [
+   302,
+   303
+  ],
+  "rearm_not_before_cairo": "2026-11-24T12:00:00+02:00",
+  "automatic_restart": false
+ },
+ "completed_versions": [
+  91,
+  92,
+  93,
+  94,
+  95,
+  96,
+  97,
+  99,
+  100,
+  101
+ ],
+ "incomplete_version": 102,
+ "data_gated_unrun_version": 98,
+ "draft_only_versions": [
+  103,
+  104
+ ],
+ "flow_checkpoints": {
+  "longscout_codex_flow_hourly_20261120": {
+   "requests_checkpointed": 1532,
+   "symbol_states": {
+    "PASS": 62,
+    "FAILED": 16,
+    "RUNNING": 1,
+    "NOT_RUN": 87
+   },
+   "progress_sha256": "0e2a74d1b44515885bd57ce7c620bb5ab64708410422bd8fa4e79c9447091e2c",
+   "note": "Interrupted; checkpoint may precede final in-flight GET. Original progress retained, not marked COMPLETE."
+  },
+  "longscout_codex_flow_archive_20261120": {
+   "requests_checkpointed": 776,
+   "symbol_states": {
+    "FAILED": 13,
+    "RUNNING": 1,
+    "NOT_RUN": 17
+   },
+   "progress_sha256": "088cb6259c56aab150025cec41b2170a82aa6a968157d73eb812fb0c90a66f0c",
+   "note": "Interrupted; checkpoint may precede final in-flight GET. Original progress retained, not marked COMPLETE."
+  }
+ },
+ "canonical_acquisition_started": false,
+ "accounts_runtime_scheduler_touched": false
+}

@@ -1,3 +1,14 @@
+# OWNER STOP ? 20 November 2026
+
+Scouting is stopped. Do not run the continuing queue below. No automatic restart.
+Re-arm only after the 24 November 2026 12:00 Africa/Cairo reset under the next authorized task.
+Final: 303 registered / 301 completed trials; 11 historical passes, zero new batch passes.
+V102 trials302/303 interrupted with no complete verdict; V98 data-gated; V103/V104 drafts unrun.
+Accounts, runtime and schedulers remain untouched.
+
+---
+Historical continuing contract (superseded by the owner STOP):
+
 # LONGSCOUT continuing research contract
 
 Owner follow-up 20 November 2026 supersedes the one-version stopping assumption.

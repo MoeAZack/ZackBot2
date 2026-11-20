@@ -1,6 +1,6 @@
 {
  "stop_at": "2026-11-23T16:00:00[Africa/Cairo]",
- "stop_condition": "First frozen screen pass independently worth forward-testing, or deadline; do not stop after one rejected version",
+ "stop_condition": "Owner STOP supersedes continuing-search/deadline instruction; no new trials or versions; no automatic restart",
  "completed_versions": {
   "91": {
    "passes": 0,
@@ -94,8 +94,17 @@
    "timeframe": "1d"
   },
   "102": {
-   "state": "8 independent synthetic tests pass; timestamp resolution defect corrected before financial outcomes; ready for source freeze",
-   "timeframe": "4h"
+   "state": "INTERRUPTED_OWNER_STOP",
+   "trials": [
+    302,
+    303
+   ]
+  },
+  "103": {
+   "state": "DRAFT_ONLY_STOPPED_BY_OWNER; not frozen, registered or economically run"
+  },
+  "104": {
+   "state": "DRAFT_ONLY_STOPPED_BY_OWNER; not frozen, registered or economically run"
   }
  },
  "integration_owner": "root; all Git/index/ledger/publication operations sequential",
@@ -106,16 +115,31 @@
   "session": 91069,
   "output": "C:/Dev/ZackBot_research_cache/longscout_codex_flow_hourly_20261120",
   "source_freeze": "3a341edb3f4300284680dfcea74d4e8216d46915",
-  "state": "Runningnativehourly all166; fresh134samplepasses; extra31volume-vintage discrepancies. Neverloosentolerances.",
+  "state": "STOPPED_BY_OWNER; hourly and archive process trees terminated; checkpoints retained; no complete166 release; V98 remains locked",
   "archive_plan": "ALLfixedextra31 officialhourlyarchive, notrowcherrypicking;11synthetictests+independentreviewconditionsresolved. NeedfullARCHIVE31_COMPLETE thenjoinrequirednativefresh134+BTC tocanonical166release beforeV98."
  },
  "publication_worker": {
   "session": 45028,
-  "state": "STOPPED deliberately after94posted andnetworkrestored; own STOPfile present. No scheduler/botwatcher touched.",
+  "state": "STOPPED; no automatic publisher or scheduler armed",
   "path": "C:/Dev/ZackBot_research_cache/longscout_codex_publication_20261120",
   "note": "Connection intermittent. For offline prereg guard refs/longscout/last-confirmed-remote seededverified1ed and advancedworker ff3207; clone singlebranch has no origin/codex ref. Finish helper --defer-network preservesqueuedrequest; normalhelperpublishesonline."
  },
  "driver": {
-  "state": "V101 complete; root freezing V102 then sole generic executor"
+  "state": "STOPPED: execute_frozen102 plus its worker trees terminated; continue_103_104 terminated before source freeze/registration; no owned research processes remain"
+ },
+ "mode": "STOPPED_BY_OWNER",
+ "owner_stop": {
+  "at_cairo": "2026-11-20T18:13:21+02:00",
+  "registered_trials": 303,
+  "completed_trials": 301,
+  "historical_screen_passes": 11,
+  "batch_completed_trials": 20,
+  "batch_screen_passes": 0,
+  "incomplete_trials": [
+   302,
+   303
+  ],
+  "rearm_not_before_cairo": "2026-11-24T12:00:00+02:00",
+  "automatic_restart": false
  }
 }
