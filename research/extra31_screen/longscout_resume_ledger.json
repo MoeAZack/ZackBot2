@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 301,
+ "registered_trials": 303,
  "completed_trials": 301,
  "historical_screen_passes": 11,
  "versions": {
@@ -346,6 +346,23 @@
       "fresh134",
       "extra31"
      ]
+    }
+   ]
+  },
+  "102": {
+   "status": "PREREGISTERED",
+   "source_freeze": "5480b242a7e7c799e022fa9d69db4d3d086f19a0",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 302,
+     "key": "l102_auction_acceptance_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
+    },
+    {
+     "trial": 303,
+     "key": "r102_auction_rejection_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
