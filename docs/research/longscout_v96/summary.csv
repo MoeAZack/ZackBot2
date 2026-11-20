@@ -1,0 +1,3 @@
+candidate,status,median_closes,meanR15_fee_plus_slip,fresh134,extra31,median_closedDD_R,DD_label
+l96_sequential_cusum_4h,FAIL,156.0,0.03119675912550967,-0.0348400428729777,0.23552232921698296,11.724844587816948,Standard
+r96_ordinal_oscillation_4h,FAIL,0.0,,,,0.0,Standard
