@@ -1,0 +1,35 @@
+F
+================================== FAILURES ===================================
+______________________ test_independent_formula[False-1] ______________________
+
+seed = 1, gap = False
+
+    @pytest.mark.parametrize('seed', [1, 5, 21])
+    @pytest.mark.parametrize('gap', [False, True])
+    def test_independent_formula(seed, gap):
+        D = daily(seed)
+        if gap: D = D.drop(D.index[77])
+        got, want = M.daily_conditions(D, M.PARAMS), reference(D)
+>       for key in want: np.testing.assert_array_equal(got[key], want[key])
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: 
+E       Arrays are not equal
+E       
+E       Mismatched elements: 4 / 150 (2.67%)
+E       Mismatch at indices:
+E        [67]: False (ACTUAL), True (DESIRED)
+E        [85]: False (ACTUAL), True (DESIRED)
+E        [127]: False (ACTUAL), True (DESIRED)
+E        [145]: False (ACTUAL), True (DESIRED)
+E        ACTUAL: array([False, False, False, False, False, False, False, False, False,
+E              False, False, False, False, False, False, False, False, False,
+E              False, False, False, False, False, False, False, False, False,...
+E        DESIRED: array([False, False, False, False, False, False, False, False, False,
+E              False, False, False, False, False, False, False, False, False,
+E              False, False, False, False, False, False, False, False, False,...
+
+tests\test_longscout_v91.py:60: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v91.py::test_independent_formula[False-1] - Asser...
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed in 7.24s

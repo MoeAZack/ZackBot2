@@ -1,0 +1,30 @@
+......F
+================================== FAILURES ===================================
+_____________ test_real_function_prefix_and_regimes[sig_impulse] ______________
+
+fn = <function sig_impulse at 0x000001F78DB282C0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001F78DFEBEC0>
+
+    @pytest.mark.parametrize('fn', [M.sig_impulse, M.sig_range])
+    def test_real_function_prefix_and_regimes(fn, monkeypatch):
+        d = bars(daily())
+        monkeypatch.setattr(M.L1, 'coin_regime', lambda x: np.zeros(len(x)))
+        full = fn(d, M.PARAMS, {})
+        assert full['le'].any() or full['se'].any()
+        for k in ('le', 'se'):
+            assert (d.t[full[k]].dt.hour == 0).all()
+        for n in [193, 201, 370, 601, 802, 899]:
+            part = fn(d.iloc[:n], M.PARAMS, {})
+            for k in full: np.testing.assert_array_equal(part[k], full[k].iloc[:n])
+        monkeypatch.setattr(M.L1, 'coin_regime', lambda x: np.full(len(x), -1.))
+        falling = fn(d, M.PARAMS, {})
+>       assert not falling['le'].any() and not falling['se'].any()
+E       assert (not np.True_)
+E        +  where np.True_ = any()
+E        +    where any = 0      False\n1      False\n2      False\n3      False\n4      False\n       ...  \n895    False\n896    False\n897    False\n898    False\n899    False\nLength: 900, dtype: bool.any
+
+tests\test_longscout_v91.py:86: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v91.py::test_real_function_prefix_and_regimes[sig_impulse]
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+1 failed, 6 passed in 10.71s

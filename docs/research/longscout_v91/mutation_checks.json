@@ -1,0 +1,32 @@
+[
+ {
+  "name": "current_band",
+  "returncode": 1,
+  "caught": true
+ },
+ {
+  "name": "current_rs_baseline",
+  "returncode": 1,
+  "caught": true
+ },
+ {
+  "name": "positive_persistence",
+  "returncode": 1,
+  "caught": true
+ },
+ {
+  "name": "accept_falling",
+  "returncode": 1,
+  "caught": true
+ },
+ {
+  "name": "bridge_day_gaps",
+  "returncode": 1,
+  "caught": true
+ },
+ {
+  "name": "future_dependent",
+  "returncode": 1,
+  "caught": true
+ }
+]

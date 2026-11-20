@@ -1,0 +1,24 @@
+{
+ "note": "Metadata checkpoint after run launch; actual launch preceded this timestamp.",
+ "parent": "4189908d08c559421bdfd270c02de3f8dd6d97e9",
+ "source_freeze": "f89d1eb73cd462dd092e86e5cf26c13859359acd",
+ "cases_freeze": "df91f80",
+ "final_pre_run_head": "f37892eb70f3a416288239c07bf8c8a58ccb5bc6",
+ "branch": "codex/longscout-v91-batch-20261120",
+ "orders": 40,
+ "seed": 20261112,
+ "source_hashes": {
+  "research/longscout_v91.py": "392510e71990d2acef31f007f8735fe6d81cc029359c082148ec02592298ac43",
+  "research/extra31_screen/longscout_v91_cases.json": "d2582ba5004d25257fd41317874f0359e1289fa0790c485a8ee1907ccf703010",
+  "research/extra31_screen/longscout_v91_run.py": "515028ecac39687a9befe0d1ceb1ef16f42f89609668a0dfa8c67bfd23f5c630",
+  "research/extra31_screen/sieve_v1.py": "49612393fb38b3208b30b42f629b6b9ca0fda5ef49d25a1824c9a45d70a41929",
+  "research/extra31_screen/sieve_v1_panel.py": "6da5a8493a66015ebe2f16f1bb3dff62231b56b37b3b8a3f8b476e6baf5de075",
+  "research/extra31_screen/longscout_run.py": "5d569f51ea21e87930c712ba96ddf086d821a5b7f3f311db6c4d6c90200ab853",
+  "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+  "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+  "data/exchange_rules_testnet.json": "d1ef2a9c60db9858774d68903648c334ca807a66c23dc85cce13fd8add96d2af"
+ },
+ "authorization_sha256": "e058ed5c6688711e53691589824d78b6c4dfc6f44bf718192398f9f22558d701",
+ "scope": "Research only; no accounts, runtime, scheduler, LEADFWD checkout/task, secrets, merge, or mark-ready changes. Shared cache inputs read-only; all new cache files only under this dedicated folder.",
+ "metadata_checkpoint_cairo": "2026-11-20T15:25:56.628772+02:00"
+}

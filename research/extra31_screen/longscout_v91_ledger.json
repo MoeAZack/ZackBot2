@@ -9,12 +9,32 @@
   {
    "trial": 282,
    "key": "l91_rs_impulse_4h",
-   "verdict": "PENDING"
+   "verdict": "FAIL",
+   "meanR15_fee_plus_slip": -0.012600877261449983,
+   "failed_gates": [
+    "meanR15",
+    "early",
+    "ex_best_coin",
+    "meanR23",
+    "fresh134"
+   ]
   },
   {
    "trial": 283,
    "key": "r91_antipersistent_range_4h",
-   "verdict": "PENDING"
+   "verdict": "FAIL",
+   "meanR15_fee_plus_slip": -0.07271067850716229,
+   "failed_gates": [
+    "meanR15",
+    "late",
+    "ex_best_coin",
+    "meanR23",
+    "fresh134",
+    "extra31"
+   ]
   }
- ]
+ ],
+ "cumulative_screen_passes": 11,
+ "batch_passes": 0,
+ "qualification": "Both rejected; no forward-test or PAPER candidate; no tuning"
 }
