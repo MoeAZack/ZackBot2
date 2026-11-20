@@ -468,6 +468,19 @@ def test_unowned_activity_blocks_new_risk_in_every_book_but_keeps_lots_managed()
     assert e.open_lot(R_SL, 'BTCUSDT', 'LONG', SG, None, e.equity()), e.last_skip
 
 
+def test_unowned_close_rejection_audit_exposes_reason_without_relaxing_gate():
+    # A manual close in the cohort window has no book owner and blocks all books.
+    b = C('C', [dict(book=None, cohort_id=None, pnl_gross=1, fees=0, fees_actual=0)])['B3_TREND']
+    why = TB.admit(b)
+    assert not b['complete'] and why.startswith('book B3_TREND INCOMPLETE')
+    event = TA.funnel_event('t', 'T', 'BTCUSDT', 'SHORT', 'c', 'not_taken', why)
+    assert (event['stage'], event['code'], event['detail']) == (
+        'true_book', 'book_incomplete', 'unowned_account_activity')
+    # Unknown persisted reason text must not be copied to the audit.
+    unknown = TA.reason_info('book B3_TREND INCOMPLETE (private_value) - no new risk until it is measured')
+    assert unknown['detail'] == 'other_incomplete'
+
+
 # ------------------------------------------------------------------ Codex consolidated correction 6240139762
 FUND_T = int(datetime(2026, 10, 17, 14, 30, tzinfo=timezone.utc).timestamp() * 1000)
 
