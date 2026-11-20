@@ -1,0 +1,21 @@
+{
+  "id": "IVS-ECON-D01",
+  "contract": "0547b96f",
+  "freeze_sha256": "2f026e579f5f486deee9fb78ce3a973a48ae84d90e70b31681bbe442af4e2e98",
+  "identity": {
+    "original_rows": 826,
+    "rebuilt_rows": 826,
+    "decisions": 826,
+    "distinct_fill_times": 153,
+    "byte_identical_raw_signals": true,
+    "original_stage_b": {
+      "distinct_fill_times": 153,
+      "calendar_weeks": 102.32142857142857,
+      "upper_bound_per_week": 1.4952879581151832,
+      "FREQUENCY_FAIL": true
+    },
+    "PARITY": true
+  },
+  "scope": "DEPENDENT post-signal-count/pre-P&L diagnostic; original IVS-1H remains FREQUENCY_FAIL; no p10/40-order/LEAD_PASS",
+  "cases": {}
+}

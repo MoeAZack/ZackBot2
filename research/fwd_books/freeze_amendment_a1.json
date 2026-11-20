@@ -1,0 +1,14 @@
+{
+ "id": "FWD-BOOKS-20261112-A1",
+ "amends_freeze_sha256": "389c466e3eca3fa99d0a477c7a87306536179602921b21d4bd46b1a01b395824",
+ "reason": "Codex review #337 6837147057: same-source reversed/duplicate input passed coverage. Strict ordered/unique timestamps per source before merge/evaluation; violation => INCOMPLETE with symbol/time. Valid cross-source overlap preserved.",
+ "T_utc": "2026-11-12 22:00:00",
+ "T_cairo": "2026-11-13T00:00:00+02:00",
+ "unchanged": "T, books, definitions, sizing, costs, paths, guards, inputs, W0s and all economics",
+ "amended_utc": "2026-11-12T22:05:28.044912+00:00",
+ "source_sha256": {
+  "research/fwd_books/books.py": "91c9c07a1837b78992239c963aa8460576128f6e7eb3a59d6ff470063fac38e9",
+  "research/fwd_books/run_books.py": "acb2333afdd689f48709e97e4a1d4dd8152a5f83b50ffb4472ae156027690cb1",
+  "research/fwd_books/test_books.py": "c549a713323c5fc2c071a31f17e98d5a462b9839aae34ad08249913cbbc1e562"
+ }
+}

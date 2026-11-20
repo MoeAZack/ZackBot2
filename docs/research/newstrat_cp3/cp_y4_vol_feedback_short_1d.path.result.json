@@ -1,0 +1,103 @@
+{
+ "key": "cp_y4_vol_feedback_short_1d",
+ "tf": "1d",
+ "scenario": "path",
+ "symbols": [
+  "BTCUSDT",
+  "ETHUSDT",
+  "XRPUSDT",
+  "SOLUSDT",
+  "DOGEUSDT",
+  "BNBUSDT",
+  "LINKUSDT",
+  "AVAXUSDT"
+ ],
+ "bars": 1750,
+ "first": "2021-12-19 00:00:00",
+ "last": "2026-10-03 00:00:00",
+ "end_equity": 4008.31,
+ "maxdd_usd": 36.19,
+ "maxdd_R": 4.5,
+ "feasibility": {
+  "attempts": 28,
+  "executed": 26,
+  "rule_blocked": 0
+ },
+ "all": {
+  "n": 26,
+  "win": 57.7,
+  "pnl": 8.31,
+  "long_n": 0,
+  "short_n": 26,
+  "long_pnl": 0.0,
+  "short_pnl": 8.31,
+  "expR_7bp": 0.0406,
+  "pnl_7bp": 8.31,
+  "expR_15bp": 0.0299,
+  "pnl_15bp": 6.07,
+  "expR_23bp": 0.0191,
+  "pnl_23bp": 3.83
+ },
+ "dev": {
+  "n": 17,
+  "win": 70.6,
+  "pnl": 16.69,
+  "long_n": 0,
+  "short_n": 17,
+  "long_pnl": 0.0,
+  "short_pnl": 16.69,
+  "expR_7bp": 0.1231,
+  "pnl_7bp": 16.69,
+  "expR_15bp": 0.1126,
+  "pnl_15bp": 15.25,
+  "expR_23bp": 0.1021,
+  "pnl_23bp": 13.81
+ },
+ "holdout": {
+  "n": 9,
+  "win": 33.3,
+  "pnl": -8.38,
+  "long_n": 0,
+  "short_n": 9,
+  "long_pnl": 0.0,
+  "short_pnl": -8.38,
+  "expR_7bp": -0.1152,
+  "pnl_7bp": -8.38,
+  "expR_15bp": -0.1263,
+  "pnl_15bp": -9.19,
+  "expR_23bp": -0.1375,
+  "pnl_23bp": -9.99
+ },
+ "why": {
+  "time": 15,
+  "stop": 10,
+  "tp": 1
+ },
+ "code_sha256": {
+  "newstrat_cp3.py": "98127342cb27b6f010d1715182546ad26c3e1135e1ac907700645283e63edd82",
+  "newstrat_cp3_run.py": "32940641bc1379e88480d5334e021e79f7f3e53a45aaac1ac5255d39eb8fb0ea",
+  "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+  "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011"
+ },
+ "dd_label": "Standard",
+ "cost15_R_median": 0.0195,
+ "sumR15_by_coin": {
+  "BTCUSDT": -1.6,
+  "BNBUSDT": -1.37,
+  "DOGEUSDT": -1.04,
+  "XRPUSDT": -0.42,
+  "AVAXUSDT": 0.28,
+  "SOLUSDT": 0.89,
+  "ETHUSDT": 4.04
+ },
+ "expR15_wo_best_coin": -0.1482,
+ "sumR15_by_year": {
+  "2022": 3.57,
+  "2023": -1.73,
+  "2024": 0.07,
+  "2025": -2.05,
+  "2026": 0.92
+ },
+ "top5_share": 8.257,
+ "paper_eligible": false
+}

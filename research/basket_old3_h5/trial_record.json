@@ -1,0 +1,28 @@
+{
+ "study": "BASKET-OLD3-H5",
+ "trials": 1,
+ "frozen_source_head": "347c4b71",
+ "go": "PR #337 6832559586",
+ "settings": "contract.json (single setting, no search)",
+ "cells": 720,
+ "data_manifest_sha256": "c11ed2566727c38d0d9236d7290a01aabb4a53a0f3b15388ea8fed7ba8909351",
+ "rules_sha256": "d1ef2a9c60db9858774d68903648c334ca807a66c23dc85cce13fd8add96d2af",
+ "data_sha256": {
+  "ADAUSDT": "3f9ca786951988f54bdd8a2fbfad343e4bdad7790cda714228dfddaef73061cd",
+  "AVAXUSDT": "663a208214b06066c2e7cf12fea3e52c457c55415d5fa738b66329b537cc4c71",
+  "BNBUSDT": "0719ef90d8ef34aa48f289539d75398359be2677330e14c5b67bf8e66864dda9",
+  "BTCUSDT": "72a65f44279a00b22d210c199b978aae2223a673ab89b2a7ea3b564920cb0ad0",
+  "DOGEUSDT": "f31ca52bae3955c0c3f7aa6f1f07cd8ba6a33ace18513a75ab0865f5da059af0",
+  "ETHUSDT": "dcb25d1f5c6b24f0b26b00a98176bf8af7d6d8fa9b4767221321ca9b4ff44774",
+  "LINKUSDT": "832ac27f49134d1ed531646297748e281e9b741799ee5755c8c09f2f87f8ec0f",
+  "SOLUSDT": "9fbe822e208a2370f228d4a3c4117e80dd67a6f5a55431a2cc0e9bbdd89235f2",
+  "XRPUSDT": "8739b59bc19c06f75fa585f85e4900dd85db90045c47f29ecc3c0ff4b2acab6f"
+ },
+ "window_check": {
+  "start_index_1h": 883,
+  "start_index_4h": 220,
+  "last_1h": "2026-09-27 23:00",
+  "last_4h": "2026-09-27 20:00"
+ },
+ "note": "recorded after hash/window verification and before any strategy count or outcome; all outcomes retained"
+}

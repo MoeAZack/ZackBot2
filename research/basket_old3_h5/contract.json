@@ -1,0 +1,114 @@
+{
+ "study": "BASKET-OLD3-H5",
+ "go": "PR #337 6832559586 / #219 6832557765",
+ "draft": "4fc01366",
+ "kind": "portfolio research, consumedDEV, descriptive only",
+ "engine_sha256": {
+  "backtest": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+  "strategies": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+  "feasibility": "b689ecc494f83fc8e9000159f667dbad0ae15b575a8eaa409bb50ce725570d0f",
+  "prot": "02955ce46efb06b55590193525fd87cf0b8d84b8880765db0b5659775e357042"
+ },
+ "h5_module": {
+  "file": "h5_hourly_long_pr338.py",
+  "source": "PR #338 head 5c95508f h5_hourly_long.py verbatim",
+  "sha256": "8573dd81b39558f55d29682223568d7f72d61e9b25eaa5f072f81dc94139f128"
+ },
+ "old3_settings": {
+  "source": "F:/ZackBot2_data/OLD3-account2/runtime/ZackBot/settings.json",
+  "sha256": "d497237f7ef507267274b4626ba0bfffb1aee5809cbc23dd4553f4f2c9102797",
+  "pinned_by": "Codex",
+  "sleeves": [
+   {
+    "name": "BEAR",
+    "key": "bear_breakdown",
+    "sides": "short",
+    "max_pos": 2,
+    "mgmt_override": {}
+   },
+   {
+    "name": "EMA",
+    "key": "ema_st",
+    "sides": "long",
+    "max_pos": 2,
+    "mgmt_override": {}
+   },
+   {
+    "name": "HOT",
+    "key": "hot_coin",
+    "sides": "long",
+    "max_pos": 2,
+    "mgmt_override": {}
+   }
+  ]
+ },
+ "h5": {
+  "key": "h5_volume_impulse_long_1h",
+  "sides": "long",
+  "max_pos": 1,
+  "mgmt": "stop 3 ATR, tp 4R, 48 bars"
+ },
+ "data": {
+  "dir": "F:/ZackBot2_data/C1H-VENUE-RECHECK-20261112/inputs/cohort9_1h",
+  "manifest_sha256": "c11ed2566727c38d0d9236d7290a01aabb4a53a0f3b15388ea8fed7ba8909351",
+  "rules": "F:/ZackBot2_data/C1H-VENUE-RECHECK-20261112/exchange_rules.json",
+  "rules_sha256": "d1ef2a9c60db9858774d68903648c334ca807a66c23dc85cce13fd8add96d2af"
+ },
+ "window": {
+  "start_first_processed_bar_utc": "2024-11-17 12:00",
+  "end_exclusive_utc": "2026-09-28 00:00",
+  "warmup_bars": 220,
+  "primary_split_utc": "2025-10-01 00:00",
+  "halves_split_utc": "2025-10-22 18:00",
+  "note": "Books start flat; START is the first bar each TF processes, so first possible entries are START+1h (H5) and START+4h (4h sleeves). 4h = complete epoch-aligned groups of four canonical 1h rows."
+ },
+ "sizing": {
+  "risk_usd_pre_fee": 8.0,
+  "notional_cap_usd": 3333.33,
+  "capital_usd": 4000.0,
+  "compounding": false,
+  "native_floor": "feasibility.size_check with the rules snapshot"
+ },
+ "costs": {
+  "per_executed_side_bp": [
+   7,
+   15,
+   23
+  ],
+  "slip_bp": 2,
+  "fee_bp": "c-2",
+  "native_funding": "1bp/8h per bar on qty x bar close (1h 1.25e-5, 4h 5e-5)",
+  "target_funding": "1bp/8h per held hour on open qty x canonical 1h close"
+ },
+ "account": {
+  "open_entry_risk_cap": "2.5% of closed cash; entry risk held until final exit",
+  "cairo_day_halt": "realized net (fees, slip, funding) <= -3% of Cairo-day-start closed cash blocks entries until next Cairo day",
+  "dd10": "reported only",
+  "same_coin": "stack as separate lots; opposite sides coexist; no duplicate policy",
+  "phantom": "refused candidate occupies own sleeve/coin until its tape exit; carries no cash or risk; screening approximation that can omit winners or losers; phantom hours reported",
+  "event_order": "at equal timestamps: releases/exit cash first, then hourly mark, then entries by sleeve rank, coin rank, lot id; exit and partial cash at the exit bar end; funding at each hour end; entry fee at entry"
+ },
+ "orders": {
+  "n": 40,
+  "seed0": "sleeves BEAR,EMA,HOT,H5; coins alphabetical",
+  "seeds": "1-39 random.Random(seed) shuffles sleeve and coin lists independently; same order for all books"
+ },
+ "books": {
+  "OLD3": [
+   "BEAR",
+   "EMA",
+   "HOT"
+  ],
+  "H5": [
+   "H5"
+  ],
+  "COMBINED": [
+   "BEAR",
+   "EMA",
+   "HOT",
+   "H5"
+  ]
+ },
+ "label": "PORTFOLIO_RESEARCH_LEAD iff at 15bp both paths COMBINED > each baseline in >=30/40 paired orders, COMBINED 15bp positive before and after 2025-10-01 (every order, both paths), COMBINED 23bp positive (every order, both paths); else NOT_A_LEAD. Descriptive, no activation.",
+ "terminal": "open lots marked at the final available 1h close (no exit fee); they are not closes"
+}

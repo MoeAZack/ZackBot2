@@ -1,0 +1,64 @@
+{
+ "id": "X2-WIDE",
+ "status": "FROZEN before any X2-WIDE signal count or outcome",
+ "approval": "Codex #219 comment 6827389390; moe 2026-11-12 17:10 Cairo",
+ "nature": "cross-symbol transfer test of an unchanged rule; not a fresh temporal holdout; not a new independent strategy; research only, no engine/runtime/account change",
+ "rule": {
+  "source": "research/x2wide/newstrat_cp3_46ece2b7.py = research/newstrat_cp3.py at 46ece2b7",
+  "source_sha256": "929cb91e95d9ca796a531b0dd8f8ca697f91ba00edc0448508411a7f45207c77",
+  "candidate": "cp_x2_alt_btc_ratio_break_4h",
+  "params": {"n": 60},
+  "mgmt": {"stop_atr": 2.5, "tp_r": 3.0, "max_bars": 30, "tp1_r": 1.0, "tp1_frac": 0.5, "be_r": 1.0},
+  "tuning": "none; any change is a new candidate"
+ },
+ "arms": {
+  "original8": "D01 original9 minus BTCUSDT (BTC is context only)",
+  "extra31": "D01 extra31 (8 of them are consumed by the H5 pilot only, not by X2)",
+  "union39": "original8 + extra31"
+ },
+ "primary_arm_for_transfer_read": "extra31",
+ "data": {
+  "dir": "C:/Dev/ZackBot_research_cache/h5_wide_d01_20261112/clean",
+  "manifest": "input_manifest.json",
+  "manifest_sha256": "99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95",
+  "bars": "4h UTC bins built from 1h; a bin needs all four 1h bars",
+  "fetch": "none"
+ },
+ "window": {"decisions_from": "2022-08-26 06:00 UTC", "decisions_to": "2026-10-04 04:00 UTC", "split": "2025-01-01 (early/later, both consumedDEV)"},
+ "execution": {
+  "risk_usd": 8.0, "notional_cap_usd": 3333.333, "max_positions_global": 1, "tie_orders": 40,
+  "tie_order_rule": "order 0 alphabetical; k>=1 numpy.default_rng(20261112+k).permutation",
+  "entry": "next 1h open after the 4h decision close; must be exactly 1 h after the decision bar's last 1h bar",
+  "fills": "reference x (1 +/- 2 bp) adverse; fees 5/13/21 bp of each fill's notional (7/15/23 bp per side total)",
+  "funding_proxy": "1 bp / 8 h x qty open at the start of the management bar x every held 1h close incl. the exit bar; cost on both sides; not native funding",
+  "partial": "floor(qty*0.5/step)*step at +1R from the entry fill; only if both parts meet min_qty and min_notional, else blocked (breakeven still arms)",
+  "breakeven": "stop -> entry fill from the NEXT management bar after +1R is reached (never retroactive)",
+  "paths": {
+   "causal": "1h management bars; adverse open gap exits at the open; stop-first when stop and a target share a 1h bar",
+   "worst": "4h management bars with the same rules: all ambiguity inside 4 h resolves stop-first; breakeven from the next 4h bar"
+  },
+  "exit_times": "gap at the bar open; stop/target/partial/time at the management bar close; time cap = first bar with close >= entry + 120 h",
+  "liquidity": "D01 point-in-time rule (prior 30 complete UTC days median quote volume >= $10m and >= 720 consecutive bars), alt only, at the decision's last 1h bar",
+  "exchange_filters": "data/exchange_rules_testnet.json (current snapshot, not point-in-time)",
+  "daily_halt": "Cairo-day net realized cash <= -$120 blocks new decisions that Cairo day (entry fee on entry day, partial on its day, rest on exit day)",
+  "equal_boundary": "an exit at or before a decision close frees the slot for that decision",
+  "terminal_open": "reserves the slot to the end, marked at the last close with exit costs, excluded from closes"
+ },
+ "gates_for_paper_review": {
+  "source": "Codex #219 6827389390",
+  "evaluated_on": "causal path, 40-order medians unless stated",
+  "closes_total": ">= 100",
+  "closes_each_period": ">= 30 (order 0)",
+  "meanR15_early": "> 0",
+  "meanR15_later": "> 0",
+  "meanR23_overall": "> 0",
+  "exbest_meanR15": "> 0",
+  "p10_meanR15_across_orders": "> 0",
+  "worst_path_meanR15": "> 0 (40-order median of the worst path)",
+  "drawdown": "reported, not a veto",
+  "frequency": "reported versus original8, not promised",
+  "if_undersampled_or_fragile": "mark forward-only; never weaken a gate to rescue"
+ },
+ "reporting": ["R_budget and R_actual", "per side", "partials", "per coin", "early/later", "marked DD", "underwater", "decomposition", "skips", "terminal MTM"],
+ "limitations": ["funding stress proxy", "hourly marks, not intrabar", "current exchange filters", "no tick rounding", "fixed survivor universe"]
+}

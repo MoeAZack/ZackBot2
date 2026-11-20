@@ -1,0 +1,19 @@
+{
+ "id": "MPE-01 amendment A1",
+ "status": "FROZEN before any A1 outcome",
+ "trigger": "Codex PR #337 6830061839 / #219 6830060312; moe 2026-11-12 18:53 Cairo",
+ "base": {
+  "head": "c557227094696a32a11424fab8283b4dec3122a9",
+  "contract_sha256": "e9ffcc4f3966b2f62a79366daec687b391284e80792ae50e1e5d0ab3f65c577a",
+  "runner_sha256": "cb7ca7a04e6c2ba5ff2f756ac66b1fb32222f95d54a384869a942e8020cd4574",
+  "note": "c5572270 outcomes (result head ac2304e1) stay unaccepted original-version provenance; not promoted"
+ },
+ "single_change": "a working maker order that fills on a 15m bar whose OPEN is already beyond the stop (long open <= stop, short open >= stop) keeps the assumed limit entry L and exits at that adverse OPEN with normal exit slip/fee, timed at the bar open (label stop_gap_fillbar). Funding for that bar is still charged once at its close (X2 gap convention, conservative). Everything else unchanged.",
+ "runner": "research/mpe01/run_mpe01_a1.py",
+ "runner_sha256": "01d915354439136c689de1ad35fbbf2ca2a42152520b98de87c2abfc37f6c85b",
+ "tests": "research/mpe01/test_run_mpe01_a1.py",
+ "tests_sha256": "4a581e4913ae202a77a38870359c539e1541e991f4aa8acf5dc5db861fcca39a",
+ "tests_note": "20 tests (old optimistic test replaced by mirrored long/short adverse-open tests, slot/timing test, inside-open stop test); fix lines mutation-checked (2/2 killed)",
+ "outputs": "docs/research/mpe01/a1/ incl. fillbar_open_gap_exits per summary (reported even if 0)",
+ "no_tuning": "no signal, offset, universe, cost or other setting change"
+}

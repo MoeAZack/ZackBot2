@@ -1,0 +1,89 @@
+{
+ "id": "RSR-1H",
+ "status": "FROZEN before any RSR-1H signal count or outcome",
+ "approval": "Codex PR #337 6830439673 (GO with definitions 1-7); moe thread 2026-11-12",
+ "nature": "one bounded study, one setting; broad reversal family (not claimed statistically independent); market-ADJUSTED signal, NOT a hedged/market-neutral book; research only; no engine/runtime/UI/key/account change; consumedDEV only",
+ "proposal": "docs/research/rsr1h_proposal.md at 2e61a446, amended by Codex definitions 1-7",
+ "universe": {
+  "coins": "canonical 40 (D01 ORIG 9 + EXTRA 31), BTC tradable",
+  "data": "C:/Dev/ZackBot_research_cache/h5_wide_d01_20261112/clean",
+  "manifest_sha256": "99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95",
+  "eligibility": "D01 PIT at the hour (30d median quote volume >= $10m, >= 720 consecutive bars)"
+ },
+ "features": {
+  "return": "ln(c_t/c_{t-1}) only if the prior hour bar exists; no forward fill",
+  "market": "leave-one-out equal-weight mean of OTHER coins eligible at t with finite r; >= 8 others else missing",
+  "fit": "OLS with intercept r_i,s on m_i,s, s in [t-168h, t-1h], >= 120 matched finite pairs, market variance > 1e-18; no clipping",
+  "innovation": "e = r - alpha_t - beta_t*m_t with each hour's own prior fit",
+  "sigma": "population std (ddof 0) of e over [t-168h, t-1h], >= 120 finite, > 0",
+  "z": "(e_{t-2}+e_{t-1}+e_t)/(sigma_t*sqrt3); all three finite",
+  "entry_rule": "long z <= -3, short z >= +3 (levels); skip |m_{t-2}+m_{t-1}+m_t| >= 0.015 (log); candidate eligible at t"
+ },
+ "trade": {
+  "entry": "next 1h OPEN at t+1h (decision = signal bar close); missing -> refused",
+  "stop": "3.0 x Wilder ATR14(1h) of the signal bar from the entry fill",
+  "target": "2R",
+  "partial_be": "none",
+  "time": "first management-bar close >= entry + 12h",
+  "gap": "adverse open beyond stop (not the first bar) -> exit at open"
+ },
+ "execution": {
+  "harness": "research/x2wide/run_x2wide.py a525ed69 sha256 8251f9b3... imported unchanged; only run_lot replaced",
+  "risk_usd": 8.0,
+  "notional_cap": 3333.33,
+  "filters": "current testnet snapshot",
+  "costs": "7/15/23 bp per side (2 bp slip + 5/13/21 bp fee) + funding proxy 1bp/8h on every held 1h close incl. exit bar",
+  "max_positions_global": 1,
+  "tie_orders": 40,
+  "paths": {
+   "causal": "1h management bars",
+   "worst": "UTC 4h bins, stop-first"
+  },
+  "daily_halt": "Cairo-day net cash <= -$120",
+  "terminal_open": "marked, excluded from closes"
+ },
+ "window": {
+  "decisions_from": "2022-08-26 06:00 UTC",
+  "decisions_to": "2026-10-04 04:00 UTC",
+  "split": "2025-01-01 early/later, both consumedDEV"
+ },
+ "arms": {
+  "union40": "PRIMARY, gated",
+  "original9": "diagnostic subset",
+  "extra31": "diagnostic subset",
+  "note": "features always use all 40 coins"
+ },
+ "gates": {
+  "arm": "union40",
+  "closes_total": ">= 100 (40-order median, 15bp)",
+  "closes_each_period": ">= 30 (order 0)",
+  "meanR15_early": "> 0",
+  "meanR15_later": "> 0",
+  "meanR23_overall": "> 0",
+  "exbest_meanR15": "> 0",
+  "p10_meanR15": "> 0",
+  "worst_path_meanR15": "> 0",
+  "drawdown": "reported, not a veto",
+  "pass_means": "candidate for independent verification and future protected PAPER evidence only; never a mainnet qualification",
+  "fail_means": "no parameter/side/coin rescue"
+ },
+ "report": "all arms/costs/orders, gross and net decomposition, long/short, coin concentration, frequency, drawdown, early/later",
+ "runner": {
+  "path": "research/rsr1h/run_rsr1h.py",
+  "sha256": "eb0bde8e7901a8dd48464bd98d6bc166b15422271a072083e50c8c909690380a"
+ },
+ "tests": {
+  "path": "research/rsr1h/test_run_rsr1h.py",
+  "sha256": "979dd3aa15eaf4c1ac0ab9e76afa14cefd82a255f006e0111e538d7205038b9b",
+  "count": 17,
+  "mutation": "16 key-line mutants: 15 killed (1 after an added assertion); gap-at-entry-bar mutant is equivalent (entry at that open cannot be beyond its own stop)"
+ },
+ "limitations": [
+  "funding stress proxy, not native signed funding",
+  "hourly marks",
+  "current exchange filters",
+  "no tick rounding",
+  "fixed survivor universe; all 40 coins consumed by earlier work",
+  "max 1 global caps frequency"
+ ]
+}

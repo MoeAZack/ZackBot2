@@ -1,0 +1,78 @@
+{
+ "id": "FWD-BOOKS-20261112",
+ "contract": "Codex FORWARD EVIDENCE GO, PR #337 6836143114; owner GO #219 6836306574",
+ "definitions": "research/admission_controls @29d76073 unchanged (imports basket_old3_h5 @347c4b71 unchanged)",
+ "freeze_utc": "2026-11-12T21:36:44.869000+00:00",
+ "T_ms": 1794520800000,
+ "T_utc": "2026-11-12 22:00:00",
+ "T_cairo": "2026-11-13T00:00:00+02:00",
+ "ema_first_scored_4h_utc": "2026-11-13 00:00:00",
+ "books": [
+  {
+   "name": "H5",
+   "key": "h5_volume_impulse_long_1h",
+   "side": "long",
+   "tf": "1h",
+   "max_pos": 1
+  },
+  {
+   "name": "EMA",
+   "key": "ema_st",
+   "side": "long",
+   "tf": "4h",
+   "max_pos": 2
+  }
+ ],
+ "capital_usd": 4000,
+ "sizing": "fixed $8 pre-fee risk per entry, $3,333.33 notional cap per fill (basket.fixed_sizing)",
+ "coins": "original9 ADAUSDT,AVAXUSDT,BNBUSDT,BTCUSDT,DOGEUSDT,ETHUSDT,LINKUSDT,SOLUSDT,XRPUSDT",
+ "priority": {
+  "primary": "alpha (alphabetical)",
+  "diagnostic": "cohort order; never selected"
+ },
+ "costs_bp_per_side": [
+  7,
+  15,
+  23
+ ],
+ "cost_model": "2 bp slip in fill prices + (c-2) bp fee per executed side",
+ "funding": "native per-bar 1bp/8h scaled per TF; target ledger hourly 1bp/8h proxy; both reported closed/open/all",
+ "paths": [
+  "path",
+  "worst"
+ ],
+ "guards": {
+  "daily_halt": "3% of Cairo-day start, MARKED equity (native engine rule)",
+  "open_risk_cap": "2.5% enforce"
+ },
+ "nonparity": "any target-ledger refusal of a native lot => row status NONPARITY, reported, never relabelled",
+ "warmup_bars": 220,
+ "W0_1h_utc": "2026-10-30 16:00:00",
+ "W0_4h_utc": "2024-10-11 20:00:00",
+ "canonical": {
+  "path": "F:/ZackBot2_data/C1H-VENUE-RECHECK-20261112",
+  "manifest_sha256": "c11ed2566727c38d0d9236d7290a01aabb4a53a0f3b15388ea8fed7ba8909351",
+  "rules_sha256": "d1ef2a9c60db9858774d68903648c334ca807a66c23dc85cce13fd8add96d2af",
+  "use": "4h warmup history before 2026-09-28 and exchange rules"
+ },
+ "forward_inputs": {
+  "path": "F:/ZackBot2_data/FWD-01/data/<COIN>-1h.json and <COIN>-4h.json",
+  "producer": "existing FWD-01 research runner (freeze head 4933cf28); read only, not modified",
+  "rule": "4h = canonical to_4h first, FWD-01 native 4h klines after; overlap must match prices exactly and volumes within 1e-6"
+ },
+ "rows": "one immutable row per evaluated boundary; each row re-runs the native engine from W0 over closed bars < boundary",
+ "incomplete": "missing, partial or out-of-order input => INCOMPLETE with exact gaps; never zero-filled",
+ "research_only": "hypothetical bar replay; not exchange fills, stop evidence or live parity; no accounts/keys/workers/schedulers",
+ "source_sha256": {
+  "research/fwd_books/books.py": "d3de8870241470a208008627312a108d3b6f30a0d39dfca3890b53ae706cb23e",
+  "research/fwd_books/run_books.py": "147669aec219928e7b156618fb1ab60ef800d6ca88627e025526727013758730",
+  "research/fwd_books/test_books.py": "675f3ce05c1b77afef6b22d32ee57055ca650a41cd53a9d38b5fb86e34c33f57",
+  "research/admission_controls/controls.py": "0159b13e0a602c31e37d9213c7e033e855d22f79f3e02333d5aef1cf3ee43c0c",
+  "research/basket_old3_h5/basket.py": "7c8507b09667b33d1d5536ab4302b436146621fe5c2d7f23c38fcd00b7519415",
+  "research/basket_old3_h5/h5_hourly_long_pr338.py": "8573dd81b39558f55d29682223568d7f72d61e9b25eaa5f072f81dc94139f128",
+  "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+  "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011",
+  "feasibility.py": "b689ecc494f83fc8e9000159f667dbad0ae15b575a8eaa409bb50ce725570d0f",
+  "prot.py": "02955ce46efb06b55590193525fd87cf0b8d84b8880765db0b5659775e357042"
+ }
+}

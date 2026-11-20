@@ -1,0 +1,11 @@
+{
+ "id": "FWD-BOOKS-20261112",
+ "kind": "prospective research evidence (dependent controls carried forward; not a new discovery)",
+ "books": ["H5 long 1h max_pos 1", "EMA (ema_st) long 4h max_pos 2"],
+ "definitions": "research/admission_controls @29d76073 unchanged",
+ "frozen_before_outcomes": true,
+ "outcomes_seen_at_freeze": "none after T; all pre-T data is warmup input only (consumedDEV history)",
+ "selection_rules": "primary order alphabetical; cohort order diagnostic only; no parameter, coin, side, risk or order changes after freeze",
+ "status_values": ["COMPLETE", "INCOMPLETE", "NONPARITY"],
+ "prior_reading": "H5 cost-sensitive lead (23bp ex-best negative, LINK concentration); EMA sparse and mark-sensitive. No promotion implied."
+}

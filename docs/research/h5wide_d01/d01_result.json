@@ -1,0 +1,1460 @@
+{
+ "contract": "H5-WIDE-D01",
+ "prereg_sha256": "622635c784e3fc9e37401623dad9f0c5dadeb3b2386d5a305b7cbd6416ba5174",
+ "runner_sha256": "e415c8bb87a84c5984f3c97129699f3f3739c5eaa61e57ba4bced5ab8e6d5977",
+ "input_sha256": {
+  "ADAUSDT": "a86ceae84343c52cc2812a1d922cca299ebcd99770223bf1ebf3dbb94af72600",
+  "AVAXUSDT": "12ba25c32800df0b719639e3afff3fa51857e649467645f346b807bd96b32afb",
+  "BNBUSDT": "78ae8443125f1a112369a7fa8c0f773e85c777fb4ccc8c56fba68c9497cd78e5",
+  "BTCUSDT": "55f0112a943c1311aef8032f500567df15af7cacde596908455db52f6fcab40e",
+  "DOGEUSDT": "046e530717ec06a0eef34860c31038926c4225e8a857d37424409dcdc0ac36d4",
+  "ETHUSDT": "7d6123cbac9b42a87af6536bf06b66c15b35714a6549c2693652d419fefc58fd",
+  "LINKUSDT": "3e24d303299fa92002e47f2c44eb146cc5a250264728fa1ec994175760932b32",
+  "SOLUSDT": "70709e021fd5830194b8d831c0bac72248de7feef2e096043ebf5eb28e727ace",
+  "XRPUSDT": "98d7dfd1aec79e0b25f5e55d125e8bda9941df5af6716ca66ff5d9f348f85107",
+  "1000PEPEUSDT": "e481ee965ab75bc18195259462a2c6fd09c70990181119a18448d087fdebbf2a",
+  "AAVEUSDT": "3b167e055bc26399ad7b4b7f79e3714c435c048252f632205e4bcaeeea2b55f3",
+  "APTUSDT": "3a5c939a566a08905248d7c1321b41baa2ddbd5d5bb6a503d54d96dbbd7bb617",
+  "ARBUSDT": "af9be0bbe8992874944215fecde4d6b580bd32a9ceb1b55505d2bbe6436bebf8",
+  "ARKUSDT": "abae9524b2c1fcc4bb7b80e865ed8683c8b3899427e62562e5d2b1b84c50ed4a",
+  "BCHUSDT": "9e595f87bb08c9e954b6339514919e96927f7304f98b90a4bf1fc8cce90c4733",
+  "DOTUSDT": "0b1d7a917d9a042de74e03dce9e546f1bd313a30ffc71ea4d45044128b148778",
+  "ENAUSDT": "117f97b08e5113d371d4793e8c0bb7f310c9e6219e24b95db72674e3e6fda635",
+  "ENJUSDT": "8b33a3c7a6fa81c376d8e13ef4667f1a2c539752300ffcd4ab34c097cce101fd",
+  "ETCUSDT": "4d05e5dfcde3fe0b66dac2d7b2f111865754e5b758062db2871f481bc7150273",
+  "FETUSDT": "bc0a523b6b5f7cede0214bb1b42b4043390e434c5c30b0baeb32241595b43a71",
+  "FILUSDT": "fd821902c4fba440022326270c51ed1de30c59ffafeb7b7cd49b90ef06bf46f2",
+  "GALAUSDT": "5cf82e39be137b1006bab2dca378e52071e6a5d73af5131e8ffd3d7e043843bd",
+  "INJUSDT": "f4e0ae2f3e60bcec3215eb79c4bb83b59b3313b154b575fb8e987a1738694ab8",
+  "LTCUSDT": "2b65eb1a468d13d7fded0fa2d41431b5e79a7d9b9943de41dfde73923698cdfd",
+  "MANAUSDT": "71e5cee20b43dec2ffdc4522e16e550890798fb3866536ed9dea4e24539c96cf",
+  "MOVRUSDT": "afa062ae004b62bb25be3b14bcc6e5043e493dbc0e63ff239749b6cd9d115134",
+  "NEARUSDT": "fe36dac29544f8974db0c34dc6db64bf5fc37c37c33d76a35654667af7108faf",
+  "ONDOUSDT": "00a1a75670bfbe409010f7c6e0a6e78345747948af74156e7dc84d2c89a942d8",
+  "ONEUSDT": "e539c48755a01141b8dabd059a1fa23871bc204559724fe2dab75192b85381a6",
+  "QNTUSDT": "5fbf63a4a206d0ea6c727da389bd1306d1967d931f5c781c34aadd9f61d98dff",
+  "SANDUSDT": "68349b278c6f6e207ebde3d948dea8fbc0235936f5b58b93627ff27c49a43a4c",
+  "STRKUSDT": "43f43ef095ca9bbba2b895a7f88a3c1a5021a318d4f3bd4ef392bfb507d3efa4",
+  "SUIUSDT": "1ed39ede4eba29bbedaf1daea32c77c4755376fa7db203e802e2b69bf254ac08",
+  "SUPERUSDT": "246f8334ca58d3f03673e156b7c0ecd0ae6117ad486639f5b0994fc4ea8fb725",
+  "TAOUSDT": "f871a360575393276c8bde9bec40e8e5a9f96d4afaacc0209c86a01c548ec34f",
+  "UNIUSDT": "4dfec782de85a89e61697bbd6ebeea7b562cc6ca063c944a8ee2ef8d6ef36b5b",
+  "WLDUSDT": "4c9dd60ad24a4a1bb1b526353444f0e34a5543c65647917fc7c8323b49822e8f",
+  "XLMUSDT": "dd826ff6641a2e2b8344b95bae70bb0d066f1f261ac29bba9f991ee76733e78b",
+  "ZECUSDT": "fe8372d29a010b98db0ff378c5e470171a4f1925db14ef39a202d5929244c430",
+  "ZROUSDT": "7f4f62de3ec01603f76e9a1f1afa769481071c0be6e9f4aae33f5d24044eaaa9"
+ },
+ "missing_symbols": [],
+ "eligibility": {
+  "ADAUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 248,
+   "eligible_signals": 243,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "AVAXUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 242,
+   "eligible_signals": 239,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "BNBUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 355,
+   "eligible_signals": 350,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "BTCUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 392,
+   "eligible_signals": 387,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "DOGEUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 242,
+   "eligible_signals": 234,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "ETHUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 300,
+   "eligible_signals": 296,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "LINKUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 327,
+   "eligible_signals": 320,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "SOLUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 323,
+   "eligible_signals": 320,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "XRPUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 237,
+   "eligible_signals": 236,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "1000PEPEUSDT": {
+   "first": "2023-05-05 16:00:00",
+   "bars": 29941,
+   "raw_signals": 200,
+   "eligible_signals": 200,
+   "eligible_hours": 29213,
+   "rule": true,
+   "pilot_consumed": true
+  },
+  "AAVEUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 300,
+   "eligible_signals": 299,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "APTUSDT": {
+   "first": "2022-10-19 02:00:00",
+   "bars": 34707,
+   "raw_signals": 200,
+   "eligible_signals": 198,
+   "eligible_hours": 33965,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "ARBUSDT": {
+   "first": "2023-03-23 15:00:00",
+   "bars": 30974,
+   "raw_signals": 221,
+   "eligible_signals": 217,
+   "eligible_hours": 30245,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "ARKUSDT": {
+   "first": "2023-09-19 16:00:00",
+   "bars": 26653,
+   "raw_signals": 142,
+   "eligible_signals": 62,
+   "eligible_hours": 11112,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "BCHUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 253,
+   "eligible_signals": 251,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "DOTUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 235,
+   "eligible_signals": 231,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "ENAUSDT": {
+   "first": "2024-04-02 12:00:00",
+   "bars": 21953,
+   "raw_signals": 151,
+   "eligible_signals": 149,
+   "eligible_hours": 21221,
+   "rule": true,
+   "pilot_consumed": true
+  },
+  "ENJUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 184,
+   "eligible_signals": 89,
+   "eligible_hours": 19080,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "ETCUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 232,
+   "eligible_signals": 226,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "FETUSDT": {
+   "first": "2023-01-17 02:00:00",
+   "bars": 32547,
+   "raw_signals": 206,
+   "eligible_signals": 199,
+   "eligible_hours": 31805,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "FILUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 200,
+   "eligible_signals": 200,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "GALAUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 188,
+   "eligible_signals": 180,
+   "eligible_hours": 33725,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "INJUSDT": {
+   "first": "2022-08-17 02:00:00",
+   "bars": 36219,
+   "raw_signals": 270,
+   "eligible_signals": 251,
+   "eligible_hours": 34709,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "LTCUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 273,
+   "eligible_signals": 269,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "MANAUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 261,
+   "eligible_signals": 196,
+   "eligible_hours": 29376,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "MOVRUSDT": {
+   "first": "2023-12-26 12:00:00",
+   "bars": 24305,
+   "raw_signals": 117,
+   "eligible_signals": 20,
+   "eligible_hours": 4752,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "NEARUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 272,
+   "eligible_signals": 264,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": true
+  },
+  "ONDOUSDT": {
+   "first": "2024-01-20 13:00:00",
+   "bars": 23704,
+   "raw_signals": 141,
+   "eligible_signals": 132,
+   "eligible_hours": 22973,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "ONEUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 209,
+   "eligible_signals": 79,
+   "eligible_hours": 13469,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "QNTUSDT": {
+   "first": "2022-10-20 02:00:00",
+   "bars": 34683,
+   "raw_signals": 192,
+   "eligible_signals": 55,
+   "eligible_hours": 10800,
+   "rule": true,
+   "pilot_consumed": true
+  },
+  "SANDUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 208,
+   "eligible_signals": 198,
+   "eligible_hours": 33581,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "STRKUSDT": {
+   "first": "2024-02-20 17:00:00",
+   "bars": 22956,
+   "raw_signals": 137,
+   "eligible_signals": 98,
+   "eligible_hours": 18605,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "SUIUSDT": {
+   "first": "2023-05-03 16:00:00",
+   "bars": 29989,
+   "raw_signals": 206,
+   "eligible_signals": 206,
+   "eligible_hours": 29261,
+   "rule": true,
+   "pilot_consumed": true
+  },
+  "SUPERUSDT": {
+   "first": "2023-11-26 13:00:00",
+   "bars": 25024,
+   "raw_signals": 169,
+   "eligible_signals": 72,
+   "eligible_hours": 11544,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "TAOUSDT": {
+   "first": "2024-04-11 14:00:00",
+   "bars": 21735,
+   "raw_signals": 158,
+   "eligible_signals": 158,
+   "eligible_hours": 21005,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "UNIUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 306,
+   "eligible_signals": 301,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": true
+  },
+  "WLDUSDT": {
+   "first": "2023-07-24 12:00:00",
+   "bars": 28025,
+   "raw_signals": 153,
+   "eligible_signals": 153,
+   "eligible_hours": 27293,
+   "rule": true,
+   "pilot_consumed": true
+  },
+  "XLMUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 208,
+   "eligible_signals": 204,
+   "eligible_hours": 35885,
+   "rule": true,
+   "pilot_consumed": false
+  },
+  "ZECUSDT": {
+   "first": "2022-08-01 00:00:00",
+   "bars": 36605,
+   "raw_signals": 253,
+   "eligible_signals": 182,
+   "eligible_hours": 29309,
+   "rule": true,
+   "pilot_consumed": true
+  },
+  "ZROUSDT": {
+   "first": "2024-06-20 14:00:00",
+   "bars": 20055,
+   "raw_signals": 165,
+   "eligible_signals": 119,
+   "eligible_hours": 17501,
+   "rule": true,
+   "pilot_consumed": false
+  }
+ },
+ "weeks": 214.27,
+ "arms": {
+  "original9": {
+   "7bp": {
+    "order0": {
+     "n": 502,
+     "closes_per_week": 2.343,
+     "meanR": 0.1623,
+     "sumR": 81.45,
+     "win": 0.422,
+     "early_n": 306,
+     "later_n": 196,
+     "early_meanR": 0.2289,
+     "later_meanR": 0.0583,
+     "closedR_maxdd": 13.63,
+     "max_underwater_trades": 89,
+     "sumR_by_coin": {
+      "XRPUSDT": 1.74,
+      "AVAXUSDT": 4.36,
+      "SOLUSDT": 7.42,
+      "DOGEUSDT": 8.61,
+      "ETHUSDT": 9.15,
+      "BNBUSDT": 9.41,
+      "ADAUSDT": 10.79,
+      "LINKUSDT": 14.97,
+      "BTCUSDT": 15.0
+     },
+     "exbest_meanR": 0.1661,
+     "fees_R": 0.0553,
+     "fund_R": 0.0155,
+     "gross_meanR": 0.233,
+     "risk_usd_max": 7.9999,
+     "risk_usd_median": 7.9804,
+     "why": {
+      "stop": 242,
+      "time": 218,
+      "target": 42
+     },
+     "order": 0,
+     "skips": 0
+    },
+    "across_orders": {
+     "n": {
+      "median": 496.0,
+      "p10": 493.0,
+      "p90": 499.1,
+      "min": 492.0,
+      "max": 502.0
+     },
+     "closes_per_week": {
+      "median": 2.315,
+      "p10": 2.301,
+      "p90": 2.3294,
+      "min": 2.296,
+      "max": 2.343
+     },
+     "meanR": {
+      "median": 0.1552,
+      "p10": 0.1416,
+      "p90": 0.1765,
+      "min": 0.1297,
+      "max": 0.1918
+     },
+     "early_meanR": {
+      "median": 0.1918,
+      "p10": 0.1708,
+      "p90": 0.2307,
+      "min": 0.1584,
+      "max": 0.2408
+     },
+     "later_meanR": {
+      "median": 0.0912,
+      "p10": 0.0618,
+      "p90": 0.1351,
+      "min": 0.0452,
+      "max": 0.1549
+     },
+     "exbest_meanR": {
+      "median": 0.1305,
+      "p10": 0.1149,
+      "p90": 0.1615,
+      "min": 0.0954,
+      "max": 0.1695
+     },
+     "closedR_maxdd": {
+      "median": 16.01,
+      "p10": 12.839,
+      "p90": 20.395,
+      "min": 10.73,
+      "max": 21.58
+     },
+     "gross_meanR": {
+      "median": 0.2268,
+      "p10": 0.2137,
+      "p90": 0.2449,
+      "min": 0.2029,
+      "max": 0.2607
+     }
+    },
+    "share_orders_meanR_pos": 1.0
+   },
+   "15bp": {
+    "order0": {
+     "n": 502,
+     "closes_per_week": 2.343,
+     "meanR": 0.099,
+     "sumR": 49.72,
+     "win": 0.416,
+     "early_n": 306,
+     "later_n": 196,
+     "early_meanR": 0.1699,
+     "later_meanR": -0.0116,
+     "closedR_maxdd": 16.11,
+     "max_underwater_trades": 108,
+     "sumR_by_coin": {
+      "XRPUSDT": -0.42,
+      "AVAXUSDT": 2.18,
+      "BNBUSDT": 2.2,
+      "BTCUSDT": 5.07,
+      "SOLUSDT": 5.24,
+      "ETHUSDT": 6.77,
+      "DOGEUSDT": 7.36,
+      "ADAUSDT": 8.27,
+      "LINKUSDT": 13.04
+     },
+     "exbest_meanR": 0.0801,
+     "fees_R": 0.1185,
+     "fund_R": 0.0155,
+     "gross_meanR": 0.233,
+     "risk_usd_max": 7.9999,
+     "risk_usd_median": 7.9804,
+     "why": {
+      "stop": 242,
+      "time": 218,
+      "target": 42
+     },
+     "order": 0,
+     "skips": 0
+    },
+    "across_orders": {
+     "n": {
+      "median": 496.0,
+      "p10": 493.0,
+      "p90": 499.1,
+      "min": 492.0,
+      "max": 502.0
+     },
+     "closes_per_week": {
+      "median": 2.315,
+      "p10": 2.301,
+      "p90": 2.3294,
+      "min": 2.296,
+      "max": 2.343
+     },
+     "meanR": {
+      "median": 0.0907,
+      "p10": 0.0777,
+      "p90": 0.1156,
+      "min": 0.0642,
+      "max": 0.1305
+     },
+     "early_meanR": {
+      "median": 0.134,
+      "p10": 0.1108,
+      "p90": 0.1727,
+      "min": 0.0981,
+      "max": 0.1837
+     },
+     "later_meanR": {
+      "median": 0.019,
+      "p10": -0.007,
+      "p90": 0.0689,
+      "min": -0.0211,
+      "max": 0.0858
+     },
+     "exbest_meanR": {
+      "median": 0.0623,
+      "p10": 0.0475,
+      "p90": 0.0961,
+      "min": 0.0265,
+      "max": 0.1073
+     },
+     "closedR_maxdd": {
+      "median": 20.335,
+      "p10": 15.577,
+      "p90": 25.253,
+      "min": 14.33,
+      "max": 26.48
+     },
+     "gross_meanR": {
+      "median": 0.2268,
+      "p10": 0.2137,
+      "p90": 0.2449,
+      "min": 0.2029,
+      "max": 0.2607
+     }
+    },
+    "share_orders_meanR_pos": 1.0
+   },
+   "23bp": {
+    "order0": {
+     "n": 502,
+     "closes_per_week": 2.343,
+     "meanR": 0.0358,
+     "sumR": 17.98,
+     "win": 0.404,
+     "early_n": 306,
+     "later_n": 196,
+     "early_meanR": 0.1109,
+     "later_meanR": -0.0815,
+     "closedR_maxdd": 26.93,
+     "max_underwater_trades": 207,
+     "sumR_by_coin": {
+      "BNBUSDT": -5.01,
+      "BTCUSDT": -4.87,
+      "XRPUSDT": -2.57,
+      "AVAXUSDT": 0.01,
+      "SOLUSDT": 3.07,
+      "ETHUSDT": 4.38,
+      "ADAUSDT": 5.75,
+      "DOGEUSDT": 6.11,
+      "LINKUSDT": 11.1
+     },
+     "exbest_meanR": 0.015,
+     "fees_R": 0.1818,
+     "fund_R": 0.0155,
+     "gross_meanR": 0.233,
+     "risk_usd_max": 7.9999,
+     "risk_usd_median": 7.9804,
+     "why": {
+      "stop": 242,
+      "time": 218,
+      "target": 42
+     },
+     "order": 0,
+     "skips": 0
+    },
+    "across_orders": {
+     "n": {
+      "median": 496.0,
+      "p10": 493.0,
+      "p90": 499.1,
+      "min": 492.0,
+      "max": 502.0
+     },
+     "closes_per_week": {
+      "median": 2.315,
+      "p10": 2.301,
+      "p90": 2.3294,
+      "min": 2.296,
+      "max": 2.343
+     },
+     "meanR": {
+      "median": 0.027,
+      "p10": 0.0121,
+      "p90": 0.0544,
+      "min": -0.0012,
+      "max": 0.0692
+     },
+     "early_meanR": {
+      "median": 0.0763,
+      "p10": 0.0511,
+      "p90": 0.1145,
+      "min": 0.0377,
+      "max": 0.1266
+     },
+     "later_meanR": {
+      "median": -0.0519,
+      "p10": -0.0794,
+      "p90": 0.0003,
+      "min": -0.0874,
+      "max": 0.0168
+     },
+     "exbest_meanR": {
+      "median": -0.0038,
+      "p10": -0.0182,
+      "p90": 0.0292,
+      "min": -0.0424,
+      "max": 0.0415
+     },
+     "closedR_maxdd": {
+      "median": 26.28,
+      "p10": 23.347,
+      "p90": 30.183,
+      "min": 18.88,
+      "max": 31.38
+     },
+     "gross_meanR": {
+      "median": 0.2268,
+      "p10": 0.2137,
+      "p90": 0.2449,
+      "min": 0.2029,
+      "max": 0.2607
+     }
+    },
+    "share_orders_meanR_pos": 0.975
+   }
+  },
+  "extra31": {
+   "7bp": {
+    "order0": {
+     "n": 678,
+     "closes_per_week": 3.164,
+     "meanR": -0.0328,
+     "sumR": -22.24,
+     "win": 0.381,
+     "early_n": 388,
+     "later_n": 290,
+     "early_meanR": -0.0845,
+     "later_meanR": 0.0363,
+     "closedR_maxdd": 50.34,
+     "max_underwater_trades": 613,
+     "sumR_by_coin": {
+      "BCHUSDT": -12.9,
+      "AAVEUSDT": -11.85,
+      "ENAUSDT": -9.22,
+      "MANAUSDT": -8.16,
+      "ZROUSDT": -5.9,
+      "ARBUSDT": -5.75,
+      "FETUSDT": -4.11,
+      "UNIUSDT": -3.5,
+      "ENJUSDT": -3.36,
+      "APTUSDT": -3.24,
+      "MOVRUSDT": -3.06,
+      "SANDUSDT": -2.66,
+      "ARKUSDT": -2.64,
+      "ONDOUSDT": -2.26,
+      "FILUSDT": -2.06,
+      "SUPERUSDT": -0.79,
+      "INJUSDT": -0.74,
+      "ETCUSDT": 1.04,
+      "LTCUSDT": 1.64,
+      "DOTUSDT": 1.92,
+      "1000PEPEUSDT": 2.0,
+      "ONEUSDT": 2.99,
+      "WLDUSDT": 3.62,
+      "TAOUSDT": 3.95,
+      "GALAUSDT": 4.32,
+      "SUIUSDT": 4.38,
+      "NEARUSDT": 4.94,
+      "STRKUSDT": 5.21,
+      "ZECUSDT": 6.47,
+      "QNTUSDT": 8.04,
+      "XLMUSDT": 9.45
+     },
+     "exbest_meanR": -0.0487,
+     "fees_R": 0.0316,
+     "fund_R": 0.0089,
+     "gross_meanR": 0.0077,
+     "risk_usd_max": 8.0,
+     "risk_usd_median": 7.9914,
+     "why": {
+      "stop": 344,
+      "time": 302,
+      "target": 32
+     },
+     "order": 0,
+     "skips": 0
+    },
+    "across_orders": {
+     "n": {
+      "median": 682.0,
+      "p10": 675.0,
+      "p90": 687.1,
+      "min": 672.0,
+      "max": 689.0
+     },
+     "closes_per_week": {
+      "median": 3.183,
+      "p10": 3.15,
+      "p90": 3.2065,
+      "min": 3.136,
+      "max": 3.216
+     },
+     "meanR": {
+      "median": -0.0316,
+      "p10": -0.051,
+      "p90": -0.0041,
+      "min": -0.066,
+      "max": 0.0239
+     },
+     "early_meanR": {
+      "median": -0.0839,
+      "p10": -0.1033,
+      "p90": -0.0591,
+      "min": -0.1294,
+      "max": -0.0247
+     },
+     "later_meanR": {
+      "median": 0.0391,
+      "p10": 0.0069,
+      "p90": 0.0708,
+      "min": -0.0217,
+      "max": 0.1218
+     },
+     "exbest_meanR": {
+      "median": -0.0512,
+      "p10": -0.0702,
+      "p90": -0.0235,
+      "min": -0.0856,
+      "max": 0.0024
+     },
+     "closedR_maxdd": {
+      "median": 57.44,
+      "p10": 49.673,
+      "p90": 68.88,
+      "min": 46.3,
+      "max": 75.88
+     },
+     "gross_meanR": {
+      "median": 0.0092,
+      "p10": -0.0102,
+      "p90": 0.0365,
+      "min": -0.0261,
+      "max": 0.0652
+     }
+    },
+    "share_orders_meanR_pos": 0.075
+   },
+   "15bp": {
+    "order0": {
+     "n": 678,
+     "closes_per_week": 3.164,
+     "meanR": -0.069,
+     "sumR": -46.76,
+     "win": 0.373,
+     "early_n": 388,
+     "later_n": 290,
+     "early_meanR": -0.121,
+     "later_meanR": 0.0007,
+     "closedR_maxdd": 65.15,
+     "max_underwater_trades": 617,
+     "sumR_by_coin": {
+      "BCHUSDT": -14.89,
+      "AAVEUSDT": -14.27,
+      "ENAUSDT": -9.65,
+      "MANAUSDT": -8.78,
+      "ARBUSDT": -6.44,
+      "ZROUSDT": -6.2,
+      "UNIUSDT": -4.87,
+      "FETUSDT": -4.79,
+      "APTUSDT": -4.37,
+      "ENJUSDT": -3.97,
+      "MOVRUSDT": -3.13,
+      "SANDUSDT": -2.87,
+      "ARKUSDT": -2.84,
+      "FILUSDT": -2.73,
+      "ONDOUSDT": -2.65,
+      "INJUSDT": -2.39,
+      "SUPERUSDT": -1.07,
+      "ETCUSDT": 0.03,
+      "LTCUSDT": 0.21,
+      "DOTUSDT": 0.77,
+      "1000PEPEUSDT": 0.9,
+      "ONEUSDT": 2.63,
+      "WLDUSDT": 3.02,
+      "TAOUSDT": 3.33,
+      "SUIUSDT": 3.74,
+      "GALAUSDT": 4.14,
+      "NEARUSDT": 4.28,
+      "STRKUSDT": 4.89,
+      "ZECUSDT": 5.32,
+      "QNTUSDT": 7.62,
+      "XLMUSDT": 8.27
+     },
+     "exbest_meanR": -0.0845,
+     "fees_R": 0.0678,
+     "fund_R": 0.0089,
+     "gross_meanR": 0.0077,
+     "risk_usd_max": 8.0,
+     "risk_usd_median": 7.9914,
+     "why": {
+      "stop": 344,
+      "time": 302,
+      "target": 32
+     },
+     "order": 0,
+     "skips": 0
+    },
+    "across_orders": {
+     "n": {
+      "median": 682.0,
+      "p10": 675.0,
+      "p90": 687.1,
+      "min": 672.0,
+      "max": 689.0
+     },
+     "closes_per_week": {
+      "median": 3.183,
+      "p10": 3.15,
+      "p90": 3.2065,
+      "min": 3.136,
+      "max": 3.216
+     },
+     "meanR": {
+      "median": -0.068,
+      "p10": -0.0871,
+      "p90": -0.0405,
+      "min": -0.1017,
+      "max": -0.013
+     },
+     "early_meanR": {
+      "median": -0.1207,
+      "p10": -0.1405,
+      "p90": -0.0964,
+      "min": -0.1664,
+      "max": -0.0619
+     },
+     "later_meanR": {
+      "median": 0.0039,
+      "p10": -0.0286,
+      "p90": 0.035,
+      "min": -0.0575,
+      "max": 0.0859
+     },
+     "exbest_meanR": {
+      "median": -0.0864,
+      "p10": -0.1058,
+      "p90": -0.0601,
+      "min": -0.121,
+      "max": -0.034
+     },
+     "closedR_maxdd": {
+      "median": 74.895,
+      "p10": 64.889,
+      "p90": 85.494,
+      "min": 57.26,
+      "max": 92.38
+     },
+     "gross_meanR": {
+      "median": 0.0092,
+      "p10": -0.0102,
+      "p90": 0.0365,
+      "min": -0.0261,
+      "max": 0.0652
+     }
+    },
+    "share_orders_meanR_pos": 0.0
+   },
+   "23bp": {
+    "order0": {
+     "n": 678,
+     "closes_per_week": 3.164,
+     "meanR": -0.1051,
+     "sumR": -71.28,
+     "win": 0.364,
+     "early_n": 388,
+     "later_n": 290,
+     "early_meanR": -0.1576,
+     "later_meanR": -0.035,
+     "closedR_maxdd": 86.76,
+     "max_underwater_trades": 677,
+     "sumR_by_coin": {
+      "BCHUSDT": -16.88,
+      "AAVEUSDT": -16.7,
+      "ENAUSDT": -10.08,
+      "MANAUSDT": -9.41,
+      "ARBUSDT": -7.14,
+      "ZROUSDT": -6.51,
+      "UNIUSDT": -6.24,
+      "APTUSDT": -5.5,
+      "FETUSDT": -5.47,
+      "ENJUSDT": -4.57,
+      "INJUSDT": -4.03,
+      "FILUSDT": -3.4,
+      "MOVRUSDT": -3.2,
+      "SANDUSDT": -3.07,
+      "ARKUSDT": -3.05,
+      "ONDOUSDT": -3.04,
+      "SUPERUSDT": -1.35,
+      "LTCUSDT": -1.21,
+      "ETCUSDT": -0.98,
+      "DOTUSDT": -0.38,
+      "1000PEPEUSDT": -0.2,
+      "ONEUSDT": 2.27,
+      "WLDUSDT": 2.42,
+      "TAOUSDT": 2.71,
+      "SUIUSDT": 3.11,
+      "NEARUSDT": 3.63,
+      "GALAUSDT": 3.96,
+      "ZECUSDT": 4.16,
+      "STRKUSDT": 4.57,
+      "XLMUSDT": 7.1,
+      "QNTUSDT": 7.21
+     },
+     "exbest_meanR": -0.1179,
+     "fees_R": 0.104,
+     "fund_R": 0.0089,
+     "gross_meanR": 0.0077,
+     "risk_usd_max": 8.0,
+     "risk_usd_median": 7.9914,
+     "why": {
+      "stop": 344,
+      "time": 302,
+      "target": 32
+     },
+     "order": 0,
+     "skips": 0
+    },
+    "across_orders": {
+     "n": {
+      "median": 682.0,
+      "p10": 675.0,
+      "p90": 687.1,
+      "min": 672.0,
+      "max": 689.0
+     },
+     "closes_per_week": {
+      "median": 3.183,
+      "p10": 3.15,
+      "p90": 3.2065,
+      "min": 3.136,
+      "max": 3.216
+     },
+     "meanR": {
+      "median": -0.1045,
+      "p10": -0.1231,
+      "p90": -0.0768,
+      "min": -0.1375,
+      "max": -0.0499
+     },
+     "early_meanR": {
+      "median": -0.1578,
+      "p10": -0.1779,
+      "p90": -0.1335,
+      "min": -0.2035,
+      "max": -0.0991
+     },
+     "later_meanR": {
+      "median": -0.0312,
+      "p10": -0.0641,
+      "p90": -0.0009,
+      "min": -0.0933,
+      "max": 0.0499
+     },
+     "exbest_meanR": {
+      "median": -0.1229,
+      "p10": -0.1414,
+      "p90": -0.0966,
+      "min": -0.1564,
+      "max": -0.0705
+     },
+     "closedR_maxdd": {
+      "median": 92.59,
+      "p10": 83.575,
+      "p90": 104.409,
+      "min": 68.76,
+      "max": 110.74
+     },
+     "gross_meanR": {
+      "median": 0.0092,
+      "p10": -0.0102,
+      "p90": 0.0365,
+      "min": -0.0261,
+      "max": 0.0652
+     }
+    },
+    "share_orders_meanR_pos": 0.0
+   }
+  },
+  "union40": {
+   "7bp": {
+    "order0": {
+     "n": 718,
+     "closes_per_week": 3.351,
+     "meanR": 0.0623,
+     "sumR": 44.71,
+     "win": 0.412,
+     "early_n": 419,
+     "later_n": 299,
+     "early_meanR": 0.0331,
+     "later_meanR": 0.1031,
+     "closedR_maxdd": 41.53,
+     "max_underwater_trades": 624,
+     "sumR_by_coin": {
+      "BCHUSDT": -8.44,
+      "ARBUSDT": -7.36,
+      "MANAUSDT": -6.53,
+      "ENAUSDT": -6.11,
+      "INJUSDT": -5.59,
+      "ARKUSDT": -5.35,
+      "UNIUSDT": -4.48,
+      "ZROUSDT": -3.82,
+      "SUPERUSDT": -3.47,
+      "GALAUSDT": -3.28,
+      "BNBUSDT": -3.25,
+      "FETUSDT": -3.01,
+      "DOTUSDT": -2.58,
+      "MOVRUSDT": -2.05,
+      "SANDUSDT": -0.54,
+      "ENJUSDT": -0.4,
+      "QNTUSDT": 0.57,
+      "XRPUSDT": 0.6,
+      "ONDOUSDT": 0.84,
+      "ETHUSDT": 1.39,
+      "BTCUSDT": 1.44,
+      "XLMUSDT": 1.66,
+      "FILUSDT": 1.87,
+      "DOGEUSDT": 2.9,
+      "ZECUSDT": 3.03,
+      "ETCUSDT": 3.36,
+      "STRKUSDT": 3.42,
+      "WLDUSDT": 3.65,
+      "AAVEUSDT": 3.68,
+      "ONEUSDT": 4.2,
+      "LTCUSDT": 4.52,
+      "TAOUSDT": 4.58,
+      "1000PEPEUSDT": 5.49,
+      "SUIUSDT": 5.74,
+      "ADAUSDT": 6.94,
+      "SOLUSDT": 6.95,
+      "NEARUSDT": 7.1,
+      "APTUSDT": 10.11,
+      "LINKUSDT": 11.82,
+      "AVAXUSDT": 15.11
+     },
+     "exbest_meanR": 0.0421,
+     "fees_R": 0.0384,
+     "fund_R": 0.0111,
+     "gross_meanR": 0.1117,
+     "risk_usd_max": 8.0,
+     "risk_usd_median": 7.9904,
+     "why": {
+      "stop": 344,
+      "time": 334,
+      "target": 40
+     },
+     "order": 0,
+     "skips": 0
+    },
+    "across_orders": {
+     "n": {
+      "median": 718.5,
+      "p10": 715.0,
+      "p90": 726.2,
+      "min": 711.0,
+      "max": 729.0
+     },
+     "closes_per_week": {
+      "median": 3.3535,
+      "p10": 3.337,
+      "p90": 3.389,
+      "min": 3.318,
+      "max": 3.402
+     },
+     "meanR": {
+      "median": 0.043,
+      "p10": 0.0198,
+      "p90": 0.0597,
+      "min": 0.0015,
+      "max": 0.0719
+     },
+     "early_meanR": {
+      "median": -0.018,
+      "p10": -0.0467,
+      "p90": 0.0188,
+      "min": -0.0609,
+      "max": 0.0331
+     },
+     "later_meanR": {
+      "median": 0.1181,
+      "p10": 0.0963,
+      "p90": 0.1522,
+      "min": 0.0757,
+      "max": 0.1638
+     },
+     "exbest_meanR": {
+      "median": 0.0215,
+      "p10": -0.0048,
+      "p90": 0.038,
+      "min": -0.0143,
+      "max": 0.0495
+     },
+     "closedR_maxdd": {
+      "median": 45.09,
+      "p10": 36.631,
+      "p90": 51.933,
+      "min": 33.51,
+      "max": 60.92
+     },
+     "gross_meanR": {
+      "median": 0.091,
+      "p10": 0.0674,
+      "p90": 0.1072,
+      "min": 0.0503,
+      "max": 0.1204
+     }
+    },
+    "share_orders_meanR_pos": 1.0
+   },
+   "15bp": {
+    "order0": {
+     "n": 718,
+     "closes_per_week": 3.351,
+     "meanR": 0.0184,
+     "sumR": 13.24,
+     "win": 0.405,
+     "early_n": 419,
+     "later_n": 299,
+     "early_meanR": -0.0103,
+     "later_meanR": 0.0587,
+     "closedR_maxdd": 52.97,
+     "max_underwater_trades": 650,
+     "sumR_by_coin": {
+      "BCHUSDT": -9.82,
+      "ARBUSDT": -7.8,
+      "MANAUSDT": -6.9,
+      "INJUSDT": -6.63,
+      "ENAUSDT": -6.44,
+      "BNBUSDT": -6.39,
+      "UNIUSDT": -5.56,
+      "ARKUSDT": -5.54,
+      "ZROUSDT": -4.04,
+      "SUPERUSDT": -3.67,
+      "FETUSDT": -3.6,
+      "GALAUSDT": -3.42,
+      "BTCUSDT": -3.15,
+      "DOTUSDT": -3.03,
+      "MOVRUSDT": -2.1,
+      "SANDUSDT": -0.75,
+      "ENJUSDT": -0.63,
+      "XRPUSDT": -0.25,
+      "QNTUSDT": 0.3,
+      "ONDOUSDT": 0.49,
+      "ETHUSDT": 0.5,
+      "XLMUSDT": 0.76,
+      "FILUSDT": 1.48,
+      "AAVEUSDT": 1.81,
+      "DOGEUSDT": 1.93,
+      "ZECUSDT": 2.24,
+      "ETCUSDT": 2.89,
+      "STRKUSDT": 3.12,
+      "LTCUSDT": 3.17,
+      "WLDUSDT": 3.33,
+      "ONEUSDT": 4.07,
+      "TAOUSDT": 4.17,
+      "1000PEPEUSDT": 4.46,
+      "SUIUSDT": 5.16,
+      "ADAUSDT": 5.88,
+      "SOLUSDT": 6.19,
+      "NEARUSDT": 6.67,
+      "APTUSDT": 9.28,
+      "LINKUSDT": 10.64,
+      "AVAXUSDT": 14.44
+     },
+     "exbest_meanR": -0.0017,
+     "fees_R": 0.0822,
+     "fund_R": 0.0111,
+     "gross_meanR": 0.1117,
+     "risk_usd_max": 8.0,
+     "risk_usd_median": 7.9904,
+     "why": {
+      "stop": 344,
+      "time": 334,
+      "target": 40
+     },
+     "order": 0,
+     "skips": 0
+    },
+    "across_orders": {
+     "n": {
+      "median": 718.5,
+      "p10": 715.0,
+      "p90": 726.2,
+      "min": 711.0,
+      "max": 729.0
+     },
+     "closes_per_week": {
+      "median": 3.3535,
+      "p10": 3.337,
+      "p90": 3.389,
+      "min": 3.318,
+      "max": 3.402
+     },
+     "meanR": {
+      "median": 0.0004,
+      "p10": -0.0226,
+      "p90": 0.0177,
+      "min": -0.0418,
+      "max": 0.0288
+     },
+     "early_meanR": {
+      "median": -0.0612,
+      "p10": -0.0893,
+      "p90": -0.026,
+      "min": -0.1059,
+      "max": -0.0103
+     },
+     "later_meanR": {
+      "median": 0.0769,
+      "p10": 0.0547,
+      "p90": 0.1087,
+      "min": 0.0338,
+      "max": 0.1222
+     },
+     "exbest_meanR": {
+      "median": -0.0212,
+      "p10": -0.0481,
+      "p90": -0.0039,
+      "min": -0.0571,
+      "max": 0.006
+     },
+     "closedR_maxdd": {
+      "median": 59.14,
+      "p10": 48.759,
+      "p90": 69.673,
+      "min": 42.56,
+      "max": 77.64
+     },
+     "gross_meanR": {
+      "median": 0.091,
+      "p10": 0.0674,
+      "p90": 0.1072,
+      "min": 0.0503,
+      "max": 0.1204
+     }
+    },
+    "share_orders_meanR_pos": 0.5
+   },
+   "23bp": {
+    "order0": {
+     "n": 718,
+     "closes_per_week": 3.351,
+     "meanR": -0.0254,
+     "sumR": -18.23,
+     "win": 0.393,
+     "early_n": 419,
+     "later_n": 299,
+     "early_meanR": -0.0537,
+     "later_meanR": 0.0143,
+     "closedR_maxdd": 74.69,
+     "max_underwater_trades": 650,
+     "sumR_by_coin": {
+      "BCHUSDT": -11.19,
+      "BNBUSDT": -9.54,
+      "ARBUSDT": -8.25,
+      "BTCUSDT": -7.73,
+      "INJUSDT": -7.66,
+      "MANAUSDT": -7.26,
+      "ENAUSDT": -6.76,
+      "UNIUSDT": -6.64,
+      "ARKUSDT": -5.73,
+      "ZROUSDT": -4.27,
+      "FETUSDT": -4.2,
+      "SUPERUSDT": -3.86,
+      "GALAUSDT": -3.56,
+      "DOTUSDT": -3.48,
+      "MOVRUSDT": -2.15,
+      "XRPUSDT": -1.1,
+      "SANDUSDT": -0.96,
+      "ENJUSDT": -0.86,
+      "ETHUSDT": -0.4,
+      "XLMUSDT": -0.14,
+      "AAVEUSDT": -0.07,
+      "QNTUSDT": 0.03,
+      "ONDOUSDT": 0.13,
+      "DOGEUSDT": 0.95,
+      "FILUSDT": 1.09,
+      "ZECUSDT": 1.46,
+      "LTCUSDT": 1.82,
+      "ETCUSDT": 2.43,
+      "STRKUSDT": 2.81,
+      "WLDUSDT": 3.01,
+      "1000PEPEUSDT": 3.43,
+      "TAOUSDT": 3.76,
+      "ONEUSDT": 3.93,
+      "SUIUSDT": 4.58,
+      "ADAUSDT": 4.81,
+      "SOLUSDT": 5.42,
+      "NEARUSDT": 6.25,
+      "APTUSDT": 8.45,
+      "LINKUSDT": 9.45,
+      "AVAXUSDT": 13.77
+     },
+     "exbest_meanR": -0.0455,
+     "fees_R": 0.126,
+     "fund_R": 0.0111,
+     "gross_meanR": 0.1117,
+     "risk_usd_max": 8.0,
+     "risk_usd_median": 7.9904,
+     "why": {
+      "stop": 344,
+      "time": 334,
+      "target": 40
+     },
+     "order": 0,
+     "skips": 0
+    },
+    "across_orders": {
+     "n": {
+      "median": 718.5,
+      "p10": 715.0,
+      "p90": 726.2,
+      "min": 711.0,
+      "max": 729.0
+     },
+     "closes_per_week": {
+      "median": 3.3535,
+      "p10": 3.337,
+      "p90": 3.389,
+      "min": 3.318,
+      "max": 3.402
+     },
+     "meanR": {
+      "median": -0.0434,
+      "p10": -0.0656,
+      "p90": -0.0253,
+      "min": -0.0852,
+      "max": -0.0143
+     },
+     "early_meanR": {
+      "median": -0.1053,
+      "p10": -0.1319,
+      "p90": -0.0691,
+      "min": -0.151,
+      "max": -0.0537
+     },
+     "later_meanR": {
+      "median": 0.0344,
+      "p10": 0.0119,
+      "p90": 0.0652,
+      "min": -0.008,
+      "max": 0.0807
+     },
+     "exbest_meanR": {
+      "median": -0.065,
+      "p10": -0.0913,
+      "p90": -0.0458,
+      "min": -0.1006,
+      "max": -0.0372
+     },
+     "closedR_maxdd": {
+      "median": 77.645,
+      "p10": 66.887,
+      "p90": 93.134,
+      "min": 60.43,
+      "max": 105.57
+     },
+     "gross_meanR": {
+      "median": 0.091,
+      "p10": 0.0674,
+      "p90": 0.1072,
+      "min": 0.0503,
+      "max": 0.1204
+     }
+    },
+    "share_orders_meanR_pos": 0.0
+   }
+  }
+ }
+}

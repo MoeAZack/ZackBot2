@@ -1,0 +1,51 @@
+{
+ "id": "RBR-WIDE",
+ "status": "FROZEN before any RBR-WIDE signal count or outcome",
+ "approval": "Codex/moe GO 2026-11-12 18:02 Cairo (thread message), Codex #219 contract comment",
+ "nature": "cross-symbol transfer test of the unchanged rank_breadth_reversal_4h SHORT cell; not a fresh temporal holdout; not a new strategy; research only; no engine/runtime/account change",
+ "prior_context_not_evidence": {
+  "stagea": "docs/research/rank_breadth_reversal_4h_stagea_result.md: short 76 closes, 8 symbols, +7.33R, +0.096R mean, PF 1.239, 7.96R max DD; rejected (BTC-below regime 9 closes < 15)",
+  "stagea_head": "646ecc79612351d090fe36c02b6e4b2fdba2753d",
+  "stagea_packet_short_sha256": "ff5cc80468610804236a06ac57cbaa737936509ba04d73c41335ede65bf0c28f (C:/Dev/ZackBot_cowork_data/rbr4h_stagea/)",
+  "stagea_window": "2024-10-14..2025-04-01, static CORE-20, backtest.run, actual funding",
+  "later_identities": "contracts/rank_breadth_reversal_4h_short_causal_v3 and _v4 (PIT CORE-20 sparse-causal identities) exist in the ledger; this test does not use or replace them"
+ },
+ "rule": {
+  "source": "research/rbrwide/strategies_646ecc79.py = strategies.py at 646ecc79 (the RBR region is unchanged on master)",
+  "source_sha256": "ddaee353f6047c915f966cd0ebeb748e75569c039f752f479d6acdd1b96881bf",
+  "candidate": "rank_breadth_reversal_4h", "side": "short only",
+  "params": {"rank_frac": 0.20, "breadth_low": 0.35, "breadth_high": 0.65, "rsi_low": 30.0, "rsi_high": 70.0, "volume_floor": 0.80, "cost_multiple": 5.0},
+  "mgmt": {"stop_atr": 1.5, "tp1_r": 1.0, "tp1_frac": 0.5, "be_r": 1.0, "tp_r": 2.0, "max_bars": 18},
+  "signal_exit": "frozen sx: rank7 >= ceil(n/2) or breadth7 < 0.45 (unranked = 999 -> exit), at each 4h close after intrabar events, before the time cap (backtest.run step 6)",
+  "time_cap": "backtest.run 'i - i_entry >= 18': close of the 4h bar entry+18 = entry + 76 elapsed hours",
+  "cross_section": "rank7/rank7_n/breadth7 over the ARM's own coins with a finite 42-bar return at that 4h time; return = close(t)/close(t-168h)-1 on the 4h grid (no compression); ranks descending, pandas average ties (frozen build_context lines)",
+  "not_modelled": "engine-only reentry_lock (not part of backtest.run used for the Stage-A evidence)",
+  "tuning": "none"
+ },
+ "arms": {
+  "complement23": "PRIMARY transfer: canonical 40 minus static CORE-20 = 23 coins never in any RBR evaluation universe; ranks among these 23",
+  "core17_control": "static CORE-20 intersected with canonical 40 (17 coins); explicit exclusions HYPEUSDT, LSKUSDT, PUMPUSDT (not in the canonical set); ranks among these 17; not the exact Stage-A universe/window/costs; also reports the 2024-10-14..2025-04-01 subset",
+  "union40": "diagnostic only: all 40, ranks among 40"
+ },
+ "data": {"dir": "C:/Dev/ZackBot_research_cache/h5_wide_d01_20261112/clean", "manifest_sha256": "99af9bfb4a9b29ede80f8f3ff54541912d74d03b3b93d984432832c934bdfa95", "bars": "complete UTC 4h bins from 1h; 4h volume = sum of 1h volume", "fetch": "none"},
+ "window": {"decisions_from": "2022-08-26 06:00 UTC", "decisions_to": "2026-10-04 04:00 UTC", "split": "2025-01-01 early/later, both consumedDEV"},
+ "execution": {
+  "harness": "research/x2wide/run_x2wide.py at a525ed69 (sha256 8251f9b3...), imported unchanged; RBR run_lot = its run_lot plus the frozen signal exit and the 76 h cap",
+  "risk_usd": 8.0, "max_positions_global": 1, "tie_orders": 40,
+  "costs": "7/15/23 bp per side (2 bp slippage + 5/13/21 bp fee) + funding stress proxy 1 bp/8h on held 1h closes incl. exit bar, charged as a cost on shorts too",
+  "paths": {"causal": "1h management bars", "worst": "4h management bars, stop-first"},
+  "liquidity": "D01 point-in-time rule per coin at the decision's last 1h bar",
+  "exchange_filters": "current testnet snapshot",
+  "daily_halt": "Cairo-day net cash <= -$120",
+  "terminal_open": "reserves the slot, marked, excluded from closes"
+ },
+ "gates_for_paper_review": {
+  "arm": "complement23 (primary)",
+  "evaluated_on": "causal path, 40-order medians unless stated",
+  "closes_total": ">= 100", "closes_each_period": ">= 30 (order 0)",
+  "meanR15_early": "> 0", "meanR15_later": "> 0", "meanR23_overall": "> 0", "exbest_meanR15": "> 0",
+  "p10_meanR15_across_orders": "> 0", "worst_path_meanR15": "> 0",
+  "drawdown": "reported, not a veto", "if_undersampled_or_fragile": "forward-only; never weaken a gate"
+ },
+ "limitations": ["funding stress proxy, not native signed funding (Stage-A used actual funding)", "hourly marks", "current exchange filters", "no tick rounding", "fixed survivor universe; static CORE-20 split, not PIT"]
+}

@@ -1,0 +1,3 @@
+{"id": "IVS-1H", "ruling": "P5_IVS_FROZEN_RULING.md @82f70688", "freeze_head": "9e80432f", "freeze_sha256": "ef2c4cc17805a539984430885434029addab828e09f1178d7481c745d7e85673",
+ "verdict": "FREQUENCY_FAIL", "economics": "NOT_EVALUATED", "stage_b": {"distinct_fill_times": 153, "calendar_weeks": 102.3214, "upper_bound_per_week": 1.4953, "gate": ">=3/calendar week and >=100"},
+ "retained": "one failed trial; no threshold/side/coin/universe/filter change, no 40-order P&L run, no ETH substitution", "status": "research_only, default OFF, consumedDEV"}

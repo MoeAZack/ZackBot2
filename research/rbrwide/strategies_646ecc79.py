@@ -1,0 +1,847 @@
+"""ZackBot strategy library — shared by the backtester and the live engine.
+
+Every strategy = a signal function + a trade-management recipe.
+Signal functions return boolean arrays on CLOSED candles:
+    le / se : open long / short on the next candle
+    lx / sx : close long / short at this candle's close (signal exit)
+Management keys (all optional):
+    stop_atr      initial stop distance in ATR(14)
+    trail_atr     chandelier trailing stop: highest-high - k*ATR (long) once in profit
+    be_r          move stop to breakeven after price moved this many R
+    tp1_r, tp1_frac   take partial profit (fraction of position) at tp1_r R
+    tp_r          take full profit at this many R
+    max_bars      time exit
+    pyramid       dict(n=adds, step_r=R between adds, frac=size of each add vs first unit)
+    dca           dict(n=safety orders, step_atr, scale, tp_atr, stop_atr) — averaging down, basket TP/stop
+"""
+from decimal import Decimal
+from fractions import Fraction
+
+import numpy as np
+import pandas as pd
+
+
+# ------------------------------------------------------------------ indicators
+def ema(x, n):
+    return x.ewm(span=n, adjust=False).mean()
+
+
+def rsi(c, n):
+    d = c.diff()
+    up = d.clip(lower=0).ewm(alpha=1 / n, adjust=False).mean()
+    dn = (-d.clip(upper=0)).ewm(alpha=1 / n, adjust=False).mean()
+    return 100 - 100 / (1 + up / dn.replace(0, np.nan))
+
+
+def supertrend_dir(h, l, c, n=10, mult=3.0):
+    tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
+    a = tr.ewm(alpha=1 / n, adjust=False).mean()
+    hl2 = (h + l) / 2
+    ub, lb, cv = (hl2 + mult * a).values, (hl2 - mult * a).values, c.values
+    fu, fl, d = ub.copy(), lb.copy(), np.ones(len(c))
+    for i in range(1, len(c)):
+        fu[i] = ub[i] if (ub[i] < fu[i - 1] or cv[i - 1] > fu[i - 1]) else fu[i - 1]
+        fl[i] = lb[i] if (lb[i] > fl[i - 1] or cv[i - 1] < fl[i - 1]) else fl[i - 1]
+        d[i] = 1 if cv[i] > fu[i - 1] else (-1 if cv[i] < fl[i - 1] else d[i - 1])
+    return pd.Series(d, index=c.index)
+
+
+def indicators(df):
+    """Adds every column any strategy needs. df: t,o,h,l,c,v (closed candles)."""
+    if 'atr' in df: return df
+    df = df.copy()
+    c, h, l, v = df.c, df.h, df.l, df.v
+    for n in (5, 9, 20, 21, 50, 55, 100, 200):
+        df[f'e{n}'] = ema(c, n)
+    tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
+    df['atr'] = tr.ewm(alpha=1 / 14, adjust=False).mean()
+    for n in (10, 20, 55, 100):
+        df[f'hh{n}'] = h.rolling(n).max().shift()
+        df[f'll{n}'] = l.rolling(n).min().shift()
+    df['st'] = supertrend_dir(h, l, c)
+    df['rsi14'] = rsi(c, 14); df['rsi2'] = rsi(c, 2)
+    m, s = c.rolling(20).mean(), c.rolling(20).std()
+    df['bbm'], df['bbu'], df['bbl'] = m, m + 2 * s, m - 2 * s
+    df['bbw_pct'] = (4 * s / m).rolling(120).rank(pct=True)
+    df['ret42'] = c / c.shift(42) - 1
+    df['ret180'] = c / c.shift(180) - 1
+    df['vol_ratio'] = v / v.rolling(42).mean()
+    up, dn = h.diff(), -l.diff()
+    pdm = pd.Series(np.where((up > dn) & (up > 0), up, 0.0), df.index).ewm(alpha=1 / 14, adjust=False).mean()
+    ndm = pd.Series(np.where((dn > up) & (dn > 0), dn, 0.0), df.index).ewm(alpha=1 / 14, adjust=False).mean()
+    pdi, ndi = 100 * pdm / df.atr, 100 * ndm / df.atr
+    df['adx'] = (100 * (pdi - ndi).abs() / (pdi + ndi)).ewm(alpha=1 / 14, adjust=False).mean()
+    return df
+
+
+def X(s):
+    return s.fillna(False).astype(bool)
+
+
+def xup(a, b):
+    return (a > b) & (a.shift() <= b.shift())
+
+
+NEVER = None   # placeholder meaning "no signal"
+
+
+# ------------------------------------------------------------------ signal functions
+# ctx: dict(btc=<btc indicator df aligned>, rank=<cross-sectional momentum rank Series for this symbol>)
+def sig_ema_st(d, p, ctx):
+    trend_l, trend_s = d.st > 0, d.st < 0
+    return dict(le=xup(d.e20, d.e50) & (d.c > d.e200) & trend_l, se=xup(d.e50, d.e20) & (d.c < d.e200) & trend_s,
+                lx=(d.e20 < d.e50) | ~trend_l, sx=(d.e20 > d.e50) | ~trend_s)
+
+
+def sig_ema_mom(d, p, ctx):
+    ml, ms = (d.ret42 > 0) & (d.ret180 > 0), (d.ret42 < 0) & (d.ret180 < 0)
+    return dict(le=xup(d.e20, d.e50) & (d.c > d.e200) & ml, se=xup(d.e50, d.e20) & (d.c < d.e200) & ms,
+                lx=(d.e20 < d.e50) | ~ml, sx=(d.e20 > d.e50) | ~ms)
+
+
+def sig_donchian_ens(d, p, ctx):
+    """Ensemble of 20/55/100 breakouts (Concretum-style): enter when 2 of 3 channels agree."""
+    ups = (d.c > d.hh20).astype(int) + (d.c > d.hh55).astype(int) + (d.c > d.hh100).astype(int)
+    dns = (d.c < d.ll20).astype(int) + (d.c < d.ll55).astype(int) + (d.c < d.ll100).astype(int)
+    return dict(le=(ups >= 2) & (ups.shift() < 2), se=(dns >= 2) & (dns.shift() < 2),
+                lx=d.c < d.ll20, sx=d.c > d.hh20)
+
+
+def sig_breakout_pyramid(d, p, ctx):
+    return dict(le=(d.c > d.hh20) & (d.e50 > d.e200), se=(d.c < d.ll20) & (d.e50 < d.e200),
+                lx=d.c < -1, sx=d.c < -1)
+
+
+def sig_squeeze(d, p, ctx):
+    sq = d.bbw_pct.shift() < 0.2
+    return dict(le=sq & (d.c > d.bbu) & (d.c > d.e200), se=sq & (d.c < d.bbl) & (d.c < d.e200),
+                lx=d.c < -1, sx=d.c < -1)
+
+
+def sig_trend_pullback_rsi(d, p, ctx):
+    """High win-rate style: buy the dip in an uptrend when RSI turns back up from oversold."""
+    up, dn = (d.e50 > d.e200) & (d.c > d.e200), (d.e50 < d.e200) & (d.c < d.e200)
+    return dict(le=up & xup(d.rsi14, d.rsi14 * 0 + 40), se=dn & xup(d.rsi14 * 0 + 60, d.rsi14),
+                lx=d.c < -1, sx=d.c < -1)
+
+
+def sig_dca_dip(d, p, ctx):
+    """Bot-style DCA: buy a stretched dip below EMA20 in an uptrend, average down with safety orders."""
+    up = (d.e50 > d.e200)
+    stretch = (d.e20 - d.c) / d.atr
+    return dict(le=up & (stretch > 1.5) & (stretch.shift() <= 1.5), se=d.c < -1, lx=d.c < -1, sx=d.c < -1)
+
+
+def sig_bear_breakdown(d, p, ctx):
+    """Short-only: BTC in a downtrend and the coin breaks its 20-candle low."""
+    btc_down = ctx['btc_down']
+    return dict(le=d.c < -1, se=btc_down & (d.c < d.ll20) & (d.e20 < d.e50),
+                lx=d.c < -1, sx=(d.c > d.hh10) | ~btc_down)
+
+
+def sig_rotation(d, p, ctx):
+    """Momentum rotation: hold coins ranked in the top K by 30-day risk-adjusted return (long),
+    optionally short the bottom K. Re-checked every candle; entries only on rank changes."""
+    k = p.get('k', 5)
+    r = ctx['rank']               # 1 = strongest
+    nb = ctx['n_symbols']
+    in_top = (r <= k) & (d.c > d.e50)
+    in_bot = (r > nb - k) & (d.c < d.e50) & ctx['btc_down']
+    return dict(le=in_top & ~in_top.shift(fill_value=False), se=(in_bot & ~in_bot.shift(fill_value=False)) if p.get('shorts') else d.c < -1,
+                lx=(r > k + 3) | (d.c < d.e50), sx=(r <= nb - k - 3) | (d.c > d.e50))
+
+
+def sig_hot_coin(d, p, ctx):
+    """Aggressive momentum chase like top lead traders: coin in the top-3 7-day movers, volume surge, breakout."""
+    hot = ctx['rank7'] <= 3
+    return dict(le=hot & (d.vol_ratio > 1.5) & (d.c > d.hh20) & (d.c > d.e50), se=d.c < -1,
+                lx=d.c < d.e20, sx=d.c < -1)
+
+
+
+# ------------------------------------------------------------------ sprint families (EXPERIMENTAL / TESTNET-ONLY, frozen v0)
+# Four deterministic long+short entry families for the 48h testnet sprint. Each is one simple frozen rule on CLOSED
+# candles, symmetric by construction (a price reflection maps every long decision onto the short one), and never raises
+# a long and a short entry on the same candle. An opposite entry always implies the held side's exit signal, so a
+# reversal closes first and the engine's one-lot-per-coin-per-slot rule does the rest. No tuning; no profitability claim.
+EXP_TAG = 'EXPERIMENTAL / testnet-only'
+
+
+def _one_side(s):
+    """Never both entries on one candle (an ambiguous candle takes neither)."""
+    le, se = X(s['le']), X(s['se'])
+    return dict(s, le=le & ~se, se=se & ~le)
+
+
+def sig_exp_trend(d, p, ctx):
+    """Trend v0 = trend_ema_mom.v1 (EMA20/50 cross on the EMA200 side, 7d+30d momentum agreeing) and its exact mirror."""
+    return _one_side(sig_ema_mom(d, p, ctx))
+
+
+def sig_exp_range(d, p, ctx):
+    """Range / mean reversion v0 = RANGE-EXIT-01 v0 on closed candles (frozen; 4h intended).
+    VWAP42 = sum(typical price * volume) / sum(volume) over 42 candles (the engine's candles carry no quote volume, so
+    typical price * volume stands in for it), ATR = simple 14-candle mean of the true range, z = (close - VWAP) / ATR, k = 2.
+    Range gate: |VWAP_i - VWAP_(i-6)| <= 1.0 ATR. Long when z crosses back up through -k below VWAP inside the gate; short
+    is the exact mirror. Exit at the mean (close back at VWAP) or when the range gate breaks; stop / time cap in mgmt."""
+    k = float(p.get('k', 2.0))
+    h, l, c, v = d.h, d.l, d.c, d.v
+    tr = pd.concat([h - l, (h - c.shift()).abs(), (l - c.shift()).abs()], axis=1).max(axis=1)
+    atr = tr.rolling(14).mean()
+    vw = (((h + l + c) / 3) * v).rolling(42).sum() / v.rolling(42).sum()
+    z = (c - vw) / atr
+    gate = (vw - vw.shift(6)).abs() <= 1.0 * atr
+    le = gate & (z.shift() <= -k) & (z > -k) & (c < vw)
+    se = gate & (z.shift() >= k) & (z < k) & (c > vw)
+    ok = vw.notna() & atr.notna()
+    return _one_side(dict(le=le, se=se, lx=ok & ((c >= vw) | ~gate), sx=ok & ((c <= vw) | ~gate)))
+
+
+def sig_exp_breakout(d, p, ctx):
+    """Breakout v0 = symmetric 20-candle Donchian (the donchian_ens / bear_breakdown channel): long on the first close above
+    the prior 20-candle high, short on the first close below the prior 20-candle low; exit on a close through the opposite
+    10-candle channel (reversal / failed breakout)."""
+    up, dn = X(d.c > d.hh20), X(d.c < d.ll20)
+    return _one_side(dict(le=up & ~up.shift(fill_value=False), se=dn & ~dn.shift(fill_value=False),
+                          lx=d.c < d.ll10, sx=d.c > d.hh10))
+
+
+def sig_exp_scalp(d, p, ctx):
+    """Scalp v0 (15m intended) = EMA-pullback continuation: in an EMA20 > EMA50 trend, the candle dips to EMA20 (low <= EMA20)
+    and closes back above it after a close above it -> long; exact mirror for shorts. Exit when the EMA20/50 trend flips."""
+    up, dn = d.e20 > d.e50, d.e20 < d.e50
+    le = up & (d.l <= d.e20) & (d.c > d.e20) & (d.c.shift() > d.e20.shift())
+    se = dn & (d.h >= d.e20) & (d.c < d.e20) & (d.c.shift() < d.e20.shift())
+    return _one_side(dict(le=le, se=se, lx=dn, sx=up))
+
+
+def sig_exp_structure(d, p, ctx):
+    """Session-agnostic structure break v0 (15m).
+
+    A swing is usable only after the candle to its right has closed. Longs require
+    the close to cross the latest confirmed swing high while EMA50 is above
+    EMA200; shorts are the exact mirror. This keeps the first version causal and
+    compatible with the engine's existing single-timeframe contract. A later
+    research revision may replace the EMA regime proxy with native 1h context.
+    """
+    ph = d.h.shift(1).where((d.h.shift(1) > d.h.shift(2)) & (d.h.shift(1) >= d.h))
+    pl = d.l.shift(1).where((d.l.shift(1) < d.l.shift(2)) & (d.l.shift(1) <= d.l))
+    last_hi, last_lo = ph.ffill(), pl.ffill()
+    up, dn = d.e50 > d.e200, d.e50 < d.e200
+    broke_hi = (d.c > last_hi) & (d.c.shift() <= last_hi.shift())
+    broke_lo = (d.c < last_lo) & (d.c.shift() >= last_lo.shift())
+    return _one_side(dict(le=up & broke_hi, se=dn & broke_lo,
+                          lx=(d.c < last_lo) | dn, sx=(d.c > last_hi) | up))
+
+
+# ------------------------------------------------------------------ BREADTH-01 B3: short-only mirrors (EXPERIMENTAL / testnet-only)
+# Codex ruling 6186050896 pt 4. Each is the exact price mirror of an existing long-only strategy (same thresholds, same
+# mgmt, no new parameters, no tuning). Short side only; the long columns never fire.
+def sig_exp_mom_short(d, p, ctx):
+    """Short mirror of hot_coin: a 'cold coin' (bottom-3 7-day mover = mirror of top-3) dumping on a volume surge
+    (vol_ratio > 1.5) through its prior 20-candle low and below EMA50. Exit on a close back above EMA20 (mirror of
+    hot_coin's close below EMA20). Unranked coins (rank7 = 999 fill) are never cold. 'Bottom 3' is among the symbols
+    ranked at that candle (rank7_n), not the full universe, so late listings / gaps don't hide the true bottom-3."""
+    r7 = ctx['rank7']
+    nb = ctx['rank7_n'] if 'rank7_n' in ctx else ctx['n_symbols']
+    cold = (r7 > nb - 3) & (r7 <= nb)
+    never = d.c < -1
+    return _one_side(dict(le=never, se=cold & (d.vol_ratio > 1.5) & (d.c < d.ll20) & (d.c < d.e50),
+                          lx=never, sx=d.c > d.e20))
+
+
+def sig_exp_rip_sell_dca(d, p, ctx):
+    """Short mirror of dca_dip: in a downtrend (EMA50 < EMA200) sell a stretched rip above EMA20 (first close more than
+    1.5 ATR above EMA20); the basket adds safety orders UP and takes profit below (mgmt dca, side-aware)."""
+    dn = (d.e50 < d.e200)
+    stretch = (d.c - d.e20) / d.atr
+    never = d.c < -1
+    return _one_side(dict(le=never, se=dn & (stretch > 1.5) & (stretch.shift() <= 1.5), lx=never, sx=never))
+
+
+# ------------------------------------------------------------------ VWAPREV: REX-01 runtime adapter (EXPERIMENTAL / PAPER)
+# The sixth PAPER family: `range_vwap_rev.v1` X1 (frozen contract RANGE-EXIT-01, tools/research/range_vwap_rev.py) on
+# closed 4h candles. The research decision logic (`indicators` / `entry_x1` / `mean_close` / `invalidated`) is mirrored
+# here in the SAME exact decimal-fraction arithmetic, so the frozen equality boundaries (z == -k, drift == 1 ATR) decide
+# identically; tests/test_vwaprev_runtime.py proves bar-for-bar parity against the research module. The runtime does not
+# import tools/research (not shipped with the app). Fail closed: no quote volume, a hole / non-4h step in the 48-bar
+# decision window, zero volume or ATR <= 0 -> no entry and no indicator exit (stop + time cap still apply).
+VWAPREV = dict(n=42, k=2.0, rg=1.0, rg_lag=6, stop_atr=1.5, cap=30, tf_ms=4 * 3_600_000)
+
+
+def _fr(x):
+    """The research module's `fr`: the exact decimal value of the float's repr."""
+    return Fraction(Decimal(repr(float(x))))
+
+
+def vwaprev_eval(d, n=42, k=2.0, rg=1.0, rg_lag=6, tf_ms=4 * 3_600_000):
+    """Per closed candle i of d (t,o,h,l,c,v,qv): dict of numpy arrays le / se (X1 entries), lx / sx (mean close or range
+    invalidation), atr (TR-SMA14 as float, NaN when undefined), z (float, NaN when undefined). A decision reads exactly
+    n + rg_lag contiguous candles i-n-rg_lag+1..i (research `Cfg.lookback`), keyed on a fixed tf_ms step."""
+    m = len(d)
+    z0 = lambda: np.zeros(m, bool)
+    out = dict(le=z0(), se=z0(), lx=z0(), sx=z0(), atr=np.full(m, np.nan), z=np.full(m, np.nan))
+    if m == 0 or 'qv' not in d:
+        return out
+    look = n + rg_lag
+    t = pd.to_datetime(d['t']).astype('datetime64[ns]').astype('int64').to_numpy() // 1_000_000
+    cols = [np.asarray(d[c], float) for c in ('h', 'l', 'c', 'v', 'qv')]
+    bad = ~np.isfinite(np.vstack(cols)).all(axis=0)
+    brk = np.r_[False, np.diff(t) != tf_ms]                       # candle j does not follow j-1 by exactly one step
+    nbad, nbrk = np.r_[0, np.cumsum(bad)], np.r_[0, np.cumsum(brk)]
+    h, l, c, v, qv = ([None if b else _fr(x) for x, b in zip(col, bad)] for col in cols)
+    pv, pq = [Fraction(0)], [Fraction(0)]
+    for j in range(m):
+        pv.append(pv[-1] + (v[j] or 0)); pq.append(pq[-1] + (qv[j] or 0))
+    ptr = [Fraction(0), Fraction(0)]                               # TR of candle 0 is never used
+    for j in range(1, m):
+        ok = h[j] is not None and c[j - 1] is not None
+        tr = max(h[j] - l[j], abs(h[j] - c[j - 1]), abs(l[j] - c[j - 1])) if ok else Fraction(0)
+        ptr.append(ptr[-1] + tr)
+
+    def vwap(i):                                                   # candles i-n+1..i
+        s = pv[i + 1] - pv[i + 1 - n]
+        return None if s == 0 else (pq[i + 1] - pq[i + 1 - n]) / s
+
+    def atr(i):                                                    # TR-SMA14 of candles i-14..i
+        a = (ptr[i + 1] - ptr[i - 13]) / 14
+        return a if a > 0 else None
+
+    kk, rgk = _fr(k), _fr(rg)
+    for i in range(look - 1, m):
+        lo = i - look + 1
+        if nbad[i + 1] - nbad[lo] or nbrk[i + 1] - nbrk[lo + 1]:
+            continue                                               # hole / bad value / wrong step in the window
+        vw, vw_p, vw_l = vwap(i), vwap(i - 1), vwap(i - rg_lag)
+        a, a_p = atr(i), atr(i - 1)
+        zz = None if vw is None or a is None else (c[i] - vw) / a
+        zp = None if vw_p is None or a_p is None else (c[i - 1] - vw_p) / a_p
+        rgv = None if vw is None or vw_l is None or a is None else abs(vw - vw_l) <= rgk * a
+        if a is not None:
+            out['atr'][i] = float(a)
+        if zz is not None:
+            out['z'][i] = float(zz)
+            out['lx'][i] = c[i] >= vw                              # research mean_close (long)
+            out['sx'][i] = c[i] <= vw
+        if rgv is False:                                           # research invalidated
+            out['lx'][i] = out['sx'][i] = True
+        if zz is not None and zp is not None and rgv is True:      # research entry_x1
+            out['le'][i] = zp <= -kk and zz > -kk and c[i] < vw
+            out['se'][i] = zp >= kk and zz < kk and c[i] > vw
+    return out
+
+
+def sig_exp_vwaprev(d, p, ctx):
+    """VWAPREV = range_vwap_rev.v1 X1 on closed 4h candles: VWAP42 = sum quote volume / sum volume, ATR = TR-SMA14,
+    z = (close - VWAP) / ATR, RG = |VWAP_i - VWAP_(i-6)| <= 1 ATR. Long when z crosses back above -2 below VWAP inside
+    RG; short the exact mirror. Exit at the mean (close at / through VWAP) or on range invalidation; stop 1.5 x the
+    decision candle's TR-SMA14 (returned as `atr`, used by the engine for the stop), 30-candle cap."""
+    r = vwaprev_eval(d, n=int(p.get('n', 42)), k=float(p.get('k', 2.0)), rg=float(p.get('rg', 1.0)))
+    idx = d.index
+    s = _one_side({k_: pd.Series(r[k_], index=idx) for k_ in ('le', 'se', 'lx', 'sx')})
+    s['atr'] = r['atr']
+    return s
+
+
+
+# ------------------------------------------------------------------ SCALP-4: PAPER scalp package (EXPERIMENTAL / PAPER-only)
+# Four simple 15m scalps (the engine's shortest timeframe: engine.TF_SEC has 15m / 1h / 4h; there is no 5m candle path).
+# Each is a frozen rule on CLOSED candles, symmetric by construction (the short rule is the price mirror of the long rule),
+# wrapped in _one_side (an ambiguous candle takes neither side). Constants are documented defaults, NOT optimised; no edge
+# is claimed. Reference ranges / averages exclude the decision candle (shift), so a decision reads only closed candles.
+SCALP_TAG = 'EXPERIMENTAL / PAPER-only scalp'
+SCALP_RT_COST = 2 * (0.0005 + 0.0002)   # round trip as a fraction of price: taker fee + slippage per fill (backtest FEE / SLIP)
+RS = dict(n=32, adx_max=20.0, w_min=2.0, w_max=6.0, edge=0.25, inval_atr=0.5)       # range_scalp
+FB = dict(n=20, w=3, buf_atr=0.1, min_atr=0.5)                                      # failed_breakout_scalp
+MB = dict(n=20, rng_x=2.0, vol_x=2.0, body=0.75, stop_atr=1.5, cost_x=3.0)          # momentum_burst_scalp
+QB = dict(stop_atr=1.0, tp1_r=0.8, tp1_frac=0.7, be_r=0.8, tp_r=2.0, max_bars=12)   # quick_bank_runner management
+
+
+def sig_range_scalp(d, p, ctx):
+    """Confirmed-range edge reversion (15m). Range = high / low of the n candles BEFORE the decision candle; confirmed when
+    ADX < adx_max and the range is w_min..w_max ATR wide. Long: close inside the bottom `edge` of the range (above the
+    range low) on a bullish candle; short: the mirror at the top on a bearish candle. Invalidation: a close more than
+    inval_atr ATR outside its range in the last n candles (this one included) blocks entries and exits an open trade.
+    Target: exit at the range middle."""
+    n = int(p.get('n', RS['n']))
+    hi, lo, a = d.h.rolling(n).max().shift(), d.l.rolling(n).min().shift(), d.atr
+    w, mid = hi - lo, (hi + lo) / 2
+    out_ = X((d.c > hi + RS['inval_atr'] * a) | (d.c < lo - RS['inval_atr'] * a))
+    broken = out_.astype(int).rolling(n, min_periods=1).max() > 0
+    ok = (d.adx < RS['adx_max']) & (w >= RS['w_min'] * a) & (w <= RS['w_max'] * a) & ~broken
+    le = ok & (d.c > lo) & (d.c <= lo + RS['edge'] * w) & (d.c > d.o)
+    se = ok & (d.c < hi) & (d.c >= hi - RS['edge'] * w) & (d.c < d.o)
+    return _one_side(dict(le=le, se=se, lx=(d.c >= mid) | broken, sx=(d.c <= mid) | broken))
+
+
+def sig_failed_breakout_scalp(d, p, ctx):
+    """Failed range break (15m). Reference range = high / low of the n candles ending w + 1 candles before the decision
+    candle. Short: the previous candle closed above the range high, the close w + 1 candles back was still inside (the
+    break is at most w candles old), and this candle closes back inside. Long = the mirror below the range low. The stop
+    sits beyond the break extreme (highest high / lowest low of the last w + 1 candles incl. this one) + buf_atr ATR, at
+    least min_atr ATR away: returned as the signal's `atr` (stop distance, mgmt stop_atr = 1). Exit: a close beyond the
+    range again."""
+    n, w = int(p.get('n', FB['n'])), int(p.get('w', FB['w']))
+    hi, lo = d.h.rolling(n).max().shift(w + 1), d.l.rolling(n).min().shift(w + 1)
+    a, c = d.atr, d.c
+    se = (c.shift() > hi) & (c < hi) & (c > lo) & (c.shift(w + 1) <= hi)
+    le = (c.shift() < lo) & (c > lo) & (c < hi) & (c.shift(w + 1) >= lo)
+    buf, floor = FB['buf_atr'] * a, FB['min_atr'] * a
+    stop_s = np.maximum(d.h.rolling(w + 1).max() - c + buf, floor)
+    stop_l = np.maximum(c - d.l.rolling(w + 1).min() + buf, floor)
+    s = _one_side(dict(le=le, se=se, lx=c < lo, sx=c > hi))
+    dist = np.where(s['se'], stop_s, np.where(s['le'], stop_l, a)).astype(float)
+    s['atr'] = np.where(np.isfinite(dist) & (dist > 0), dist, np.nan)
+    return s
+
+
+def scalp_cost_ok(d, stop_atr=None, cost_x=None):
+    """Liquidity / cost gate: the stop distance (stop_atr x ATR) must be >= cost_x x the round-trip cost (fees + slippage)
+    so a 1R loss is not mostly cost. Boolean Series (False where ATR is undefined)."""
+    k = MB['stop_atr'] if stop_atr is None else stop_atr
+    m = MB['cost_x'] if cost_x is None else cost_x
+    return X(k * d.atr >= m * SCALP_RT_COST * d.c)
+
+
+def sig_momentum_burst_scalp(d, p, ctx):
+    """Price + volume impulse (15m). The candle's range >= rng_x x and its volume >= vol_x x their n-candle averages (over
+    the candles BEFORE it), it closes in the outer `body` of its range in its own direction, and it passes scalp_cost_ok.
+    Long on an up-impulse, short on the mirror. Exit on a close back through EMA9; mgmt time cap 4 candles (1 h)."""
+    n = int(p.get('n', MB['n']))
+    rng = d.h - d.l
+    avg_v = d.v.rolling(n).mean().shift()
+    big = (rng >= MB['rng_x'] * rng.rolling(n).mean().shift()) & (d.v > 0) & (avg_v > 0) & (d.v >= MB['vol_x'] * avg_v)  # 0 >= 2x0 is no burst
+    pos = (d.c - d.l) / rng.where(rng > 0)
+    gate = big & scalp_cost_ok(d)
+    le = gate & (d.c > d.o) & (pos >= MB['body'])
+    se = gate & (d.c < d.o) & (pos <= 1 - MB['body'])
+    return _one_side(dict(le=le, se=se, lx=d.c < d.e9, sx=d.c > d.e9))
+
+
+def sig_quick_bank_runner(d, p, ctx):
+    """Fast EMA-pullback continuation (15m): with EMA20 above EMA50 and the close above EMA50, the candle dips to EMA9
+    (low <= EMA9) and closes back above it as a bullish candle -> long; exact mirror for shorts. Management (QB): 70 %
+    banked at 0.8R with the stop moved to breakeven, the 30 % runner capped at 2R / 12 candles. Exit on an EMA20/50 flip."""
+    up, dn = d.e20 > d.e50, d.e20 < d.e50
+    le = up & (d.c > d.e50) & (d.l <= d.e9) & (d.c > d.e9) & (d.c > d.o)
+    se = dn & (d.c < d.e50) & (d.h >= d.e9) & (d.c < d.e9) & (d.c < d.o)
+    return _one_side(dict(le=le, se=se, lx=dn, sx=up))
+
+
+# ------------------------------------------------------------------ registry
+# style: calm / balanced / aggressive  ·  sides: long / short / both
+STRATEGIES = {
+    'ema_st': dict(name='EMA cross + Supertrend', style='balanced', fn=sig_ema_st, sides='long',
+                   desc='EMA20 crosses EMA50 above EMA200 with Supertrend(10,3) confirming. Was slot A of the first bot.',
+                   mgmt=dict(stop_atr=2.5)),
+    'ema_mom': dict(name='EMA cross + Momentum', style='calm', fn=sig_ema_mom, sides='long',
+                    desc='Same cross, only when 7d and 30d returns are positive. Was slot B of the first bot.',
+                    mgmt=dict(stop_atr=2.5)),
+    'donchian_ens': dict(name='Donchian ensemble (20/55/100)', style='calm', fn=sig_donchian_ens, sides='long',
+                         desc='Research-backed trend model: enters when 2 of 3 breakout channels agree, exits on 20-candle low.',
+                         mgmt=dict(stop_atr=3.0, trail_atr=4.0)),
+    'breakout_pyramid': dict(name='Breakout + pyramiding', style='aggressive', fn=sig_breakout_pyramid, sides='long',
+                             desc='20-candle breakout in an uptrend, adds 2 more units every +1R, chandelier trail 3 ATR.',
+                             mgmt=dict(stop_atr=2.0, trail_atr=3.0, pyramid=dict(n=2, step_r=1.0, frac=0.5))),
+    'squeeze_tp': dict(name='Squeeze breakout + partial TP', style='balanced', fn=sig_squeeze, sides='long',
+                       desc='Bollinger squeeze breakout; takes 50% at 1.5R, moves stop to breakeven, trails the rest.',
+                       mgmt=dict(stop_atr=2.0, tp1_r=1.5, tp1_frac=0.5, be_r=1.5, trail_atr=3.0)),
+    'pullback_rsi': dict(name='Trend pullback (RSI) + scale-out', style='balanced', fn=sig_trend_pullback_rsi, sides='long',
+                         desc='Buys RSI dips in an uptrend like many lead traders; 50% off at 1R, breakeven, rest at 3R.',
+                         mgmt=dict(stop_atr=2.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=3.0, max_bars=60)),
+    'dca_dip': dict(name='DCA dip buyer (safety orders)', style='aggressive', fn=sig_dca_dip, sides='long',
+                    desc='3Commas-style: buys a stretched dip, up to 3 safety orders (1.5x each, 1 ATR apart), basket TP +1 ATR, hard basket stop.',
+                    mgmt=dict(dca=dict(n=3, step_atr=1.0, scale=1.5, tp_atr=1.0, stop_atr=2.0), max_bars=60)),
+    'bear_breakdown': dict(name='Bear-market breakdown (shorts)', style='aggressive', fn=sig_bear_breakdown, sides='short',
+                           desc='Shorts 20-candle breakdowns only while BTC is below its EMA200; exits on 10-candle high.',
+                           mgmt=dict(stop_atr=2.0, trail_atr=3.0)),
+    'rotation': dict(name='Momentum rotation (top 5)', style='balanced', fn=sig_rotation, sides='long',
+                     desc='Holds the 5 strongest coins by 30-day risk-adjusted momentum above their EMA50; rotates as ranks change.',
+                     mgmt=dict(stop_atr=3.0), params=dict(k=5)),
+    'hot_coin': dict(name='Hot-coin momentum chase', style='aggressive', fn=sig_hot_coin, sides='long',
+                     desc='Lead-trader style: top-3 7-day movers breaking out on a volume surge; tight trail.',
+                     mgmt=dict(stop_atr=2.0, trail_atr=2.5, tp1_r=2.0, tp1_frac=0.5)),
+    # ---- sprint families: EXPERIMENTAL / testnet-only (frozen v0, long + short, no demonstrated edge)
+    'exp_trend': dict(name='[TESTNET EXP] Trend L/S', style='balanced', fn=sig_exp_trend, sides='both', tf='4h',
+                      desc=EXP_TAG + ': EMA20/50 cross on the EMA200 side with 7d+30d momentum agreeing (trend_ema_mom.v1), mirrored '
+                           'for shorts. Stop 2.5 ATR, target 3R, exit on cross-back or momentum loss, 180-candle time cap. 4h.',
+                      mgmt=dict(stop_atr=2.5, tp_r=3.0, max_bars=180)),
+    'exp_range': dict(name='[TESTNET EXP] Range L/S', style='balanced', fn=sig_exp_range,
+                      sides='both', tf='4h', params=dict(k=2.0),
+                      desc=EXP_TAG + ': RANGE-EXIT-01 v0. 42-candle VWAP (typical price x volume), ATR = 14-candle mean true range, '
+                           'z = (close - VWAP)/ATR. Long when z crosses back above -2 below VWAP while VWAP moved <= 1 ATR over 6 '
+                           'candles; short mirrored. Target = back at VWAP, exit if the range breaks, stop 1.5 ATR, 30-candle cap. 4h.',
+                      mgmt=dict(stop_atr=1.5, max_bars=30)),
+    'exp_breakout': dict(name='[TESTNET EXP] Breakout L/S', style='balanced', fn=sig_exp_breakout,
+                         sides='both', tf='4h',
+                         desc=EXP_TAG + ': first close above the prior 20-candle high (long) or below the prior 20-candle low '
+                              '(short). Stop 2 ATR, target 3R, exit on a close through the opposite 10-candle channel, 60-candle cap. 4h.',
+                         mgmt=dict(stop_atr=2.0, tp_r=3.0, max_bars=60)),
+    'exp_scalp': dict(name='[TESTNET EXP] Scalp L/S 15m', style='aggressive', fn=sig_exp_scalp,
+                      sides='both', tf='15m',
+                      desc=EXP_TAG + ': with EMA20 above EMA50, a candle that dips to EMA20 and closes back above it (long); '
+                           'mirrored for shorts. Tight stop 1 ATR, target 1.5R, exit when EMA20/50 flips, 16-candle (4h) cap. Run on 15m.',
+                      mgmt=dict(stop_atr=1.0, tp_r=1.5, max_bars=16)),
+    'exp_structure': dict(name='[TESTNET EXP] Structure L/S', style='aggressive', fn=sig_exp_structure,
+                          sides='both', tf='15m',
+                          desc=EXP_TAG + ': first close through the latest confirmed 3-candle swing in the EMA50/200 direction. '
+                               'Confirmed pivots and closed-candle entries prevent lookahead. Stop 1 ATR, target 2R, opposite-structure '
+                               'or regime-flip exit, 24-candle (6h) cap. Run on 15m.',
+                          mgmt=dict(stop_atr=1.0, tp_r=2.0, max_bars=24)),
+    # ---- BREADTH-01 B3: short-only mirrors of hot_coin / dca_dip (EXPERIMENTAL / testnet-only, no demonstrated edge)
+    'exp_mom_short': dict(name='[TESTNET EXP] Mom Short (dump)', style='aggressive', fn=sig_exp_mom_short,
+                          sides='short', tf='4h',
+                          desc=EXP_TAG + ': short-only mirror of Hot-coin momentum chase. Bottom-3 7-day movers breaking below the '
+                               'prior 20-candle low and EMA50 on a volume surge (> 1.5x the 42-candle average). Stop 2 ATR above, '
+                               'half off at 2R, 2.5 ATR trail, exit on a close back above EMA20. 4h.',
+                          mgmt=dict(stop_atr=2.0, trail_atr=2.5, tp1_r=2.0, tp1_frac=0.5)),
+    'exp_rip_sell_dca': dict(name='[TESTNET EXP] Rip-sell DCA S', style='aggressive', fn=sig_exp_rip_sell_dca,
+                             sides='short', tf='4h',
+                             desc=EXP_TAG + ': UNVERIFIED DCA / martingale basket (never backtested). Short-only mirror of DCA dip '
+                                  'buyer: with EMA50 below EMA200, sells the first close > 1.5 ATR above EMA20; up to 3 safety '
+                                  'orders 1 ATR apart ABOVE (1.5x each), basket TP 1 ATR below the average, hard basket stop 2 ATR '
+                                  'above the last order, 60-candle cap. 4h.',
+                             mgmt=dict(dca=dict(n=3, step_atr=1.0, scale=1.5, tp_atr=1.0, stop_atr=2.0), max_bars=60)),
+    'exp_vwaprev': dict(name='[TESTNET EXP] VWAP Rev L/S', style='balanced', fn=sig_exp_vwaprev, sides='both', tf='4h',
+                        params=dict(n=42, k=2.0, rg=1.0), reentry_lock=True,
+                        desc=EXP_TAG + ': VWAPREV = range_vwap_rev.v1 X1 (RANGE-EXIT-01). VWAP42 from quote volume / volume, ATR = '
+                             'TR-SMA14, z = (close - VWAP)/ATR. Long when z crosses back above -2 below VWAP while VWAP moved <= 1 ATR '
+                             'over 6 candles; short mirrored. Target = close back at VWAP, exit if the range breaks, stop 1.5 TR-SMA14 '
+                             'ATR, 30-candle cap. No entry without quote volume or a gap-free 48-candle window. 4h only.',
+                        mgmt=dict(stop_atr=1.5, max_bars=30)),
+    # ---- SCALP-4: EXPERIMENTAL / PAPER-only scalps. Independent, always-eligible PAPER slots of the breadth rotation (never
+    #      rotated, never in breadth_groups); refused in live mode (engine.scalp_block). No demonstrated edge.
+    'range_scalp': dict(name='[PAPER EXP] Range scalp L/S 15m', style='aggressive', fn=sig_range_scalp, sides='both', tf='15m',
+                        desc=SCALP_TAG + ': confirmed 32-candle range (ADX < 20, 2-6 ATR wide, no close > 0.5 ATR outside it in '
+                             'the last 32 candles). Long from the bottom quarter on a bullish candle, short from the top quarter on '
+                             'a bearish one. Exit at mid-range or on invalidation; stop 1.25 ATR, 2R cap, 16-candle (4h) cap.',
+                        mgmt=dict(stop_atr=1.25, tp_r=2.0, max_bars=16)),
+    'failed_breakout_scalp': dict(name='[PAPER EXP] Failed breakout L/S 15m', style='aggressive', fn=sig_failed_breakout_scalp,
+                                  sides='both', tf='15m',
+                                  desc=SCALP_TAG + ': a close back inside a 20-candle range after a break of at most 3 candles. '
+                                       'Short after a failed upside break, long after a failed downside break. Stop just beyond the '
+                                       'break extreme (+0.1 ATR, min 0.5 ATR), target 1.5R, exit on a close beyond the range again, '
+                                       '12-candle (3h) cap.',
+                                  mgmt=dict(stop_atr=1.0, tp_r=1.5, max_bars=12)),
+    'momentum_burst_scalp': dict(name='[PAPER EXP] Momentum burst L/S 15m', style='aggressive', fn=sig_momentum_burst_scalp,
+                                 sides='both', tf='15m',
+                                 desc=SCALP_TAG + ': impulse candle (range and volume >= 2x their 20-candle averages, close in the '
+                                      'outer quarter) in its own direction; skipped unless the 1.5 ATR stop is >= 3x the round-trip '
+                                      'fee + slippage. Stop 1.5 ATR, target 1.5R, exit on a close back through EMA9, 4-candle (1h) cap.',
+                                 mgmt=dict(stop_atr=MB['stop_atr'], tp_r=1.5, max_bars=4)),
+    'quick_bank_runner': dict(name='[PAPER EXP] Quick bank + runner L/S 15m', style='aggressive', fn=sig_quick_bank_runner,
+                              sides='both', tf='15m',
+                              desc=SCALP_TAG + ': EMA9 pullback in an EMA20/50 trend. Banks 70% at 0.8R and moves the stop to '
+                                   'breakeven; the 30% runner targets 2R, exits on an EMA20/50 flip or after 12 candles (3h). Stop 1 ATR.',
+                              mgmt=dict(QB)),
+}
+
+
+def build_context(dfs, btc_key='BTCUSDT'):
+    """Cross-sectional data for rotation / regime strategies, aligned by candle time (coins may have different history)."""
+    btc = dfs[btc_key].set_index('t')
+    btc_down = (btc.c < btc.e200)
+    ra = pd.DataFrame({s: pd.Series((d.ret180 / (d.c.pct_change().rolling(180).std() * np.sqrt(180))).values, index=d.t)
+                       for s, d in dfs.items()})
+    rank = ra.rank(axis=1, ascending=False)
+    r42 = pd.DataFrame({s: pd.Series(d.ret42.values, index=d.t) for s, d in dfs.items()})
+    r7 = r42.rank(axis=1, ascending=False)
+    r7n = r42.notna().sum(axis=1)   # symbols actually ranked at each candle (late listings / gaps excluded)
+    breadth7 = (r42 > 0).sum(axis=1) / r7n.replace(0, np.nan)
+    out = {}
+    for s, d in dfs.items():
+        t = d.t
+        out[s] = dict(btc_down=btc_down.reindex(t).fillna(False).astype(bool).values,
+                      rank=pd.Series(rank[s].reindex(t).values, index=d.index).fillna(999),
+                      rank7=pd.Series(r7[s].reindex(t).values, index=d.index).fillna(999),
+                      rank7_n=pd.Series(r7n.reindex(t).values, index=d.index).fillna(0),
+                      breadth7=pd.Series(breadth7.reindex(t).values, index=d.index),
+                      n_symbols=len(dfs))
+    return out
+
+
+SUB_DEFAULTS = dict(pyramid=dict(n=1, step_r=1.5, frac=0.5),
+                    dca=dict(n=3, step_atr=1.0, scale=1.5, tp_atr=1.0, stop_atr=2.0),
+                    ttp=dict(at_r=2.0, dev_pct=3.0), runner={})
+
+
+def merge_mgmt(key, override=None):
+    """Effective management settings of a slot: strategy defaults + the slot's overrides, merged one level DEEP for the
+    nested blocks (pyramid / dca / ttp / runner). A partial override such as {'dca': {'n': 4}} keeps every other dca
+    value from the strategy default (or the generic default), so the engine never meets a half-filled block."""
+    base = STRATEGIES[key]['mgmt'] if key in STRATEGIES else {}
+    out = dict(base)
+    for k, v in (override or {}).items():
+        if k in SUB_DEFAULTS and isinstance(v, dict):
+            out[k] = {**SUB_DEFAULTS[k], **(base.get(k) or {}), **v}
+        else:
+            out[k] = v
+    return out
+
+
+def norm_tps(tps):
+    """Take-profit ladder: up to 8 [r, frac] pairs, r > 0, 0 < frac <= 1, sorted by r. Bad entries are dropped."""
+    out = []
+    for x in (tps or [])[:8]:
+        try:
+            r_, f_ = float(x[0]), float(x[1])
+        except Exception:
+            continue
+        if r_ > 0 and 0 < f_ <= 1: out.append((r_, f_))
+    return sorted(out)
+
+
+def regime(d, ema_days=200, adx_max=20.0, bbw_max=0.35, min_days=30):
+    """Market regime of BTC for every candle of d (t,o,h,l,c,v; any timeframe up to 4h), shared by the live engine and
+    the backtester. Uses only data that has CLOSED at each candle's close (no lookahead):
+      bull  = the last completed daily close is above its 200-day EMA (daily candles resampled from d)
+      bear  = below it
+      range = 4h ADX < adx_max and 4h Bollinger-width percentile < bbw_max (4h resampled from d when d is finer)
+    bull/bear are both False until min_days daily closes exist. Returns DataFrame(bull, bear, range) aligned to d's rows."""
+    t = pd.to_datetime(d['t']).reset_index(drop=True)
+    n = len(t)
+    if n == 0: return pd.DataFrame(dict(bull=[], bear=[], range=[]), dtype=bool)
+    step = t.diff().median() if n > 1 else pd.Timedelta(hours=4)
+    step = step if pd.notna(step) and step > pd.Timedelta(0) else pd.Timedelta(hours=4)
+    left = pd.DataFrame({'ct': t + step, 'row': np.arange(n)})
+    s = pd.Series(np.asarray(d['c'], float), index=t)
+    daily = s.resample('1D').last().dropna()
+    e = ema(daily, ema_days)
+    ok = np.arange(1, len(daily) + 1) >= min_days
+    dd = pd.DataFrame({'avail': daily.index + pd.Timedelta(days=1), 'bull': (daily.values > e.values) & ok,
+                       'bear': (daily.values < e.values) & ok})
+    raw = pd.DataFrame({'t': t, 'o': np.asarray(d['o'], float), 'h': np.asarray(d['h'], float), 'l': np.asarray(d['l'], float),
+                        'c': np.asarray(d['c'], float), 'v': np.asarray(d['v'], float) if 'v' in d else 0.0})
+    if step < pd.Timedelta(hours=4):
+        h4 = raw.set_index('t').resample('4h').agg(dict(o='first', h='max', l='min', c='last', v='sum')).dropna().reset_index()
+        h4 = indicators(h4)
+    elif 'adx' in d and 'bbw_pct' in d:
+        h4 = pd.DataFrame({'t': t, 'adx': np.asarray(d['adx'], float), 'bbw_pct': np.asarray(d['bbw_pct'], float)})
+    else:
+        h4 = indicators(raw)
+    rr = pd.DataFrame({'avail': pd.to_datetime(h4['t']).values + (step if step >= pd.Timedelta(hours=4) else pd.Timedelta(hours=4)),
+                       'range': ((h4['adx'] < adx_max) & (h4['bbw_pct'] < bbw_max)).values})
+    left['ct'] = pd.to_datetime(left['ct']).astype('datetime64[ns]')
+    dd['avail'] = pd.to_datetime(dd['avail']).astype('datetime64[ns]'); rr['avail'] = pd.to_datetime(rr['avail']).astype('datetime64[ns]')
+    out = pd.merge_asof(left, dd.sort_values('avail'), left_on='ct', right_on='avail', direction='backward')
+    out = pd.merge_asof(out.drop(columns='avail'), rr.sort_values('avail'), left_on='ct', right_on='avail', direction='backward')
+    out = out.sort_values('row')
+    return pd.DataFrame({k: out[k].fillna(False).astype(bool).values for k in ('bull', 'bear', 'range')})
+
+
+def regime_label(r):
+    """Text for a missed-signal reason: 'bull' / 'bear' / 'range' / 'unknown' (r: a row/dict of regime())."""
+    if r.get('range'): return 'range'
+    return 'bull' if r.get('bull') else ('bear' if r.get('bear') else 'unknown')
+
+
+def signals(key, d, ctx, params=None, mask_sides=True):
+    st = STRATEGIES[key]
+    p = dict(st.get('params', {}), **(params or {}))
+    ctx = dict(ctx); ctx['btc_down'] = pd.Series(ctx['btc_down'], index=d.index)
+    s = st['fn'](d, p, ctx)
+    out = {k: np.array(X(s[k]).values, dtype=bool, copy=True) for k in ('le', 'se', 'lx', 'sx')}
+    if 'atr' in s:                                     # a strategy-defined stop ATR (VWAPREV: TR-SMA14), NaN where undefined
+        out['atr'] = np.asarray(s['atr'], dtype=float).copy()
+    if mask_sides and st['sides'] == 'long': out['se'][:] = False
+    if mask_sides and st['sides'] == 'short': out['le'][:] = False
+    return out
+
+
+# RBR-4H is the reversal counterpart to the existing rotation/relative-strength
+# trend sleeve: it buys washed-out bottom ranks only during broad weakness and
+# shorts crowded top ranks only during broad strength.
+RBR4H = dict(rank_frac=0.20, breadth_low=0.35, breadth_high=0.65,
+             rsi_low=30.0, rsi_high=70.0, volume_floor=0.80, cost_multiple=5.0)
+
+
+def sig_rank_breadth_reversal_4h(d, p, ctx):
+    rank = pd.Series(ctx['rank7'], index=d.index, dtype=float)
+    n = pd.Series(ctx['rank7_n'], index=d.index, dtype=float)
+    breadth = pd.Series(ctx['breadth7'], index=d.index, dtype=float)
+    k = np.ceil(float(p['rank_frac']) * n)
+    top, bottom = rank <= k, rank > (n - k)
+    vol_ok = d.v >= float(p['volume_floor']) * d.v.rolling(42, min_periods=42).median().shift()
+    stop_frac = 1.5 * d.atr / d.c
+    cost_ok = stop_frac >= float(p['cost_multiple']) * 2 * (0.0005 + 0.0002)
+    rlo, rhi = float(p['rsi_low']), float(p['rsi_high'])
+    recover_l = (d.rsi2 > rlo) & (d.rsi2.shift() <= rlo) & (d.c > d.o)
+    recover_s = (d.rsi2 < rhi) & (d.rsi2.shift() >= rhi) & (d.c < d.o)
+    valid = n >= 8
+    le = valid & bottom & (breadth <= float(p['breadth_low'])) & recover_l & vol_ok & cost_ok
+    se = valid & top & (breadth >= float(p['breadth_high'])) & recover_s & vol_ok & cost_ok
+    middle = np.ceil(0.5 * n)
+    return dict(le=le, se=se, lx=(rank <= middle) | (breadth > 0.55),
+                sx=(rank >= middle) | (breadth < 0.45))
+
+
+STRATEGIES['rank_breadth_reversal_4h'] = dict(
+    name='[RESEARCH] Rank-breadth reversal 4h', style='mean_reversion',
+    fn=sig_rank_breadth_reversal_4h, sides='both', tf='4h', research_only=True,
+    reentry_lock=True, params=RBR4H,
+    desc='Fade 7-day cross-sectional extremes only during broad same-direction crowding.',
+    mgmt=dict(stop_atr=1.5, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=18))
+
+
+# Research-only additions stay below the frozen strategy-source line anchors used by ML-TRAIN-01.
+FIB = dict(left=3, right=3, min_impulse_atr=4.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786)
+
+
+def sig_fib_pullback(d, p, ctx):
+    """Causal confirmed-swing Fibonacci pullback candidate; research-only."""
+    left, right = int(p.get('left', FIB['left'])), int(p.get('right', FIB['right']))
+    if left < 1 or right < 1: raise ValueError('fib_pullback: left/right must be >= 1')
+    zlo, trig = float(p.get('zone_lo', FIB['zone_lo'])), float(p.get('trigger', FIB['trigger']))
+    zhi, inval = float(p.get('zone_hi', FIB['zone_hi'])), float(p.get('invalid', FIB['invalid']))
+    if not (0 < zlo < trig < zhi < inval < 1):
+        raise ValueError('fib_pullback: require 0 < zone_lo < trigger < zone_hi < invalid < 1')
+    n, w = len(d), left + right + 1
+    ch, cl = d.h.shift(right), d.l.shift(right)
+    ph = (ch == d.h.rolling(w).max()).fillna(False).to_numpy(bool)
+    pl = (cl == d.l.rolling(w).min()).fillna(False).to_numpy(bool)
+    h, l, o, c, a = (d[k].to_numpy(float) for k in ('h', 'l', 'o', 'c', 'atr'))
+    e50, e200 = d.e50.to_numpy(float), d.e200.to_numpy(float)
+    le = np.zeros(n, bool); se = np.zeros(n, bool); lx = np.zeros(n, bool); sx = np.zeros(n, bool)
+    dist = np.asarray(a, float).copy()
+    hi_i = lo_i = -1; hi = lo = np.nan
+    long_arm = short_arm = False
+    long_tag = short_tag = None
+    min_x = float(p.get('min_impulse_atr', FIB['min_impulse_atr']))
+    for i in range(n):
+        j = i - right
+        if ph[i] and j >= 0: hi_i, hi, long_arm = j, h[j], False
+        if pl[i] and j >= 0: lo_i, lo, short_arm = j, l[j], False
+        if lo_i >= 0 and hi_i > lo_i and np.isfinite(a[i]) and hi > lo:
+            span = hi - lo; tag = (lo_i, hi_i)
+            f382, f500, f618, f786 = hi - zlo * span, hi - trig * span, hi - zhi * span, hi - inval * span
+            valid = span >= min_x * a[i] and e50[i] > e200[i]
+            if long_tag != tag: long_tag, long_arm = tag, False
+            if c[i] <= f786 or not valid: long_arm = False
+            elif l[i] <= f382 and h[i] >= f618: long_arm = True
+            if long_arm and i and c[i - 1] <= f500 < c[i] and c[i] > o[i]:
+                le[i] = True; dist[i] = c[i] - f786; long_arm = False
+            lx[i] = (c[i] <= f786) or (e50[i] <= e200[i])
+        if hi_i >= 0 and lo_i > hi_i and np.isfinite(a[i]) and hi > lo:
+            span = hi - lo; tag = (hi_i, lo_i)
+            f382, f500, f618, f786 = lo + zlo * span, lo + trig * span, lo + zhi * span, lo + inval * span
+            valid = span >= min_x * a[i] and e50[i] < e200[i]
+            if short_tag != tag: short_tag, short_arm = tag, False
+            if c[i] >= f786 or not valid: short_arm = False
+            elif h[i] >= f382 and l[i] <= f618: short_arm = True
+            if short_arm and i and c[i - 1] >= f500 > c[i] and c[i] < o[i]:
+                se[i] = True; dist[i] = f786 - c[i]; short_arm = False
+            sx[i] = (c[i] >= f786) or (e50[i] >= e200[i])
+    out = _one_side(dict(le=pd.Series(le, d.index), se=pd.Series(se, d.index),
+                         lx=pd.Series(lx, d.index), sx=pd.Series(sx, d.index)))
+    out['atr'] = pd.Series(np.where(np.isfinite(dist) & (dist > 0), dist, np.nan), index=d.index)
+    return out
+
+
+STRATEGIES['fib_pullback'] = dict(
+    name='[RESEARCH] Fibonacci pullback L/S', style='balanced', fn=sig_fib_pullback, sides='both', tf='4h',
+    research_only=True, params=dict(FIB),
+    desc='RESEARCH-ONLY: confirmed 3/3 swings, trend-qualified 0.382-0.618 retracement, 0.5 reclaim entry and 0.786 '
+         'structural invalidation. Long/short mirrored; excluded from PAPER until historical, walk-forward and '
+         'untouched-holdout gates pass.',
+    mgmt=dict(stop_atr=1.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=30),
+)
+
+
+# FIB-PULLBACK-02 (research-only, Codex 6486879287): v1 above stays byte-identical; this is a new key and a new frozen
+# parameter set. The economic change is the structure/participation confirmation of the entry candle.
+FIB02 = dict(left=2, right=2, min_impulse_atr=3.0, zone_lo=0.382, trigger=0.5, zone_hi=0.618, invalid=0.786,
+             body_atr=0.35, vol_median_bars=20)
+
+
+def fib02_pivots(d, left=FIB02['left'], right=FIB02['right']):
+    """(ph, pl): ph[i] True when the candle i - right is a confirmed swing high (its high is the max of the `left` candles
+    before it, itself and the `right` candles after it). It is set on candle i, i.e. only once the right-th candle after
+    the pivot has CLOSED; pl mirrored. Rolling windows read candles <= i only."""
+    w = left + right + 1
+    ph = (d.h.shift(right) == d.h.rolling(w).max()).fillna(False).to_numpy(bool)
+    pl = (d.l.shift(right) == d.l.rolling(w).min()).fillna(False).to_numpy(bool)
+    return ph, pl
+
+
+def sig_fib_pullback_02(d, p, ctx):
+    """Causal confirmed 2/2-swing Fibonacci continuation with structure/participation confirmation; research-only.
+    Per side and per confirmed impulse (latest confirmed low -> high for longs, high -> low for shorts):
+      valid  = impulse >= min_impulse_atr x ATR(14) and EMA50/EMA200 aligned with the side (checked every candle);
+      arming = a candle overlaps the zone_lo..zone_hi retracement while valid and closing beyond `invalid`; arming only
+               counts from the NEXT candle on (the entry candle cannot arm itself);
+      entry  = armed, valid, and the closed candle: crosses `trigger` in the trend direction (prior close at/through it),
+               closes beyond the prior candle's high (long) / low (short), has a with-trend real body >= body_atr x ATR,
+               and volume >= the median of the vol_median_bars candles before it. One entry per impulse;
+      disarm = a close at/through `invalid` (0.786), or the impulse turning invalid.
+    0.786 is the DECISION-TIME invalidation and the sizing anchor: the emitted 'atr' is the decision close's distance to
+    it (mgmt stop_atr = 1). The backtester opens on the next candle with slippage and places its stop that distance from
+    the fill, so the resting stop shifts by the entry gap / slippage and is not guaranteed to sit exactly at L(0.786).
+    The exit signal (lx / sx) on a close at/through L(0.786) is kept."""
+    left, right = int(p.get('left', FIB02['left'])), int(p.get('right', FIB02['right']))
+    if left < 1 or right < 1: raise ValueError('fib_pullback_02: left/right must be >= 1')
+    zlo, trig = float(p.get('zone_lo', FIB02['zone_lo'])), float(p.get('trigger', FIB02['trigger']))
+    zhi, inval = float(p.get('zone_hi', FIB02['zone_hi'])), float(p.get('invalid', FIB02['invalid']))
+    if not (0 < zlo < trig < zhi < inval < 1):
+        raise ValueError('fib_pullback_02: require 0 < zone_lo < trigger < zone_hi < invalid < 1')
+    min_x, body_x = float(p.get('min_impulse_atr', FIB02['min_impulse_atr'])), float(p.get('body_atr', FIB02['body_atr']))
+    nvol = int(p.get('vol_median_bars', FIB02['vol_median_bars']))
+    if nvol < 1: raise ValueError('fib_pullback_02: vol_median_bars must be >= 1')
+    n = len(d)
+    ph, pl = fib02_pivots(d, left, right)
+    h, l, o, c, a = (d[k].to_numpy(float) for k in ('h', 'l', 'o', 'c', 'atr'))
+    e50, e200 = d.e50.to_numpy(float), d.e200.to_numpy(float)
+    v = d.v.astype(float)
+    vmed = v.shift(1).rolling(nvol).median().to_numpy(float)       # the nvol candles BEFORE this one
+    vol_ok = np.isfinite(vmed) & (v.to_numpy(float) >= vmed)
+    le = np.zeros(n, bool); se = np.zeros(n, bool); lx = np.zeros(n, bool); sx = np.zeros(n, bool)
+    dist = np.asarray(a, float).copy()                             # entries overwrite with the 0.786 distance (as v1)
+    hi_i = lo_i = -1; hi = lo = np.nan
+    long_arm = short_arm = False
+    long_tag = short_tag = long_done = short_done = None
+    for i in range(n):
+        j = i - right
+        if ph[i] and j >= 0: hi_i, hi = j, h[j]
+        if pl[i] and j >= 0: lo_i, lo = j, l[j]
+        ok_a = np.isfinite(a[i]) and a[i] > 0
+        if lo_i >= 0 and hi_i > lo_i and ok_a and hi > lo:
+            span = hi - lo; tag = (lo_i, hi_i)
+            f382, f500, f618, f786 = hi - zlo * span, hi - trig * span, hi - zhi * span, hi - inval * span
+            valid = span >= min_x * a[i] and e50[i] > e200[i]
+            if long_tag != tag: long_tag, long_arm = tag, False
+            if (long_arm and valid and long_done != tag and i and c[i] > f786
+                    and c[i - 1] <= f500 < c[i]                      # reclaims 0.5 upward
+                    and c[i] > h[i - 1]                              # closes above the prior candle's high
+                    and c[i] - o[i] >= body_x * a[i]                 # bullish real body >= 0.35 ATR
+                    and vol_ok[i]):                                  # volume >= trailing 20-candle median
+                le[i] = True; dist[i] = c[i] - f786; long_arm = False; long_done = tag
+            elif c[i] <= f786 or not valid: long_arm = False
+            elif l[i] <= f382 and h[i] >= f618: long_arm = True     # armed for the following candles
+            lx[i] = (c[i] <= f786) or (e50[i] <= e200[i])
+        if hi_i >= 0 and lo_i > hi_i and ok_a and hi > lo:
+            span = hi - lo; tag = (hi_i, lo_i)
+            f382, f500, f618, f786 = lo + zlo * span, lo + trig * span, lo + zhi * span, lo + inval * span
+            valid = span >= min_x * a[i] and e50[i] < e200[i]
+            if short_tag != tag: short_tag, short_arm = tag, False
+            if (short_arm and valid and short_done != tag and i and c[i] < f786
+                    and c[i - 1] >= f500 > c[i]
+                    and c[i] < l[i - 1]
+                    and o[i] - c[i] >= body_x * a[i]
+                    and vol_ok[i]):
+                se[i] = True; dist[i] = f786 - c[i]; short_arm = False; short_done = tag
+            elif c[i] >= f786 or not valid: short_arm = False
+            elif h[i] >= f382 and l[i] <= f618: short_arm = True
+            sx[i] = (c[i] >= f786) or (e50[i] >= e200[i])
+    out = _one_side(dict(le=pd.Series(le, d.index), se=pd.Series(se, d.index),
+                         lx=pd.Series(lx, d.index), sx=pd.Series(sx, d.index)))
+    out['atr'] = pd.Series(np.where(np.isfinite(dist) & (dist > 0), dist, np.nan), index=d.index)
+    return out
+
+
+STRATEGIES['fib_pullback_02'] = dict(
+    name='[RESEARCH] Fibonacci pullback v2 L/S 1h', style='balanced', fn=sig_fib_pullback_02, sides='both', tf='1h',
+    research_only=True, params=dict(FIB02),
+    desc='RESEARCH-ONLY (FIB-PULLBACK-02): 1h, confirmed 2/2 swings, impulse >= 3 ATR with aligned EMA50/EMA200, armed by '
+         'a 0.382-0.618 overlap; entry only when a closed candle reclaims 0.5, closes beyond the prior candle, has a '
+         '>= 0.35 ATR body and >= median-20 volume; 0.786 decision-time invalidation / sizing anchor with a close-through exit. Excluded from PAPER.',
+    mgmt=dict(stop_atr=1.0, tp1_r=1.0, tp1_frac=0.5, be_r=1.0, tp_r=2.0, max_bars=30),
+)

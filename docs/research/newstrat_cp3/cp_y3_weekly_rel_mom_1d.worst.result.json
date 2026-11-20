@@ -1,0 +1,100 @@
+{
+ "key": "cp_y3_weekly_rel_mom_1d",
+ "tf": "1d",
+ "scenario": "worst",
+ "symbols": [
+  "BTCUSDT",
+  "ETHUSDT",
+  "XRPUSDT",
+  "SOLUSDT",
+  "DOGEUSDT",
+  "BNBUSDT",
+  "LINKUSDT",
+  "AVAXUSDT"
+ ],
+ "bars": 1750,
+ "first": "2021-12-19 00:00:00",
+ "last": "2026-10-03 00:00:00",
+ "end_equity": 4020.25,
+ "maxdd_usd": 71.33,
+ "maxdd_R": 8.9,
+ "feasibility": {
+  "attempts": 129,
+  "executed": 128,
+  "rule_blocked": 0
+ },
+ "all": {
+  "n": 128,
+  "win": 49.2,
+  "pnl": 20.25,
+  "long_n": 60,
+  "short_n": 68,
+  "long_pnl": -18.99,
+  "short_pnl": 39.23,
+  "expR_7bp": 0.0201,
+  "pnl_7bp": 20.25,
+  "expR_15bp": 0.01,
+  "pnl_15bp": 9.9,
+  "expR_23bp": -0.0001,
+  "pnl_23bp": -0.44
+ },
+ "dev": {
+  "n": 81,
+  "win": 50.6,
+  "pnl": -0.92,
+  "long_n": 39,
+  "short_n": 42,
+  "long_pnl": -0.11,
+  "short_pnl": -0.81,
+  "expR_7bp": -0.001,
+  "pnl_7bp": -0.92,
+  "expR_15bp": -0.0111,
+  "pnl_15bp": -7.47,
+  "expR_23bp": -0.0212,
+  "pnl_23bp": -14.03
+ },
+ "holdout": {
+  "n": 47,
+  "win": 46.8,
+  "pnl": 21.16,
+  "long_n": 21,
+  "short_n": 26,
+  "long_pnl": -18.88,
+  "short_pnl": 40.04,
+  "expR_7bp": 0.0565,
+  "pnl_7bp": 21.16,
+  "expR_15bp": 0.0465,
+  "pnl_15bp": 17.38,
+  "expR_23bp": 0.0364,
+  "pnl_23bp": 13.59
+ },
+ "why": {
+  "time": 111,
+  "stop": 17
+ },
+ "code_sha256": {
+  "newstrat_cp3.py": "98127342cb27b6f010d1715182546ad26c3e1135e1ac907700645283e63edd82",
+  "newstrat_cp3_run.py": "32940641bc1379e88480d5334e021e79f7f3e53a45aaac1ac5255d39eb8fb0ea",
+  "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+  "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011"
+ },
+ "dd_label": "Standard",
+ "cost15_R_median": 0.0182,
+ "sumR15_by_coin": {
+  "XRPUSDT": -1.46,
+  "BNBUSDT": -1.1,
+  "DOGEUSDT": -1.05,
+  "SOLUSDT": 0.3,
+  "ETHUSDT": 4.6
+ },
+ "expR15_wo_best_coin": -0.085,
+ "sumR15_by_year": {
+  "2022": -0.6,
+  "2023": -0.55,
+  "2024": 0.26,
+  "2025": 3.25,
+  "2026": -1.06
+ },
+ "top5_share": 5.475,
+ "paper_eligible": false
+}

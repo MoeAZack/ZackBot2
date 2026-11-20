@@ -1,0 +1,104 @@
+{
+ "key": "cp_x5_nr7_break_1d",
+ "tf": "1d",
+ "scenario": "path",
+ "symbols": [
+  "BTCUSDT",
+  "ETHUSDT",
+  "XRPUSDT",
+  "SOLUSDT",
+  "DOGEUSDT",
+  "BNBUSDT",
+  "LINKUSDT",
+  "AVAXUSDT"
+ ],
+ "bars": 1750,
+ "first": "2021-12-19 00:00:00",
+ "last": "2026-10-03 00:00:00",
+ "end_equity": 3781.95,
+ "maxdd_usd": 280.54,
+ "maxdd_R": 35.1,
+ "feasibility": {
+  "attempts": 190,
+  "executed": 190,
+  "rule_blocked": 0
+ },
+ "all": {
+  "n": 190,
+  "win": 40.0,
+  "pnl": -218.05,
+  "long_n": 88,
+  "short_n": 102,
+  "long_pnl": -131.18,
+  "short_pnl": -86.87,
+  "expR_7bp": -0.1464,
+  "pnl_7bp": -218.05,
+  "expR_15bp": -0.1763,
+  "pnl_15bp": -261.99,
+  "expR_23bp": -0.2062,
+  "pnl_23bp": -305.93
+ },
+ "dev": {
+  "n": 122,
+  "win": 36.9,
+  "pnl": -196.97,
+  "long_n": 57,
+  "short_n": 65,
+  "long_pnl": -102.15,
+  "short_pnl": -94.82,
+  "expR_7bp": -0.2059,
+  "pnl_7bp": -196.97,
+  "expR_15bp": -0.2344,
+  "pnl_15bp": -224.21,
+  "expR_23bp": -0.263,
+  "pnl_23bp": -251.46
+ },
+ "holdout": {
+  "n": 68,
+  "win": 45.6,
+  "pnl": -21.08,
+  "long_n": 31,
+  "short_n": 37,
+  "long_pnl": -29.03,
+  "short_pnl": 7.95,
+  "expR_7bp": -0.0396,
+  "pnl_7bp": -21.08,
+  "expR_15bp": -0.072,
+  "pnl_15bp": -37.78,
+  "expR_23bp": -0.1044,
+  "pnl_23bp": -54.47
+ },
+ "why": {
+  "stop": 135,
+  "time": 31,
+  "tp": 24
+ },
+ "code_sha256": {
+  "newstrat_cp3.py": "929cb91e95d9ca796a531b0dd8f8ca697f91ba00edc0448508411a7f45207c77",
+  "newstrat_cp3_run.py": "32940641bc1379e88480d5334e021e79f7f3e53a45aaac1ac5255d39eb8fb0ea",
+  "backtest.py": "fdab284ce3ebe0c8329be9f3e8eebce6fde23bdbe44a35d0d785722e0b54d4ae",
+  "strategies.py": "0d416c8ca93788827aabe8374dae9f397f23c68213727d8725dc574071b8b011"
+ },
+ "dd_label": "High",
+ "cost15_R_median": 0.0509,
+ "sumR15_by_coin": {
+  "BTCUSDT": -11.68,
+  "ETHUSDT": -11.35,
+  "XRPUSDT": -4.13,
+  "DOGEUSDT": -2.51,
+  "LINKUSDT": -2.22,
+  "SOLUSDT": -1.19,
+  "BNBUSDT": -1.03,
+  "AVAXUSDT": 0.63
+ },
+ "expR15_wo_best_coin": -0.1961,
+ "sumR15_by_year": {
+  "2022": -3.14,
+  "2023": -16.11,
+  "2024": -9.35,
+  "2025": 0.6,
+  "2026": -5.5
+ },
+ "top5_share": null,
+ "paper_eligible": false
+}
