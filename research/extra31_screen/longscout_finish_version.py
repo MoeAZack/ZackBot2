@@ -31,6 +31,7 @@ def number(x): return 'none' if x is None else f'{x:+.6f}'
 
 def main():
     version,out,testlog = int(sys.argv[1]),Path(sys.argv[2]).resolve(),Path(sys.argv[3]).resolve()
+    deferred='--defer-network' in sys.argv[4:]
     assert out.parent == Path('C:/Dev/ZackBot_research_cache').resolve() and out.name.startswith('longscout_codex_')
     assert command(['git','branch','--show-current'])=='codex/longscout-v91-batch-20261120'
     cases_path = HERE/f'longscout_v{version}_cases.json'
@@ -85,14 +86,13 @@ def main():
     detail=[]
     for key,d in diagnostics['cases'].items():
         detail.append(f"{key}: failures {', '.join(next(c['failed_gates'] for c in item['candidates'] if c['key']==key)) or 'none'}; BTC rising/sideways/falling R15 {number(d['btc_regimes']['rising']['median_meanR15'])}/{number(d['btc_regimes']['sideways']['median_meanR15'])}/{number(d['btc_regimes']['falling']['median_meanR15'])}; long/short {number(d['sides']['long']['median_meanR15'])}/{number(d['sides']['short']['median_meanR15'])}; fallback-rule path trades (40 repeated orders) {d['missing_rule_trades']['path_trades_all_orders']}, order0 {d['missing_rule_trades']['order0']}.")
-    synopsis=(f'# LONGSCOUT V{version}: {len(passes)}/{len(rows)} frozen screen passes\n\n{stamp}. Source freeze `{source}`; all cases frozen and pushed before outcomes. Ledger: {ledger["completed_trials"]} completed trials / {ledger["historical_screen_passes"]} historical screen passes; {ledger["registered_trials"]} registered.\n\n'+table+'\n'+'\n\n'.join(detail)+
+    synopsis=(f'# LONGSCOUT V{version}: {len(passes)}/{len(rows)} frozen screen passes\n\n{stamp}. Source freeze `{source}`; immutable cases preregistered before outcomes. See the case manifest for remote/local publication timing. Ledger: {ledger["completed_trials"]} completed trials / {ledger["historical_screen_passes"]} historical screen passes; {ledger["registered_trials"]} registered.\n\n'+table+'\n'+'\n\n'.join(detail)+
         '\n\nResearch-only/defaultOFF. 165 coins,40orders,unchanged seven rule-v1 gates and BOTH subset gates. Primary15bp fees PLUS2bp slip/side; stress23bp fees PLUS2bp slip. Native funding fixed .00005/4h of held notional, both sides pay; not realized historical funding. Frozen testnet snapshot is not a historical rules series; ICPUSDT/TLMUSDT lack snapshot rules and use fallback. Shared calendar already consumed, not untouched holdout. No tuning, coin dropping or subgroup rescue.\n\nDD uses closed equity with initialzero, notMTM. Standard<=15R, Elevated<=30R, High<=60R, Extreme>60R. Exact tests in tests.log; source/case SHA and both path/worst tapes preserved. Saved-tape seven-gate/subset reconstruction matches; not independent market-price replay or profitability acceptance.\n\n'+
         ('A screen pass is a lead only; independent reproduction and non-bear/forward-worthiness review must complete before the owner stopping condition is declared. No book is activated.\n\n' if passes else 'Both frozen economic rules are rejected; no PAPER eligibility. Search proceeds to the next preregistered version.\n\n')+
         'ROADMAP FIT: new long/range economics under the continuing research-only LONGSCOUT contract. DEFERRED: accounts/runtime/scheduler/LEADFWD/PAPER/mainnet/merge/mark-ready.\n')
     (target/'README.md').write_text(synopsis,encoding='utf-8',newline='\n')
     command(['git','add',str(target.relative_to(ROOT)),str(ledger_path.relative_to(ROOT))])
     command(['git','-c','user.name=Codex','-c','user.email=codex@users.noreply.github.com','commit','-m',f'research: publish V{version} economics and complete trial ledger'])
-    command(['git','push'])
     head=command(['git','rev-parse','HEAD'])
     report_url=f'https://github.com/{REPO}/blob/{head}/docs/research/longscout_v{version}/README.md'
     body=(f'<!-- agent: codex -->\nCODEX RESULT: LONGSCOUT V{version}, {stamp}: **{len(passes)}/{len(rows)} screen passes**. Ledger **{ledger["completed_trials"]} completed trials / {ledger["historical_screen_passes"]} historical screen passes**.\n\n'+table+
@@ -101,6 +101,19 @@ def main():
           ('Screen-pass lead awaits independent reproduction/non-bear review; no activation.\n\n' if passes else 'Rejected; proceeding to next preregistered version under owner follow-up.\n\n')+
           'ROADMAP FIT: long/range economic search. DEFERRED: accounts/runtime/scheduler/LEADFWD/PAPER/mainnet/merge/mark-ready.\nLANES: Build is separate P&L work per relay (not inspected); Evidence completed this version and prepares independent next tests; Integration publishes each result and advances only frozen research.\n')
     request=out/'github_result_request.json';request.write_text(json.dumps(dict(body=body)),encoding='utf-8')
+    if deferred:
+        receipt=dict(id=None,html_url=None,publication_pending=True,head=head,screen_passes=passes,
+                     note='Workstation outbound connection outage; immutable local evidence and queued PR347 request. Source/case provenance unchanged.')
+        (out/'github_receipt.json').write_text(json.dumps(receipt,indent=1)+'\n',encoding='utf-8')
+        state_path=ROOT/'research/longscout_control_state.json'
+        if state_path.exists():
+            state=json.loads(state_path.read_text())
+            state['completed_versions'][str(version)]=dict(passes=len(passes),trials_after=ledger['completed_trials'],comment=None,publication_pending=True,head=head)
+            if state.get('running',{}).get('version')==version:state['running']={}
+            state_path.write_text(json.dumps(state,indent=1)+'\n',encoding='utf-8',newline='\n')
+        print(json.dumps(receipt),flush=True)
+        return
+    command(['git','push'])
     receipt=json.loads(command(['gh','api','--method','POST',f'repos/{REPO}/issues/347/comments','--input',str(request)]))
     (out/'github_receipt.json').write_text(json.dumps(dict(id=receipt['id'],html_url=receipt['html_url'],head=head,screen_passes=passes),indent=1)+'\n',encoding='utf-8')
     state_path=ROOT/'research/longscout_control_state.json'

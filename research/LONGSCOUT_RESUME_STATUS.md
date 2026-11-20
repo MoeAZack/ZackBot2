@@ -22,6 +22,13 @@ changes are authorized by this task.
 Original inbox: `C:/Dev/codex-inbox/longscout-resume-20261120.md`.
 Every hypothesis frozen and pushed BEFORE market outcomes. Changed hypothesis
 is a new candidate. Every preregistered/tested trial retained in the ledger.
+Connection-outage exception recorded20Nov: an already remotely pushed immutable
+alpha source may execute after its exact cases are locally committed before
+outcomes; mark the case publication LOCAL/REMOTE_PENDING, queue all PR results,
+and publish when connectivity returns. Verify source is an ancestor of the last
+known origin head. No statistical or economic gate changes. This implements the
+owner's continued research request during a technical network failure; it does
+not weaken a user safety limit. New unpushed alpha cannot use this exception.
 Prefer new long/range information families on4h/daily. No holdout tuning or
 post-hoc subgroup rescue. Shared165-coin calendar is consumed, not untouched.
 

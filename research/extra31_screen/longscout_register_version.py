@@ -5,6 +5,7 @@ No market data, runtime or network access. Caller commits and pushes outputs.
 """
 import importlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +23,9 @@ def main():
     module = f'longscout_v{version}'
     subprocess.run(['git','diff','--exit-code',commit,'--',f'research/{module}.py',f'tests/test_{module}.py'],cwd=ROOT,check=True)
     M = importlib.import_module(module)
+    offline=os.environ.get('LONGSCOUT_PREREG_OFFLINE')=='1'
+    if offline:
+        subprocess.run(['git','merge-base','--is-ancestor',commit,'origin/codex/longscout-v91-batch-20261120'],cwd=ROOT,check=True)
     ledger_path = HERE/'longscout_resume_ledger.json'
     if ledger_path.exists(): ledger = json.loads(ledger_path.read_text())
     else:
@@ -35,6 +39,8 @@ def main():
                  approval='Owner follow-up20Nov2026: continueV92 onward until worthwhile screen pass or23Nov16:00 Africa/Cairo; all inbox limits persist',
                  sources={module:dict(commit=commit,modules=['longscout_v1',module])},
                  multiple_testing=f'{len(M.CANDIDATES)} candidates; prior{prior} registered trials; all prior/future screens share a consumed calendar, not untouched confirmation.',cases={})
+    table['preregistered_cairo']=datetime.now(ZoneInfo('Africa/Cairo')).isoformat()
+    table['publication']='SOURCE_PREVIOUSLY_PUSHED; case manifest locally committed before market execution; remote publication queued during workstation connection outage' if offline else 'Source and cases committed and pushed before market execution'
     candidates=[]
     for trial,(key,v) in enumerate(M.CANDIDATES.items(),prior+1):
         assert v['research_only'] and v['tf'] in ('4h','1d')
