@@ -9,48 +9,51 @@
   },
   "92": {
    "passes": 0,
-   "trials_after": 285,
+   "head": "24e6b60f85de8d84deafc7b11ad0bcb859a02d26",
    "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7041348825",
-   "head": "24e6b60f85de8d84deafc7b11ad0bcb859a02d26"
+   "publication_pending": false
   },
   "93": {
    "passes": 0,
-   "trials_after": 287,
+   "head": "dc3cfa24b9b605e5932b6d34358ce971aa6feedf",
    "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7041535654",
-   "head": "dc3cfa24b9b605e5932b6d34358ce971aa6feedf"
+   "publication_pending": false
   },
   "94": {
    "passes": 0,
-   "trials_after": 289,
-   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7041888225",
    "head": "4ee4a2821506cb90695b0d65b2dd62ff5d44f9eb",
+   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7041888225",
    "publication_pending": false
   },
   "95": {
    "passes": 0,
-   "trials_after": 291,
+   "head": "1813c540a34bd4bfd987fe5584de44742a070ac9",
    "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7042015103",
-   "head": "1813c540a34bd4bfd987fe5584de44742a070ac9"
+   "publication_pending": false
   },
   "96": {
    "passes": 0,
-   "trials_after": 293,
+   "head": "274e7e8a2130c7d4bfcec9aa9fa6be7659d4fd04",
    "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7042451383",
-   "head": "274e7e8a2130c7d4bfcec9aa9fa6be7659d4fd04"
+   "publication_pending": false
   },
   "97": {
    "passes": 0,
-   "trials_after": 295,
-   "comment": null,
-   "publication_pending": true,
-   "head": "f96e015c03721ba5e330c516f8d76e35c05150b2"
+   "head": "f96e015c03721ba5e330c516f8d76e35c05150b2",
+   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7042837614",
+   "publication_pending": false
   },
   "99": {
    "passes": 0,
-   "trials_after": 297,
-   "comment": null,
-   "publication_pending": true,
-   "head": "4c6eb9996811b02db0686bb03aa3d5912fe0e684"
+   "head": "4c6eb9996811b02db0686bb03aa3d5912fe0e684",
+   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7043021260",
+   "publication_pending": false
+  },
+  "100": {
+   "passes": 0,
+   "head": "ac172d97bb310a103ee04d7ce57a5af171ad981d",
+   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7043336056",
+   "publication_pending": false
   }
  },
  "running": {},
@@ -76,7 +79,11 @@
    "state": "SOURCE_FROZEN_PUSHED; register cases afterV96fails"
   },
   "98": {
-   "state": "Draft and7independent tests pass; DATA_REPORT_SHA256=None locked; source +newflowwrapper not yet committed, no cases/markettest",
+   "state": "Data-gated,notexecuted/notfinancialtrial;draftsource+7tests at230bb04,DATA_REPORT_SHA256=None. ChangeonlyDATA_DIR/hashafterstrict166release,thenfreezeactualsource/cases.",
+   "timeframe": "1d"
+  },
+  "101": {
+   "state": "Draftcorrectedlexicalties,7independent tests pass,readyforfreeze",
    "timeframe": "1d"
   }
  },
@@ -85,16 +92,19 @@
  "own_data_pool": "C:/Dev/ZackBot_research_cache/longscout_codex_v91_20261120/_data",
  "important": "#13 comments disabled by GitHub >2500; no retries. Publish each version directly on PR347. Final reply once at stopping condition, STATUS plus FOR CLAUDE. Tests/test_longscout_v1.py actually contains90versions: named helper tests only.",
  "flow_data": {
-  "session": 64504,
-  "output": "C:/Dev/ZackBot_research_cache/longscout_codex_flow_20261120",
-  "state": "Fullacquisitionrunning but no release: material1d v/qv mismatches versus pinnedhourly. PriceOHLC matches samples. Do not loosen tolerance. Agenttestingnative1h fields on firstbad day.",
-  "source_freeze": "d795b677d3764d17554a559dd3356915fac6a8e2",
-  "successful_probe": "BTC2022Aug1..3 and2026Oct3 dailyOHLCV fullymatch. Somealt DAILY volumes differ, not proof of cacheprice defect."
+  "session": 91069,
+  "output": "C:/Dev/ZackBot_research_cache/longscout_codex_flow_hourly_20261120",
+  "source_freeze": "3a341edb3f4300284680dfcea74d4e8216d46915",
+  "state": "Runningnativehourly all166; fresh134samplepasses; extra31volume-vintage discrepancies. Neverloosentolerances.",
+  "archive_plan": "ALLfixedextra31 officialhourlyarchive, notrowcherrypicking;11synthetictests+independentreviewconditionsresolved. NeedfullARCHIVE31_COMPLETE thenjoinrequirednativefresh134+BTC tocanonical166release beforeV98."
  },
  "publication_worker": {
   "session": 45028,
   "state": "STOPPED deliberately after94posted andnetworkrestored; own STOPfile present. No scheduler/botwatcher touched.",
   "path": "C:/Dev/ZackBot_research_cache/longscout_codex_publication_20261120",
   "note": "Connection intermittent. For offline prereg guard refs/longscout/last-confirmed-remote seededverified1ed and advancedworker ff3207; clone singlebranch has no origin/codex ref. Finish helper --defer-network preservesqueuedrequest; normalhelperpublishesonline."
+ },
+ "driver": {
+  "state": "Both previousdriverscomplete; no Git-index writer active. genericexecute_frozen availableuntracked; nextroot sourcefreeze101 thenlaunch."
  }
 }
