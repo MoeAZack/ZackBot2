@@ -1,0 +1,20 @@
+{
+ "batch": "V91",
+ "prior_trials": 281,
+ "new_trials": 2,
+ "cumulative_trials": 283,
+ "prior_screen_passes": 11,
+ "source_freeze": "f89d1eb73cd462dd092e86e5cf26c13859359acd",
+ "candidates": [
+  {
+   "trial": 282,
+   "key": "l91_rs_impulse_4h",
+   "verdict": "PENDING"
+  },
+  {
+   "trial": 283,
+   "key": "r91_antipersistent_range_4h",
+   "verdict": "PENDING"
+  }
+ ]
+}

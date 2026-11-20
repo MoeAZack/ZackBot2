@@ -1,0 +1,72 @@
+{
+ "id": "LONGSCOUT-V91",
+ "status": "FROZEN before any market outcome of these rules",
+ "approval": "Owner LONGSCOUT resume 20 Nov 2026 via C:/Dev/codex-inbox/longscout-resume-20261120.md",
+ "sources": {
+  "longscout91": {
+   "commit": "f89d1eb73cd462dd092e86e5cf26c13859359acd",
+   "modules": [
+    "longscout_v1",
+    "longscout_v91"
+   ]
+  }
+ },
+ "universe": "165 coins = the 134 fresh coins (LONGSCOUT-FRESH-V1 data lock 28d7b7c8, manifest fb0c0572...) + extra31 (cache manifest 99af9bfb...); BTC context = the fresh-set BTCUSDT file (as in the pooled run); traded coins never include BTC or the original nine. The 165 coins share the consumed 2022-2026 calendar: not untouched data (Codex 14 Nov).",
+ "rule": "Codex rule v1 unchanged (max one position, $8 risk, $3,333.33 cap, 40 coin orders seed 20261112, 15 bp; medians: n >= 100, meanR15 > 0, meanR23 >= 0, halves split 2025-01-01 > 0, ex-best-coin > 0, order 0 >= 30 per half)",
+ "extra_gate": "ALSO required for a pass: the median over the 40 orders of mean R15 restricted to trades on the 134 fresh coins > 0, and the same restricted to the 31 extra coins > 0 (both subsets must earn; neither may carry the other)",
+ "status_names": "WIDE165_PASS only when every rule-v1 gate and both subset gates hold; else FAIL",
+ "multiple_testing": "Two new hypotheses, trials 282 and 283. Prior 281 trials / 11 screen passes. Shared already-consumed calendar, not untouched holdout; no tuning or gate relaxation.",
+ "never": "research_only default-OFF. No account/runtime/scheduler/secrets/merge/mark-ready, no PAPER promotion, no holdout tuning; changed hypothesis gets new candidate.",
+ "cases": {
+  "l91_rs_impulse_4h": {
+   "source": "longscout91",
+   "commit": "f89d1eb73cd462dd092e86e5cf26c13859359acd",
+   "key": "l91_rs_impulse_4h",
+   "tf": "4h",
+   "side": "long",
+   "management": {
+    "stop_atr": 2.5,
+    "tp_r": 2.0,
+    "max_bars": 30
+   },
+   "params": {
+    "rs_n": 20,
+    "shock": 1.5,
+    "corr_n": 30,
+    "rho": -0.3,
+    "band_n": 10,
+    "band_sd": 1.0
+   },
+   "eligible_coins": "fresh134+extra31",
+   "prior_exposure": "Rule not run on any market data before freeze; synthetic tests only",
+   "label": "NEW_CANDIDATE_RULE_V1_WIDE165_EXPLICIT_FEES",
+   "trial": 282
+  },
+  "r91_antipersistent_range_4h": {
+   "source": "longscout91",
+   "commit": "f89d1eb73cd462dd092e86e5cf26c13859359acd",
+   "key": "r91_antipersistent_range_4h",
+   "tf": "4h",
+   "side": "both",
+   "management": {
+    "stop_atr": 2.5,
+    "tp_r": 2.0,
+    "max_bars": 30
+   },
+   "params": {
+    "rs_n": 20,
+    "shock": 1.5,
+    "corr_n": 30,
+    "rho": -0.3,
+    "band_n": 10,
+    "band_sd": 1.0
+   },
+   "eligible_coins": "fresh134+extra31",
+   "prior_exposure": "Rule not run on any market data before freeze; synthetic tests only",
+   "label": "NEW_CANDIDATE_RULE_V1_WIDE165_EXPLICIT_FEES",
+   "trial": 283
+  }
+ },
+ "cost_amendment": "Original frozen rule-v1 gates unchanged. V91 pnl15 labels explicitly mean 15bp FEES plus 2bp slip per side, not old combined15. Stress23fee plus2slip. Native fixed funding 0.00005 per4h held notional both sides pay; NOT realized historical funding. Frozen exchange-rule snapshot, unknown coverage must be disclosed.",
+ "dd_labels": "Standard <=15R; Elevated <=30R; High <=60R; Extreme >60R. Closed-equity drawdown includes initial zero. No DD acceptance gate invented."
+}
