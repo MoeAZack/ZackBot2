@@ -1,0 +1,3 @@
+candidate,status,median_closes,meanR15_fee_plus_slip,fresh134,extra31,median_closedDD_R,DD_label
+l99_peer_leader_catchup_4h,FAIL,57.0,0.055587975195894854,0.011842596176333316,0.1962781334006305,11.529769741735812,Standard
+r99_early_volume_stress_recovery_4h,FAIL,110.0,0.022180304465159686,0.026448241981210766,0.0006512761142292152,7.604217591161017,Standard
