@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 297,
+ "registered_trials": 299,
  "completed_trials": 297,
  "historical_screen_passes": 11,
  "versions": {
@@ -276,6 +276,23 @@
       "late",
       "ex_best_coin"
      ]
+    }
+   ]
+  },
+  "100": {
+   "status": "PREREGISTERED",
+   "source_freeze": "a4281cac7cb54e5968aebcdedec7b1f8ad4ff48c",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 298,
+     "key": "l100_downside_range_response_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
+    },
+    {
+     "trial": 299,
+     "key": "r100_distribution_migration_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
