@@ -56,5 +56,5 @@
  "cost_amendment": "Original frozen rule-v1 gates unchanged. V91 pnl15 labels explicitly mean 15bp FEES plus 2bp slip per side, not old combined15. Stress23fee plus2slip. Native fixed funding 0.00005 per4h held notional both sides pay; NOT realized historical funding. Frozen exchange-rule snapshot, unknown coverage must be disclosed.",
  "dd_labels": "Standard <=15R; Elevated <=30R; High <=60R; Extreme >60R. Closed-equity drawdown includes initial zero. No DD acceptance gate invented.",
  "preregistered_cairo": "2026-11-20T16:29:06.604732+02:00",
- "publication": "Source and cases committed and pushed before market execution"
+ "publication": "SOURCE_PREVIOUSLY_PUSHED; case manifest frozen locally before market execution; two remote push attempts failed during intermittent workstation connection outage; publication queued"
 }
