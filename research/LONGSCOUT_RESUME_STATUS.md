@@ -43,11 +43,15 @@ above2500. Do not repeatedly retry or ask owner for routine relay. Direct PR347
 posts remain supported. Every GitHub comment starts `<!-- agent: codex -->` and
 ends LANES line; include ROADMAP FIT and DEFERRED in result handoffs.
 
-NOW V92 drafts: L92 eligible-peer market breadth thrust and R92 intraday early
+First planned V92 drafts: L92 eligible-peer market breadth thrust and R92 intraday early
 extreme settlement range fade. No market outcome yet. Terra evidence agent edits
 ONLY tests/test_longscout_v92.py; root owns all source, freezes, ledger, runs and
 integration. NEXT candidates will use different peer/path/lagged information,
 not tune V91 misses. Freeze source/tests, then cases/ledger; push before running.
+
+Current exact integration state is in `research/longscout_control_state.json`;
+the completed-trial ledger is `research/extra31_screen/longscout_resume_ledger.json`.
+Record every completed version there and in its PR347 comment before advancing.
 
 Beware `tests/test_longscout_v1.py` contains V1 through V90 and is huge. Select
 named shared-helper tests, do not rerun the entire historical file casually.
