@@ -1,0 +1,3 @@
+candidate,status,median_closes,meanR15_fee_plus_slip,fresh134,extra31,median_closedDD_R,DD_label
+l97_quiet_btc_residual_flush_4h,FAIL,95.0,0.024482269147948404,0.02342283982486612,-0.002937604346956323,10.882569131539862,Standard
+l97_intraday_participation_disagreement_4h,FAIL,54.0,-0.12493180217986351,-0.09943713675613368,-0.31340334642864864,9.33179992378131,Standard
