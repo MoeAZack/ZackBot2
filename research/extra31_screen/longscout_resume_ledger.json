@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 299,
+ "registered_trials": 301,
  "completed_trials": 299,
  "historical_screen_passes": 11,
  "versions": {
@@ -313,6 +313,23 @@
       "fresh134",
       "extra31"
      ]
+    }
+   ]
+  },
+  "101": {
+   "status": "PREREGISTERED",
+   "source_freeze": "5a4b103e63dd06df3d7b9635ce58a4da9950b611",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 300,
+     "key": "l101_peer_tail_isolation_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
+    },
+    {
+     "trial": 301,
+     "key": "r101_relative_peer_ou_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
