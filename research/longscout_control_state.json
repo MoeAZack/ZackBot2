@@ -22,15 +22,21 @@
   "94": {
    "passes": 0,
    "trials_after": 289,
-   "comment": null,
-   "publication_pending": true,
-   "head": "4ee4a2821506cb90695b0d65b2dd62ff5d44f9eb"
+   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7041888225",
+   "head": "4ee4a2821506cb90695b0d65b2dd62ff5d44f9eb",
+   "publication_pending": false
   },
   "95": {
    "passes": 0,
    "trials_after": 291,
    "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7042015103",
    "head": "1813c540a34bd4bfd987fe5584de44742a070ac9"
+  },
+  "96": {
+   "passes": 0,
+   "trials_after": 293,
+   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7042451383",
+   "head": "274e7e8a2130c7d4bfcec9aa9fa6be7659d4fd04"
   }
  },
  "running": {},
@@ -51,8 +57,13 @@
    "state": "SOURCE_FROZEN_PUSHED"
   },
   "97": {
+   "source_freeze": "1eddbbefc5b77f34818d1c003c8400eb34537971",
    "independent_tests": 6,
-   "state": "Draft corrected residual cancellation; ready for source freeze"
+   "state": "SOURCE_FROZEN_PUSHED; register cases afterV96fails"
+  },
+  "98": {
+   "state": "Draft and7independent tests pass; DATA_REPORT_SHA256=None locked; source +newflowwrapper not yet committed, no cases/markettest",
+   "timeframe": "1d"
   }
  },
  "integration_owner": "root; all Git/index/ledger/publication operations sequential",
@@ -60,8 +71,16 @@
  "own_data_pool": "C:/Dev/ZackBot_research_cache/longscout_codex_v91_20261120/_data",
  "important": "#13 comments disabled by GitHub >2500; no retries. Publish each version directly on PR347. Final reply once at stopping condition, STATUS plus FOR CLAUDE. Tests/test_longscout_v1.py actually contains90versions: named helper tests only.",
  "flow_data": {
-  "state": "Helper being implemented by v91_novelty_review; no full fetch yet. Freeze source and contract before acquisition.",
-  "official_docs": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data",
-  "probe": "3BTC days matched frozen hourly aggregates exactly; one public GET, no auth, no files saved"
+  "session": 64504,
+  "output": "C:/Dev/ZackBot_research_cache/longscout_codex_flow_20261120",
+  "state": "Fullacquisitionrunning but no release: material1d v/qv mismatches versus pinnedhourly. PriceOHLC matches samples. Do not loosen tolerance. Agenttestingnative1h fields on firstbad day.",
+  "source_freeze": "d795b677d3764d17554a559dd3356915fac6a8e2",
+  "successful_probe": "BTC2022Aug1..3 and2026Oct3 dailyOHLCV fullymatch. Somealt DAILY volumes differ, not proof of cacheprice defect."
+ },
+ "publication_worker": {
+  "session": 45028,
+  "state": "STOPPED deliberately after94posted andnetworkrestored; own STOPfile present. No scheduler/botwatcher touched.",
+  "path": "C:/Dev/ZackBot_research_cache/longscout_codex_publication_20261120",
+  "note": "Connection intermittent. For offline prereg guard refs/longscout/last-confirmed-remote seededverified1ed and advancedworker ff3207; clone singlebranch has no origin/codex ref. Finish helper --defer-network preservesqueuedrequest; normalhelperpublishesonline."
  }
 }

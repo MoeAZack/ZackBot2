@@ -22,15 +22,22 @@ def main():
     audit = json.loads((out/'input_audit.json').read_text())
     cases = json.loads((Path(__file__).parent/os.environ.get('LONGSCOUT_CASES','longscout_v91_cases.json')).read_text())
     fresh = set(json.loads((Path(sys.argv[2])/'selected.json').read_text())['selected'])
-    btc = RS.to_tf(RS.load_1h(str(out/'_data'), 'BTCUSDT'), '4h')
-    regimes = pd.Series(L1.coin_regime(btc), index=pd.DatetimeIndex(btc.t))
+    btc1 = RS.load_1h(str(out/'_data'), 'BTCUSDT')
     report = dict(note='Descriptive diagnostics on an already-consumed calendar, not untouched or forward evidence.', cases={})
     for key in cases['cases']:
+        tf=cases['cases'][key]['tf']
+        btc=RS.to_tf(btc1,tf)
+        regimes=pd.Series(L1.coin_regime(btc),index=pd.DatetimeIndex(btc.t))
         r = json.loads((out/key/f'{key}_result.json').read_text())
-        tape = pd.read_csv(out/key/f'{key}_all_orders_trades.csv.gz', parse_dates=['t_in','t_out'])
+        try:
+            tape = pd.read_csv(out/key/f'{key}_all_orders_trades.csv.gz', parse_dates=['t_in','t_out'])
+        except pd.errors.EmptyDataError:
+            tape = pd.DataFrame({k:pd.Series(dtype=dt) for k,dt in
+                                 [('sym','str'),('side','int64'),('t_in','datetime64[ns]'),('t_out','datetime64[ns]'),
+                                  ('pnl15','float64'),('order','int64'),('scen','str')]})
         tr = tape[tape.scen == 'path'].copy()
         # All frozen candidates enter on the bar after their signal bar.
-        tr['btc_regime_at_signal'] = regimes.reindex(pd.DatetimeIndex(tr.t_in)-pd.Timedelta(hours=4)).to_numpy()
+        tr['btc_regime_at_signal'] = regimes.reindex(pd.DatetimeIndex(tr.t_in)-pd.Timedelta(hours=RS.BAR_H[tf])).to_numpy()
         dds = []
         for order in range(40):
             x = tr[tr.order == order].sort_values('t_out')
@@ -42,8 +49,11 @@ def main():
             return dict(median_n=float(x.groupby('order').size().reindex(range(40),fill_value=0).median()),
                         median_meanR15=None if means.isna().any() else float(means.median()),
                         positive_orders=int((means>0).sum()))
+        subsets=dict(r['wide165']['subset_gate'])
+        for subset in ('fresh134','extra31'):
+            if subsets.get(subset) is None:subsets[subset]=dict(median_meanR15=None,median_n=0.)
         diag = dict(status=r['wide165']['status'], medians=r['medians'], gates=r['gates'],
-                    subsets=r['wide165']['subset_gate'], cost_model=r['v91_costs'],
+                    subsets=subsets, cost_model=r['v91_costs'], no_closed_trades=not len(tr),
                     dd=dict(order0_R=dds[0], order0_label=dd_label(dds[0]), median_R=float(np.median(dds)),
                             median_label=dd_label(float(np.median(dds))), max_R=max(dds), max_label=dd_label(max(dds)),
                             per_order_R=dds,note='Closed equity, initial zero included; not mark-to-market DD.'),
@@ -62,7 +72,8 @@ def main():
             assert (v is None and r['medians'][k] is None) or np.isclose(v,r['medians'][k],rtol=1e-12,atol=1e-12),(key,k)
         for name,keep in [('fresh134',tr.sym.isin(fresh)),('extra31',tr.sym.isin(RS.EXTRA31))]:
             actual = group(keep)['median_meanR15']
-            expected = r['wide165']['subset_gate'][name]['median_meanR15']
+            raw_subset=r['wide165']['subset_gate'][name]
+            expected=raw_subset['median_meanR15'] if isinstance(raw_subset,dict) else None
             assert (actual is None and expected is None) or np.isclose(actual,expected,rtol=1e-12,atol=1e-12),(key,name)
         diag['saved_tape_gate_reconstruction'] = 'MATCH; not independent price replay'
         report['cases'][key] = diag
