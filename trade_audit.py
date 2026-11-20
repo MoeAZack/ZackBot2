@@ -1652,6 +1652,14 @@ _BOOK = (('halted', 'book_halted'), ('cost_pending', 'book_cost_pending'), ('INC
          ('full', 'book_full'), ('leverage cap', 'book_leverage_cap'), ('stop-risk cap', 'book_stop_risk_cap'),
          ('has no NAV', 'book_no_nav'))
 
+# Only these machine-generated reason names may enter the audit detail.  In particular,
+# funding_partial can contain persisted text, so do not copy arbitrary gate text here.
+_BOOK_INCOMPLETE_REASONS = frozenset(('fill_px_unresolved', 'evidence_revision_pending', 'funding_unread',
+    'pnl_unreadable', 'fees_unreadable', 'fees_actual_missing', 'mark_missing', 'stop_unknown',
+    'working_stop_unknown', 'unowned_account_activity', 'row_conflict', 'peak_unreadable',
+    'funding_multi_asset', 'ambiguous_opposite_side_funding', 'unreadable_funding', 'funding_unattributed',
+    'true_book_state_not_durable'))
+
 
 def reason_info(reason, _depth=0):
     """dict(stage, code[, detail]) for a not-taken signal's reason text. detail: the inner cause of a wrapper text
@@ -1671,7 +1679,14 @@ def reason_info(reason, _depth=0):
                 return out
         if r.startswith('book B') and ' ' in r[5:]:                    # TRUE-BOOK-01 book-local refusals
             word = r[5:].split(' ', 1)[1]
-            return dict(stage='true_book', code=next((c for w, c in _BOOK if word.startswith(w)), 'book_other'))
+            out = dict(stage='true_book', code=next((c for w, c in _BOOK if word.startswith(w)), 'book_other'))
+            if out['code'] == 'book_incomplete':
+                match = re.match(r'^INCOMPLETE \(([^)]*)\) - no new risk until it is measured$', word)
+                if match:
+                    names = {n if n in _BOOK_INCOMPLETE_REASONS else 'other_incomplete'
+                             for n in match.group(1).split(', ')}
+                    out['detail'] = ', '.join(sorted(names))[:160]
+            return out
         if r.startswith('true books: '): return dict(stage='true_book', code='book_no_cohort' if 'cohort' in r else 'book_unmapped')
         if r == 'true_book/opposite_side_funding_ambiguity': return dict(stage='true_book', code='opposite_side_funding_ambiguity')
         if r.startswith('risk rule '):
