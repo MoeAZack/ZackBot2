@@ -37,6 +37,13 @@
    "trials_after": 293,
    "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7042451383",
    "head": "274e7e8a2130c7d4bfcec9aa9fa6be7659d4fd04"
+  },
+  "97": {
+   "passes": 0,
+   "trials_after": 295,
+   "comment": null,
+   "publication_pending": true,
+   "head": "f96e015c03721ba5e330c516f8d76e35c05150b2"
   }
  },
  "running": {},
