@@ -57,6 +57,13 @@ def main():
         return
     if RS.sha(os.path.join(a.fresh, 'input_manifest.json')) != FRESH_MANIFEST: raise SystemExit('fresh manifest differs')
     RS.check_data(a.extra, True, RS.EXTRA31)       # strict: the frozen 40-coin cache manifest
+    em = os.path.join(a.extra, 'input_manifest.json')
+    if not os.path.exists(em):
+        em = os.path.join(os.path.dirname(os.path.abspath(a.extra)), 'input_manifest.json')
+    extra_manifest = json.load(open(em, encoding='utf-8'))
+    for s in RS.EXTRA31:
+        if RS.sha(os.path.join(a.extra, f'{s}_1h.csv')) != extra_manifest['symbols'][s]['csv_sha256']:
+            raise SystemExit(f'{s}: extra source csv differs from pinned manifest')
     m = json.load(open(os.path.join(a.fresh, 'input_manifest.json'), encoding='utf-8'))
     fresh = json.load(open(os.path.join(a.fresh, 'selected.json'), encoding='utf-8'))['selected']
     data = os.path.join(a.out, '_data'); os.makedirs(data, exist_ok=True)
@@ -64,8 +71,12 @@ def main():
         p = os.path.join(a.fresh, 'clean', f'{s}_1h.csv')
         if RS.sha(p) != m['symbols'][s]['sha256']: raise SystemExit(f'{s}: sha differs from manifest')
         if not os.path.exists(os.path.join(data, f'{s}_1h.csv')): shutil.copy(p, data)
+        if RS.sha(os.path.join(data, f'{s}_1h.csv')) != m['symbols'][s]['sha256']:
+            raise SystemExit(f'{s}: copied fresh csv differs from pinned manifest')
     for s in RS.EXTRA31:
         if not os.path.exists(os.path.join(data, f'{s}_1h.csv')): shutil.copy(os.path.join(a.extra, f'{s}_1h.csv'), data)
+        if RS.sha(os.path.join(data, f'{s}_1h.csv')) != extra_manifest['symbols'][s]['csv_sha256']:
+            raise SystemExit(f'{s}: copied extra csv differs from pinned manifest')
     coins = sorted(fresh + RS.EXTRA31)
     out = os.path.join(a.out, a.case); os.makedirs(out, exist_ok=True)
     src = RS.export(CASES['cases'][a.case]['source'], out)
