@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 289,
+ "registered_trials": 291,
  "completed_trials": 289,
  "historical_screen_passes": 11,
  "versions": {
@@ -142,6 +142,23 @@
       "trades",
       "order0_30_per_half"
      ]
+    }
+   ]
+  },
+  "95": {
+   "status": "PREREGISTERED",
+   "source_freeze": "54661c7adc83fc8223490a29d59d1eca1dfdbf5a",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 290,
+     "key": "l95_volume_leads_return_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
+    },
+    {
+     "trial": 291,
+     "key": "r95_weekly_peer_rebalancing_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }

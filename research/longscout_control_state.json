@@ -18,19 +18,16 @@
    "trials_after": 287,
    "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7041535654",
    "head": "dc3cfa24b9b605e5932b6d34358ce971aa6feedf"
+  },
+  "94": {
+   "passes": 0,
+   "trials_after": 289,
+   "comment": null,
+   "publication_pending": true,
+   "head": "4ee4a2821506cb90695b0d65b2dd62ff5d44f9eb"
   }
  },
- "running": {
-  "version": 94,
-  "source_freeze": "91a6775d1eb0558b5de44086e2b9189d7aed4579",
-  "cases_freeze": "01b6e26",
-  "output": "C:/Dev/ZackBot_research_cache/longscout_codex_v94_20261120",
-  "sessions": {
-   "long": 3316,
-   "range": 99075
-  },
-  "finish_command": "python research/extra31_screen/longscout_finish_version.py 94 C:/Dev/ZackBot_research_cache/longscout_codex_v94_20261120 C:/Dev/ZackBot_research_cache/longscout_codex_v94_20261120/tests.log"
- },
+ "running": {},
  "queued": {
   "94": {
    "source_freeze": "91a6775d1eb0558b5de44086e2b9189d7aed4579",

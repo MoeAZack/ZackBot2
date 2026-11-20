@@ -25,7 +25,7 @@ def main():
     M = importlib.import_module(module)
     offline=os.environ.get('LONGSCOUT_PREREG_OFFLINE')=='1'
     if offline:
-        subprocess.run(['git','merge-base','--is-ancestor',commit,'origin/codex/longscout-v91-batch-20261120'],cwd=ROOT,check=True)
+        subprocess.run(['git','merge-base','--is-ancestor',commit,'refs/longscout/last-confirmed-remote'],cwd=ROOT,check=True)
     ledger_path = HERE/'longscout_resume_ledger.json'
     if ledger_path.exists(): ledger = json.loads(ledger_path.read_text())
     else:
