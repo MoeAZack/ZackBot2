@@ -1,0 +1,3 @@
+candidate,status,median_closes,meanR15_fee_plus_slip,fresh134,extra31,median_closedDD_R,DD_label
+l101_peer_tail_isolation_1d,FAIL,8.0,0.4135383455516338,0.41353834555163377,,1.1289993245388863,Standard
+r101_relative_peer_ou_1d,FAIL,132.0,-0.036323001839471125,-0.034873483049581606,-0.06672550083508644,9.910287440340909,Standard
