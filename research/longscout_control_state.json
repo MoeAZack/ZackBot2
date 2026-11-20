@@ -2,25 +2,63 @@
  "stop_at": "2026-11-23T16:00:00[Africa/Cairo]",
  "stop_condition": "First frozen screen pass independently worth forward-testing, or deadline; do not stop after one rejected version",
  "completed_versions": {
-  "91": {"passes":0,"trials_after":283,"comment":"https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7040918265"},
-  "92": {"passes":0,"trials_after":285,"comment":"https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7041348825","head":"24e6b60f85de8d84deafc7b11ad0bcb859a02d26"}
+  "91": {
+   "passes": 0,
+   "trials_after": 283,
+   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7040918265"
+  },
+  "92": {
+   "passes": 0,
+   "trials_after": 285,
+   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7041348825",
+   "head": "24e6b60f85de8d84deafc7b11ad0bcb859a02d26"
+  },
+  "93": {
+   "passes": 0,
+   "trials_after": 287,
+   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7041535654",
+   "head": "dc3cfa24b9b605e5932b6d34358ce971aa6feedf"
+  }
  },
  "running": {
-  "version":93,
-  "source_freeze":"c357f3960b8838d7affa7b704d0115209da8d07d",
-  "cases_freeze":"812e5c5",
-  "output":"C:/Dev/ZackBot_research_cache/longscout_codex_v93_20261120",
-  "sessions":{"long":74870,"range":62862,"windows_tests":62079},
-  "finish_command":"python research/extra31_screen/longscout_finish_version.py 93 C:/Dev/ZackBot_research_cache/longscout_codex_v93_20261120 C:/Dev/ZackBot_research_cache/longscout_codex_v93_20261120/tests.log"
+  "version": 94,
+  "source_freeze": "91a6775d1eb0558b5de44086e2b9189d7aed4579",
+  "cases_freeze": "01b6e26",
+  "output": "C:/Dev/ZackBot_research_cache/longscout_codex_v94_20261120",
+  "sessions": {
+   "long": 3316,
+   "range": 99075
+  },
+  "finish_command": "python research/extra31_screen/longscout_finish_version.py 94 C:/Dev/ZackBot_research_cache/longscout_codex_v94_20261120 C:/Dev/ZackBot_research_cache/longscout_codex_v94_20261120/tests.log"
  },
  "queued": {
-  "94":{"source_freeze":"91a6775d1eb0558b5de44086e2b9189d7aed4579","independent_tests":7,"state":"SOURCE_FROZEN_PUSHED; register cases only after V93 rejected"},
-  "95":{"state":"Draft alpha ready; v91_novelty_review writes tests/test_longscout_v95.py only"},
-  "96":{"state":"Draft alpha ready; v93_evidence writes tests/test_longscout_v96.py only"},
-  "97":{"state":"Planned market-model residual flush and intraday quote-volume/settlement disagreement, fixed proposal from evidence agent"}
+  "94": {
+   "source_freeze": "91a6775d1eb0558b5de44086e2b9189d7aed4579",
+   "independent_tests": 7,
+   "state": "SOURCE_FROZEN_PUSHED; register cases only after V93 rejected"
+  },
+  "95": {
+   "source_freeze": "54661c7adc83fc8223490a29d59d1eca1dfdbf5a",
+   "independent_tests": 7,
+   "state": "SOURCE_FROZEN_PUSHED"
+  },
+  "96": {
+   "source_freeze": "b6156496fc6df0e96eb65575b7086b3c0eda1d42",
+   "independent_tests": 6,
+   "state": "SOURCE_FROZEN_PUSHED"
+  },
+  "97": {
+   "independent_tests": 6,
+   "state": "Draft corrected residual cancellation; ready for source freeze"
+  }
  },
- "integration_owner":"root; all Git/index/ledger/publication operations sequential",
- "limits":"Research only; same inbox limits and research/LONGSCOUT_RESUME_STATUS.md; no accounts/runtime/scheduler/LEADFWD/merge/mark-ready; shared cache inputs read-only; own clone/branch only",
- "own_data_pool":"C:/Dev/ZackBot_research_cache/longscout_codex_v91_20261120/_data",
- "important":"#13 comments disabled by GitHub >2500; no retries. Publish each version directly on PR347. Final reply once at stopping condition, STATUS plus FOR CLAUDE. Tests/test_longscout_v1.py actually contains90versions: named helper tests only."
+ "integration_owner": "root; all Git/index/ledger/publication operations sequential",
+ "limits": "Research only; same inbox limits and research/LONGSCOUT_RESUME_STATUS.md; no accounts/runtime/scheduler/LEADFWD/merge/mark-ready; shared cache inputs read-only; own clone/branch only",
+ "own_data_pool": "C:/Dev/ZackBot_research_cache/longscout_codex_v91_20261120/_data",
+ "important": "#13 comments disabled by GitHub >2500; no retries. Publish each version directly on PR347. Final reply once at stopping condition, STATUS plus FOR CLAUDE. Tests/test_longscout_v1.py actually contains90versions: named helper tests only.",
+ "flow_data": {
+  "state": "Helper being implemented by v91_novelty_review; no full fetch yet. Freeze source and contract before acquisition.",
+  "official_docs": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data",
+  "probe": "3BTC days matched frozen hourly aggregates exactly; one public GET, no auth, no files saved"
+ }
 }

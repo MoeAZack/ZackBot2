@@ -103,6 +103,12 @@ def main():
     request=out/'github_result_request.json';request.write_text(json.dumps(dict(body=body)),encoding='utf-8')
     receipt=json.loads(command(['gh','api','--method','POST',f'repos/{REPO}/issues/347/comments','--input',str(request)]))
     (out/'github_receipt.json').write_text(json.dumps(dict(id=receipt['id'],html_url=receipt['html_url'],head=head,screen_passes=passes),indent=1)+'\n',encoding='utf-8')
+    state_path=ROOT/'research/longscout_control_state.json'
+    if state_path.exists():
+        state=json.loads(state_path.read_text())
+        state['completed_versions'][str(version)]=dict(passes=len(passes),trials_after=ledger['completed_trials'],comment=receipt['html_url'],head=head)
+        if state.get('running',{}).get('version')==version:state['running']={}
+        state_path.write_text(json.dumps(state,indent=1)+'\n',encoding='utf-8',newline='\n')
     print(json.dumps(dict(head=head,comment=receipt['html_url'],screen_passes=passes,completed_trials=ledger['completed_trials'])),flush=True)
 
 
