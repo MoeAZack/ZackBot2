@@ -25,6 +25,12 @@
    "comment": null,
    "publication_pending": true,
    "head": "4ee4a2821506cb90695b0d65b2dd62ff5d44f9eb"
+  },
+  "95": {
+   "passes": 0,
+   "trials_after": 291,
+   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7042015103",
+   "head": "1813c540a34bd4bfd987fe5584de44742a070ac9"
   }
  },
  "running": {},

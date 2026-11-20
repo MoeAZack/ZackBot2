@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 291,
+ "registered_trials": 293,
  "completed_trials": 291,
  "historical_screen_passes": 11,
  "versions": {
@@ -179,6 +179,23 @@
       "fresh134",
       "extra31"
      ]
+    }
+   ]
+  },
+  "96": {
+   "status": "PREREGISTERED",
+   "source_freeze": "b6156496fc6df0e96eb65575b7086b3c0eda1d42",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 292,
+     "key": "l96_sequential_cusum_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
+    },
+    {
+     "trial": 293,
+     "key": "r96_ordinal_oscillation_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
