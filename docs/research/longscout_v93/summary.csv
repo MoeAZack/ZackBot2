@@ -1,0 +1,3 @@
+candidate,status,median_closes,meanR15_fee_plus_slip,fresh134,extra31,median_closedDD_R,DD_label
+l93_downside_beta_rebound_4h,FAIL,129.0,-0.08666230634454833,-0.08820339666675582,-0.026460243898022887,22.873349593777284,Elevated
+r93_halfday_displacement_reversal_4h,FAIL,1177.0,-0.06130347251407241,-0.05103348578292321,-0.09576205807981004,76.38030805625303,Extreme

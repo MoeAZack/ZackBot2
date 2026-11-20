@@ -2,7 +2,7 @@
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
  "registered_trials": 287,
- "completed_trials": 285,
+ "completed_trials": 287,
  "historical_screen_passes": 11,
  "versions": {
   "91": {
@@ -79,19 +79,38 @@
    ]
   },
   "93": {
-   "status": "PREREGISTERED",
+   "status": "COMPLETE_REJECTED",
    "source_freeze": "c357f3960b8838d7affa7b704d0115209da8d07d",
-   "batch_passes": null,
+   "batch_passes": 0,
    "candidates": [
     {
      "trial": 286,
      "key": "l93_downside_beta_rebound_4h",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "FAIL",
+     "meanR15_fee_plus_slip": -0.08666230634454833,
+     "failed_gates": [
+      "meanR15",
+      "late",
+      "ex_best_coin",
+      "meanR23",
+      "fresh134",
+      "extra31"
+     ]
     },
     {
      "trial": 287,
      "key": "r93_halfday_displacement_reversal_4h",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "FAIL",
+     "meanR15_fee_plus_slip": -0.06130347251407241,
+     "failed_gates": [
+      "meanR15",
+      "early",
+      "late",
+      "ex_best_coin",
+      "meanR23",
+      "fresh134",
+      "extra31"
+     ]
     }
    ]
   }
