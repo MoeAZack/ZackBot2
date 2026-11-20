@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 293,
+ "registered_trials": 295,
  "completed_trials": 293,
  "historical_screen_passes": 11,
  "versions": {
@@ -212,6 +212,23 @@
       "fresh134",
       "extra31"
      ]
+    }
+   ]
+  },
+  "97": {
+   "status": "PREREGISTERED",
+   "source_freeze": "1eddbbefc5b77f34818d1c003c8400eb34537971",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 294,
+     "key": "l97_quiet_btc_residual_flush_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
+    },
+    {
+     "trial": 295,
+     "key": "l97_intraday_participation_disagreement_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
