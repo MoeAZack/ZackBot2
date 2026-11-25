@@ -1,0 +1,6 @@
+BEFORE
+2 * taker / total - 1
+AFTER
+1 - 2 * taker / total
+DETECTED BY
+test_run_ends_on_the_next_observable_bar

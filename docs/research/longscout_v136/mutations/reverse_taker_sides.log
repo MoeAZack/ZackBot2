@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_run_ends_on_the_next_observable_bar ___________________
+
+    def test_run_ends_on_the_next_observable_bar():
+        taker = pd.Series([52., 40, 42, 43, 60, 65])
+        total = pd.Series(100., index=taker.index)
+        expected = M.flow_reversal(total, taker)
+>       assert np.flatnonzero(expected).tolist() == [4]
+E       assert [] == [4]
+E         
+E         Right contains one more item: 4
+E         Use -v to get more diff
+
+tests\test_longscout_v136.py:26: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v136.py::test_run_ends_on_the_next_observable_bar
+1 failed in 3.52s

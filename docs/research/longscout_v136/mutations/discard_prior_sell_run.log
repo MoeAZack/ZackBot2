@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_every_bar_in_the_run_must_sell _____________________
+
+    def test_every_bar_in_the_run_must_sell():
+        taker = pd.Series([25., 52., 25., 70.])
+        total = pd.Series(100., index=taker.index)
+>       assert not M.flow_reversal(total, taker).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0    False\n1    False\n2    False\n3     True\ndtype: bool.any
+E        +      where 0    False\n1    False\n2    False\n3     True\ndtype: bool = <function flow_reversal at 0x0000024DFF2554E0>(0    100.0\n1    100.0\n2    100.0\n3    100.0\ndtype: float64, 0    25.0\n1    52.0\n2    25.0\n3    70.0\ndtype: float64)
+E        +        where <function flow_reversal at 0x0000024DFF2554E0> = M.flow_reversal
+
+tests\test_longscout_v136.py:34: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v136.py::test_every_bar_in_the_run_must_sell - as...
+1 failed in 2.23s

@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_bad_or_missing_total_is_unavailable ___________________
+
+    def test_bad_or_missing_total_is_unavailable():
+        taker = pd.Series([40., 40., 40., 110.])
+        total = pd.Series(100., index=taker.index)
+>       assert not M.flow_reversal(total, taker).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0    False\n1    False\n2    False\n3     True\ndtype: bool.any
+E        +      where 0    False\n1    False\n2    False\n3     True\ndtype: bool = <function flow_reversal at 0x000001B7B28E54E0>(0    100.0\n1    100.0\n2    100.0\n3    100.0\ndtype: float64, 0     40.0\n1     40.0\n2     40.0\n3    110.0\ndtype: float64)
+E        +        where <function flow_reversal at 0x000001B7B28E54E0> = M.flow_reversal
+
+tests\test_longscout_v136.py:40: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v136.py::test_bad_or_missing_total_is_unavailable
+1 failed in 1.97s

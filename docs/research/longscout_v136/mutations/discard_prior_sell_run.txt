@@ -1,0 +1,6 @@
+BEFORE
+previous.max().lt(0) & 
+AFTER
+
+DETECTED BY
+test_every_bar_in_the_run_must_sell

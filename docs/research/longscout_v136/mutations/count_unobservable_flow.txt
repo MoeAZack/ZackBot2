@@ -1,0 +1,6 @@
+BEFORE
+ & taker.le(total)
+AFTER
+
+DETECTED BY
+test_bad_or_missing_total_is_unavailable
