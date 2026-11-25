@@ -112,6 +112,10 @@ def main():
             interest = cases['btc_open_interest_input']
             detail.append(f"Entry feature: BTC contract open interest at 23:55 UTC from the public Metrics archive, "
                           f"pinned manifest `{interest['manifest_sha256']}`. Missing dates are masked.")
+        if 'btc_positioning_input' in cases:
+            position = cases['btc_positioning_input']
+            detail.append(f"Entry feature: BTC top-trader account and position ratios from the public Metrics archive, "
+                          f"pinned manifest `{position['manifest_sha256']}`. Missing dates are masked.")
     synopsis=(f'# LONGSCOUT V{version}: {len(passes)}/{len(rows)} frozen screen passes\n\n{stamp}. Source freeze `{source}`; immutable cases preregistered before outcomes. See the case manifest for remote/local publication timing. Ledger: {ledger["completed_trials"]} completed trials / {ledger["historical_screen_passes"]} historical screen passes; {ledger["registered_trials"]} registered.\n\n'+table+'\n'+'\n\n'.join(detail)+
         '\n\nResearch-only/defaultOFF. 165 coins,40orders,unchanged seven rule-v1 gates and BOTH subset gates. Primary15bp fees PLUS2bp slip/side; stress23bp fees PLUS2bp slip. Native funding fixed .00005/4h of held notional, both sides pay; not realized historical funding. Frozen testnet snapshot is not a historical rules series; ICPUSDT/TLMUSDT lack snapshot rules and use fallback. Shared calendar already consumed, not untouched holdout. No tuning, coin dropping or subgroup rescue.\n\nDD uses closed equity with initialzero, notMTM. Standard<=15R, Elevated<=30R, High<=60R, Extreme>60R. Exact tests in tests.log; source/case SHA and both path/worst tapes preserved. Saved-tape seven-gate/subset reconstruction matches; not independent market-price replay or profitability acceptance.\n\n'+
         ('A screen pass is a lead for independent reproduction. No book is activated.\n\n' if passes else 'The frozen economic rules are rejected. Search proceeds to the next preregistered version.\n\n')+

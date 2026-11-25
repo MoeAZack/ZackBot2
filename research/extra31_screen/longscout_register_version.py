@@ -74,6 +74,12 @@ def main():
             int(manifest_hash, 16)
             table['btc_open_interest_input'] = dict(manifest_sha256=manifest_hash, source='Binance Data Vision Metrics',
                                                    signal_field='BTCUSDT sum_open_interest at 23:55 UTC')
+        if hasattr(M, 'BTC_POSITION_MANIFEST_SHA256'):
+            manifest_hash = M.BTC_POSITION_MANIFEST_SHA256
+            assert isinstance(manifest_hash, str) and len(manifest_hash) == 64
+            int(manifest_hash, 16)
+            table['btc_positioning_input'] = dict(manifest_sha256=manifest_hash, source='Binance Data Vision Metrics',
+                                                  signal_field='BTCUSDT top-trader account and position ratios at 23:55 UTC')
     table['publication']='SOURCE_PREVIOUSLY_PUSHED; case manifest locally committed before market execution; remote publication queued during workstation connection outage' if offline else 'Source and cases committed and pushed before market execution'
     candidates=[]
     for trial,(key,v) in enumerate(M.CANDIDATES.items(),prior+1):
