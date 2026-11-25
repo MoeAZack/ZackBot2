@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 303,
+ "registered_trials": 305,
  "completed_trials": 301,
  "historical_screen_passes": 11,
  "versions": {
@@ -367,6 +367,23 @@
    ],
    "stopped_cairo": "2026-11-20T18:13:21+02:00",
    "note": "Owner stopped scouting; both preregistered candidates interrupted during execution; no complete economic verdict. Do not count as passes or completed failures."
+  },
+  "105": {
+   "status": "PREREGISTERED",
+   "source_freeze": "f2c54ac54fe43cfaa62d4c9f753b360d61dda832",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 304,
+     "key": "l105_downside_bipower_discontinuity_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
+    },
+    {
+     "trial": 305,
+     "key": "r105_volume_conditional_reversal_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
+    }
+   ]
   }
  },
  "owner_stop": {
