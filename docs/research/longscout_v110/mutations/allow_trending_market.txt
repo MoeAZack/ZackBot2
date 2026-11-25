@@ -1,0 +1,6 @@
+BEFORE
+L1.regime_daily(close).eq(0)
+AFTER
+L1.regime_daily(close).notna()
+DETECTED BY
+test_prefix_gap_and_regime

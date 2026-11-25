@@ -1,0 +1,6 @@
+BEFORE
+-direction * returns.shift()
+AFTER
+-direction * returns.shift(2)
+DETECTED BY
+test_unprofitable_streak_is_not_faded

@@ -1,0 +1,27 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_prefix_gap_and_regime __________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002BE28042420>
+
+    def test_prefix_gap_and_regime(monkeypatch):
+        d = fixture()
+        monkeypatch.setattr(M.L1, 'regime_daily', lambda c: pd.Series(0., index=c.index))
+        full = M.sig_streak_fade(d, {}, {})
+        for cut in (123, 128, 134, 138):
+            prefix = M.sig_streak_fade(d.iloc[:cut], {}, {})
+            for key, flags in full.items():
+                pd.testing.assert_series_equal(prefix[key], flags.iloc[:cut])
+        gap = M.sig_streak_fade(d.drop(index=44), {}, {})
+        assert not gap['le'].any() and not gap['se'].any()
+        monkeypatch.setattr(M.L1, 'regime_daily', lambda c: pd.Series(1., index=c.index))
+        trend = M.sig_streak_fade(d, {}, {})
+>       assert not trend['le'].any() and not trend['se'].any()
+E       assert (not np.True_)
+E        +  where np.True_ = any()
+E        +    where any = 0      False\n1      False\n2      False\n3      False\n4      False\n       ...  \n135    False\n136    False\n137    False\n138    False\n139    False\nLength: 140, dtype: bool.any
+
+tests\test_longscout_v110.py:55: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v110.py::test_prefix_gap_and_regime - assert (not...
+1 failed in 1.96s

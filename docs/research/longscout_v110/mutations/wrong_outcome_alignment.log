@@ -1,0 +1,21 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_unprofitable_streak_is_not_faded ____________________
+
+    def test_unprofitable_streak_is_not_faded():
+        d = fixture(reversal=.001).set_index('t')
+        assert not M.streak_model(d.c, -1).any()
+        assert not M.streak_model(d.c, 1).any()
+        promising = fixture().set_index('t')
+>       assert M.streak_model(promising.c, -1).any()
+E       assert np.False_
+E        +  where np.False_ = any()
+E        +    where any = t\n2026-01-01    False\n2026-01-02    False\n2026-01-03    False\n2026-01-04    False\n2026-01-05    False\n              .....False\n2026-05-17    False\n2026-05-18    False\n2026-05-19    False\n2026-05-20    False\nName: c, Length: 140, dtype: bool.any
+E        +      where t\n2026-01-01    False\n2026-01-02    False\n2026-01-03    False\n2026-01-04    False\n2026-01-05    False\n              .....False\n2026-05-17    False\n2026-05-18    False\n2026-05-19    False\n2026-05-20    False\nName: c, Length: 140, dtype: bool = <function streak_model at 0x00000222FCBCB7E0>(t\n2026-01-01    101.005017\n2026-01-02    100.000000\n2026-01-03     99.004983\n2026-01-04     98.019867\n2026-01-05     9....005017\n2026-05-18    100.000000\n2026-05-19     99.900050\n2026-05-20    100.000000\nName: c, Length: 140, dtype: float64, -1)
+E        +        where <function streak_model at 0x00000222FCBCB7E0> = M.streak_model
+E        +        and   t\n2026-01-01    101.005017\n2026-01-02    100.000000\n2026-01-03     99.004983\n2026-01-04     98.019867\n2026-01-05     9....005017\n2026-05-18    100.000000\n2026-05-19     99.900050\n2026-05-20    100.000000\nName: c, Length: 140, dtype: float64 =                      c\nt                     \n2026-01-01  101.005017\n2026-01-02  100.000000\n2026-01-03   99.004983\n202...000\n2026-05-17  101.005017\n2026-05-18  100.000000\n2026-05-19   99.900050\n2026-05-20  100.000000\n\n[140 rows x 1 columns].c
+
+tests\test_longscout_v110.py:40: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v110.py::test_unprofitable_streak_is_not_faded - ...
+1 failed in 2.09s

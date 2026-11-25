@@ -1,0 +1,6 @@
+BEFORE
+-direction * returns.shift()
+AFTER
+direction * returns.shift()
+DETECTED BY
+test_identifies_both_reversal_sides

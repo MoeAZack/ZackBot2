@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_identifies_both_reversal_sides _____________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001C4509F6450>
+
+    def test_identifies_both_reversal_sides(monkeypatch):
+        monkeypatch.setattr(M.L1, 'regime_daily', lambda c: pd.Series(0., index=c.index))
+        signals = M.sig_streak_fade(fixture(), {}, {})
+>       assert np.flatnonzero(signals['se']).tolist() == [126, 136]
+E       assert [] == [126, 136]
+E         
+E         Right contains 2 more items, first extra item: 126
+E         Use -v to get more diff
+
+tests\test_longscout_v110.py:31: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v110.py::test_identifies_both_reversal_sides - as...
+1 failed in 3.54s
