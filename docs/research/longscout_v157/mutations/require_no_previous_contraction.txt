@@ -1,0 +1,6 @@
+BEFORE
+ & mint.shift(7).lt(0)
+AFTER
+
+DETECTED BY
+test_unchanged_wrapped_supply_can_not_arm_growth

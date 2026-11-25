@@ -1,0 +1,23 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_publication_is_a_hard_boundary _____________________
+
+    def test_publication_is_a_hard_boundary():
+        days, native, wrapped, done_a, done_b = samples()
+        result = M.wrapping_resumes(native, wrapped, done_a, done_b)
+        assert result[result].index.tolist() == [days[34]]
+        for n in (32, 34, 35):
+            prefix = M.wrapping_resumes(native.iloc[:n], wrapped.iloc[:n], done_a.iloc[:n], done_b.iloc[:n])
+            pd.testing.assert_series_equal(prefix, result.iloc[:n])
+        done_b.iloc[20] = (days[35] + pd.Timedelta(seconds=1)).value // 10**9
+>       assert not M.wrapping_resumes(native, wrapped, done_a, done_b).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n2024-01-06    Fals...024-02-13    False\n2024-02-14    False\n2024-02-15    False\n2024-02-16    False\n2024-02-17    False\nFreq: D, dtype: bool.any
+E        +      where 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n2024-01-06    Fals...024-02-13    False\n2024-02-14    False\n2024-02-15    False\n2024-02-16    False\n2024-02-17    False\nFreq: D, dtype: bool = <function wrapping_resumes at 0x00000280A8C86A20>(2024-01-01    10000.0\n2024-01-02    10010.0\n2024-01-03    10020.0\n2024-01-04    10030.0\n2024-01-05    10040.0\n2024-01-...10430.0\n2024-02-14    10440.0\n2024-02-15    10450.0\n2024-02-16    10460.0\n2024-02-17    10470.0\nFreq: D, dtype: float64, 2024-01-01    100.0\n2024-01-02    100.0\n2024-01-03    100.0\n2024-01-04    100.0\n2024-01-05    100.0\n2024-01-06    100....-02-13    246.0\n2024-02-14    256.0\n2024-02-15    266.0\n2024-02-16    276.0\n2024-02-17    286.0\nFreq: D, dtype: float64, 2024-01-01    1704171600\n2024-01-02    1704258000\n2024-01-03    1704344400\n2024-01-04    1704430800\n2024-01-05    1704...24-02-14    1707973200\n2024-02-15    1708059600\n2024-02-16    1708146000\n2024-02-17    1708232400\nFreq: D, dtype: int64, 2024-01-01    1704171600\n2024-01-02    1704258000\n2024-01-03    1704344400\n2024-01-04    1704430800\n2024-01-05    1704...24-02-14    1707973200\n2024-02-15    1708059600\n2024-02-16    1708146000\n2024-02-17    1708232400\nFreq: D, dtype: int64)
+E        +        where <function wrapping_resumes at 0x00000280A8C86A20> = M.wrapping_resumes
+
+tests\test_longscout_v157.py:35: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v157.py::test_publication_is_a_hard_boundary - as...
+1 failed in 1.35s

@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________ test_unchanged_wrapped_supply_can_not_arm_growth _______________
+
+    def test_unchanged_wrapped_supply_can_not_arm_growth():
+        _, native, wrapped, done_a, done_b = samples()
+        wrapped.iloc[:28] = 86.
+>       assert not M.wrapping_resumes(native, wrapped, done_a, done_b).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n2024-01-06    Fals...024-02-13    False\n2024-02-14    False\n2024-02-15    False\n2024-02-16    False\n2024-02-17    False\nFreq: D, dtype: bool.any
+E        +      where 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n2024-01-06    Fals...024-02-13    False\n2024-02-14    False\n2024-02-15    False\n2024-02-16    False\n2024-02-17    False\nFreq: D, dtype: bool = <function wrapping_resumes at 0x000001AF1D686A20>(2024-01-01    10000.0\n2024-01-02    10010.0\n2024-01-03    10020.0\n2024-01-04    10030.0\n2024-01-05    10040.0\n2024-01-...10430.0\n2024-02-14    10440.0\n2024-02-15    10450.0\n2024-02-16    10460.0\n2024-02-17    10470.0\nFreq: D, dtype: float64, 2024-01-01     86.0\n2024-01-02     86.0\n2024-01-03     86.0\n2024-01-04     86.0\n2024-01-05     86.0\n2024-01-06     86....-02-13    246.0\n2024-02-14    256.0\n2024-02-15    266.0\n2024-02-16    276.0\n2024-02-17    286.0\nFreq: D, dtype: float64, 2024-01-01    1704171600\n2024-01-02    1704258000\n2024-01-03    1704344400\n2024-01-04    1704430800\n2024-01-05    1704...24-02-14    1707973200\n2024-02-15    1708059600\n2024-02-16    1708146000\n2024-02-17    1708232400\nFreq: D, dtype: int64, 2024-01-01    1704171600\n2024-01-02    1704258000\n2024-01-03    1704344400\n2024-01-04    1704430800\n2024-01-05    1704...24-02-14    1707973200\n2024-02-15    1708059600\n2024-02-16    1708146000\n2024-02-17    1708232400\nFreq: D, dtype: int64)
+E        +        where <function wrapping_resumes at 0x000001AF1D686A20> = M.wrapping_resumes
+
+tests\test_longscout_v157.py:47: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v157.py::test_unchanged_wrapped_supply_can_not_arm_growth
+1 failed in 1.34s

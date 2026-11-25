@@ -1,0 +1,6 @@
+BEFORE
+signal & matched.le(decision)
+AFTER
+signal
+DETECTED BY
+test_publication_is_a_hard_boundary
