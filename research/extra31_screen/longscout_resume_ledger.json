@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 366,
+ "registered_trials": 367,
  "completed_trials": 362,
  "historical_screen_passes": 13,
  "versions": {
@@ -1760,6 +1760,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "166": {
+   "status": "PREREGISTERED",
+   "source_freeze": "cd505767ff1e4298bb45d7aea3efc9e6a1781350",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 367,
+     "key": "l166_btc_bid_resilience_during_selling_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
