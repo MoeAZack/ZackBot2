@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 393,
+ "registered_trials": 394,
  "completed_trials": 388,
  "historical_screen_passes": 13,
  "versions": {
@@ -2384,6 +2384,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "193": {
+   "status": "PREREGISTERED",
+   "source_freeze": "d4728cd170226e4434e36d21f752e619e5cf4790",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 394,
+     "key": "l193_eth_stablecoin_transfer_intensity_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
