@@ -61,6 +61,19 @@ def main():
         table['family_novelty'] = M.FAMILY_NOVELTY
         table['runner'] = getattr(M, 'RUNNER', 'longscout_v91_run.py')
         assert table['runner'] in ('longscout_v91_run.py', 'longscout_flow_run.py')
+        if hasattr(M, 'DATA_MANIFEST_SHA256'):
+            manifest_hash = M.DATA_MANIFEST_SHA256
+            assert isinstance(manifest_hash, str) and len(manifest_hash) == 64
+            int(manifest_hash, 16)
+            table['funding_input'] = dict(manifest_sha256=manifest_hash, source='Binance Data Vision',
+                                         coverage='166 symbols; cadence gaps mask feature eligibility',
+                                         purpose='entry signal only; frozen simulator costs unchanged')
+        if hasattr(M, 'BTC_OI_MANIFEST_SHA256'):
+            manifest_hash = M.BTC_OI_MANIFEST_SHA256
+            assert isinstance(manifest_hash, str) and len(manifest_hash) == 64
+            int(manifest_hash, 16)
+            table['btc_open_interest_input'] = dict(manifest_sha256=manifest_hash, source='Binance Data Vision Metrics',
+                                                   signal_field='BTCUSDT sum_open_interest at 23:55 UTC')
     table['publication']='SOURCE_PREVIOUSLY_PUSHED; case manifest locally committed before market execution; remote publication queued during workstation connection outage' if offline else 'Source and cases committed and pushed before market execution'
     candidates=[]
     for trial,(key,v) in enumerate(M.CANDIDATES.items(),prior+1):
