@@ -1,0 +1,14 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_prior_improvement_must_be_broad_based __________________
+
+    def test_prior_improvement_must_be_broad_based():
+        ratio = sample()
+        ratio.iloc[55:59, :4] *= 1.3
+>       assert not M.broadening(ratio).iloc[60]
+E       assert not np.True_
+
+tests\test_longscout_v161.py:43: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v161.py::test_prior_improvement_must_be_broad_based
+1 failed in 1.30s

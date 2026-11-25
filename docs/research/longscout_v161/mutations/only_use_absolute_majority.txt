@@ -1,0 +1,6 @@
+BEFORE
+ratios.gt(reference)
+AFTER
+ratios.gt(1)
+DETECTED BY
+test_market_specific_baselines

@@ -1,0 +1,6 @@
+BEFORE
+ & prior.rolling(5, min_periods=5).mean().le(.4)
+AFTER
+
+DETECTED BY
+test_prior_improvement_must_be_broad_based

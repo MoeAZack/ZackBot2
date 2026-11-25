@@ -1,0 +1,6 @@
+BEFORE
+ratios.notna().all(axis=1)
+AFTER
+ratios.notna().any(axis=1)
+DETECTED BY
+test_one_missing_market_blocks_signal

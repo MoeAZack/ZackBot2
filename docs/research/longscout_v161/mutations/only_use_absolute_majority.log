@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_market_specific_baselines ________________________
+
+    def test_market_specific_baselines():
+        ratio = sample()
+        hit = M.broadening(ratio)
+>       assert hit[hit].index.tolist() == [60]
+E       assert [] == [60]
+E         
+E         Right contains one more item: 60
+E         Use -v to get more diff
+
+tests\test_longscout_v161.py:29: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v161.py::test_market_specific_baselines - assert ...
+1 failed in 1.37s

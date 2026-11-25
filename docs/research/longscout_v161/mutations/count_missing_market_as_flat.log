@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_one_missing_market_blocks_signal ____________________
+
+    def test_one_missing_market_blocks_signal():
+        ratio = sample()
+        ratio.iloc[60, 4] = float('nan')
+>       assert not M.broadening(ratio).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n59    False\n60     True\n61    False\n62    False\n63    False\nLength: 64, dtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n59    False\n60     True\n61    False\n62    False\n63    False\nLength: 64, dtype: bool = <function broadening at 0x0000021BCD9D6AC0>(    ADAUSDT  DOGEUSDT  ETHUSDT  SOLUSDT  XRPUSDT\n0      1.20      1.40     0.70     0.80      1.1\n1      1.20      1.4...2     1.32      1.54     0.77     0.88      1.1\n63     1.32      1.54     0.77     0.88      1.1\n\n[64 rows x 5 columns])
+E        +        where <function broadening at 0x0000021BCD9D6AC0> = M.broadening
+
+tests\test_longscout_v161.py:37: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v161.py::test_one_missing_market_blocks_signal - ...
+1 failed in 1.29s
