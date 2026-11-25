@@ -1,0 +1,28 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_sideways_coin_and_nonbear_btc_required _________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000166B2AAFC50>
+
+    def test_sideways_coin_and_nonbear_btc_required(monkeypatch):
+        price, depth = fixture(monkeypatch)
+        frame = lambda series: pd.DataFrame(dict(t=series.index, c=series.to_numpy(), qv=2e7))
+        monkeypatch.setattr(M, 'load_depth', lambda: depth)
+        M.set_btc(frame(price))
+        coin = pd.Series([100, 100, 99, 99, 99, 101, 101, 101], index=price.index)
+        report = M.sig_depth_fade(frame(coin), {}, {})
+        assert np.flatnonzero(report['le']).tolist() == [2]
+        assert np.flatnonzero(report['se']).tolist() == [5]
+        monkeypatch.setattr(M.L1, 'regime_daily', lambda c: pd.Series(-1., index=c.index))
+>       assert not M.market_conditions(price, depth).long.any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01    False\n2024-01-02    False\n2024-01-03     True\n2024-01-04    False\n2024-01-05    False\n2024-01-06    False\n2024-01-07    False\n2024-01-08    False\nFreq: D, Name: long, dtype: bool.any
+E        +      where 2024-01-01    False\n2024-01-02    False\n2024-01-03     True\n2024-01-04    False\n2024-01-05    False\n2024-01-06    False\n2024-01-07    False\n2024-01-08    False\nFreq: D, Name: long, dtype: bool =              long  short\n2024-01-01  False  False\n2024-01-02  False  False\n2024-01-03   True  False\n2024-01-04  False  False\n2024-01-05  False  False\n2024-01-06  False   True\n2024-01-07  False  False\n2024-01-08  False  False.long
+E        +        where              long  short\n2024-01-01  False  False\n2024-01-02  False  False\n2024-01-03   True  False\n2024-01-04  False  False\n2024-01-05  False  False\n2024-01-06  False   True\n2024-01-07  False  False\n2024-01-08  False  False = <function market_conditions at 0x00000166B25F2AC0>(2024-01-01    100\n2024-01-02    100\n2024-01-03    101\n2024-01-04    102\n2024-01-05    102\n2024-01-06    101\n2024-01-07    100\n2024-01-08    102\nFreq: D, dtype: int64, 2024-01-01    0.00\n2024-01-02    0.02\n2024-01-03    0.18\n2024-01-04    0.19\n2024-01-05    0.10\n2024-01-06   -0.18\n2024-01-07   -0.32\n2024-01-08    0.00\nFreq: D, dtype: float64)
+E        +          where <function market_conditions at 0x00000166B25F2AC0> = M.market_conditions
+
+tests\test_longscout_v124.py:55: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v124.py::test_sideways_coin_and_nonbear_btc_required
+1 failed in 1.83s

@@ -1,0 +1,20 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_neutral_transition_and_both_sides ____________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000018F2BEEC200>
+
+    def test_neutral_transition_and_both_sides(monkeypatch):
+        price, depth = fixture(monkeypatch)
+        flags = M.market_conditions(price, depth)
+        assert np.flatnonzero(flags.long).tolist() == [2]
+>       assert np.flatnonzero(flags.short).tolist() == [5]
+E       assert [] == [5]
+E         
+E         Right contains one more item: 5
+E         Use -v to get more diff
+
+tests\test_longscout_v124.py:38: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v124.py::test_neutral_transition_and_both_sides
+1 failed in 2.77s

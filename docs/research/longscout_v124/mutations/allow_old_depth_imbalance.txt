@@ -1,0 +1,6 @@
+BEFORE
+neutral & score.ge(.15)
+AFTER
+score.ge(.15)
+DETECTED BY
+test_neutral_transition_and_both_sides

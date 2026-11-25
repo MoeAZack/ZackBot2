@@ -1,0 +1,6 @@
+BEFORE
+L1.regime_daily(btc).isin((0., 1.))
+AFTER
+L1.regime_daily(btc).notna()
+DETECTED BY
+test_sideways_coin_and_nonbear_btc_required
