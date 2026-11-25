@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_long_end_must_stay_stable ________________________
+
+    def test_long_end_must_stay_stable():
+        yields = sample()
+        yields.loc[yields.index[4:], 'DFII10'] = 1.9
+>       assert not M.real_curve_steepening(yields).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2026-01-08    False\n2026-01-09    False\n2026-01-10    False\n2026-01-11    False\n2026-01-12     True\n2026-01-15    False\n2026-01-16    False\ndtype: bool.any
+E        +      where 2026-01-08    False\n2026-01-09    False\n2026-01-10    False\n2026-01-11    False\n2026-01-12     True\n2026-01-15    False\n2026-01-16    False\ndtype: bool = <function real_curve_steepening at 0x000001FFC71C6A20>(            DFII5  DFII10\n2026-01-05   2.00     2.0\n2026-01-06   2.00     2.0\n2026-01-07   2.00     2.0\n2026-01-08   2.00     2.0\n2026-01-09   1.85     1.9\n2026-01-12   1.84     1.9\n2026-01-13   1.81     1.9)
+E        +        where <function real_curve_steepening at 0x000001FFC71C6A20> = M.real_curve_steepening
+
+tests\test_longscout_v173.py:26: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v173.py::test_long_end_must_stay_stable - assert ...
+1 failed in 1.88s

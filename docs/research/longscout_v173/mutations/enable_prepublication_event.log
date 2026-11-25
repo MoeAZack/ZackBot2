@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_delays_daily_decision __________________________
+
+    def test_delays_daily_decision():
+        yields = sample()
+        event = M.real_curve_steepening(yields)
+>       assert event[event].index.tolist() == [yields.index[4] + pd.Timedelta(days=3)]
+E       AssertionError: assert [Timestamp('2...09 00:00:00')] == [Timestamp('2...12 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2026-01-09 00:00:00') != Timestamp('2026-01-12 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v173.py:32: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v173.py::test_delays_daily_decision - AssertionEr...
+1 failed in 1.37s

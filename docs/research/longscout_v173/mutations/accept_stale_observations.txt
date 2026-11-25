@@ -1,0 +1,6 @@
+BEFORE
+elapsed.between(3, 8)
+AFTER
+elapsed.ge(3)
+DETECTED BY
+test_rejects_stale_sessions

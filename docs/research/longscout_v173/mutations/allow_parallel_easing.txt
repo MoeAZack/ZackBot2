@@ -1,0 +1,6 @@
+BEFORE
+ & shift.DFII10.abs().le(5)
+AFTER
+
+DETECTED BY
+test_long_end_must_stay_stable
