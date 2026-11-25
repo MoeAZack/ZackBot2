@@ -1,0 +1,6 @@
+BEFORE
+returns - beta.mul(btc, axis=0)
+AFTER
+returns
+DETECTED BY
+test_spread_removes_mechanical_btc_response

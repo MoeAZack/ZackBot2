@@ -1,0 +1,28 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_spread_removes_mechanical_btc_response _________________
+
+    def test_spread_removes_mechanical_btc_response():
+        beta = pd.DataFrame([np.linspace(.5, 2., 60)] * 2)
+        btc = pd.Series([.02, .03])
+        returns = beta.mul(btc, axis=0)
+        returns.iloc[1, -15:] += .008
+        liquid = beta.notna()
+        spread, top = M.risk_spread(returns, btc, beta, liquid)
+>       np.testing.assert_allclose(spread, [0., .008], atol=1e-15)
+E       AssertionError: 
+E       Not equal to tolerance rtol=1e-07, atol=1e-15
+E       
+E       Mismatched elements: 2 / 2 (100%)
+E       Mismatch at indices:
+E        [0]: 0.022881355932203397 (ACTUAL), 0.0 (DESIRED)
+E        [1]: 0.04232203389830509 (ACTUAL), 0.008 (DESIRED)
+E       Max absolute difference among violations: 0.03432203
+E       Max relative difference among violations: 4.29025424
+E        ACTUAL: array([0.022881, 0.042322])
+E        DESIRED: array([0.   , 0.008])
+
+tests\test_longscout_v145.py:40: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v145.py::test_spread_removes_mechanical_btc_response
+1 failed in 1.87s

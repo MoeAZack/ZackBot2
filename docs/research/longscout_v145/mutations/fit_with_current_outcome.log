@@ -1,0 +1,32 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_beta_excludes_current_day ________________________
+
+    def test_beta_excludes_current_day():
+        btc = pd.Series(np.linspace(-.02, .02, 66))
+        coins = pd.DataFrame({'x': 2 * btc, 'y': .5 * btc})
+        before = M.prior_betas(coins, btc)
+        coins.at[62, 'x'] = 1.
+        after = M.prior_betas(coins, btc)
+        np.testing.assert_allclose(before.loc[62], [2., .5])
+>       pd.testing.assert_series_equal(before.loc[62], after.loc[62])
+
+tests\test_longscout_v145.py:29: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+pandas/_libs/testing.pyx:53: in pandas._libs.testing.assert_almost_equal
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+>   ???
+E   AssertionError: Series are different
+E   
+E   Series values are different (50.0 %)
+E   [index]: [x, y]
+E   [left]:  [1.9999999999999976, 0.4999999999999994]
+E   [right]: [4.567213114754093, 0.4999999999999994]
+E   At positional index 0, first diff: 1.9999999999999976 != 4.567213114754093
+
+pandas/_libs/testing.pyx:171: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v145.py::test_beta_excludes_current_day - Asserti...
+1 failed in 1.34s

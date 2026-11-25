@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_turn_requires_negative_preceding_week __________________
+
+    def test_turn_requires_negative_preceding_week():
+        confirmed = pd.Series([-.004] * 5 + [.005, .006])
+        assert np.flatnonzero(M.factor_resumes(confirmed)).tolist() == [5]
+        confirmed.iloc[:4] = .004
+>       assert not M.factor_resumes(confirmed).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0    False\n1    False\n2    False\n3    False\n4    False\n5     True\n6    False\ndtype: bool.any
+E        +      where 0    False\n1    False\n2    False\n3    False\n4    False\n5     True\n6    False\ndtype: bool = <function factor_resumes at 0x000001FF6CD132E0>(0    0.004\n1    0.004\n2    0.004\n3    0.004\n4   -0.004\n5    0.005\n6    0.006\ndtype: float64)
+E        +        where <function factor_resumes at 0x000001FF6CD132E0> = M.factor_resumes
+
+tests\test_longscout_v145.py:50: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v145.py::test_turn_requires_negative_preceding_week
+1 failed in 1.41s

@@ -1,0 +1,6 @@
+BEFORE
+previous.rolling(5, min_periods=5).mean().lt(0) & 
+AFTER
+
+DETECTED BY
+test_turn_requires_negative_preceding_week
