@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 325,
+ "registered_trials": 326,
  "completed_trials": 322,
  "historical_screen_passes": 12,
  "versions": {
@@ -828,6 +828,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "125": {
+   "status": "PREREGISTERED",
+   "source_freeze": "fcf7bebbc9167dc0ab3761e45e45c39ec280f9fa",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 326,
+     "key": "l125_btc_quarterly_delivery_basis_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
