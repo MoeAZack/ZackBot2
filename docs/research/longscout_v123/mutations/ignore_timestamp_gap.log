@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_gap_does_not_confirm_shorter_interval __________________
+
+    def test_gap_does_not_confirm_shorter_interval():
+        close = np.array([8, 12, 16, 20, 24])*M.HOUR_MS
+>       assert not M.cadence_change(close, funding(times=(0, 8, 16, 20))).any()
+E       assert not np.True_
+E        +  where np.True_ = <built-in method any of numpy.ndarray object at 0x000001E124654B70>()
+E        +    where <built-in method any of numpy.ndarray object at 0x000001E124654B70> = array([False, False, False,  True, False]).any
+E        +      where array([False, False, False,  True, False]) = <function cadence_change at 0x000001E10910B7E0>(array([28800000, 43200000, 57600000, 72000000, 86400000]),    calc_time  funding_interval_hours\n0          0                       8\n1   28800000                       8\n2   57600000                       4\n3   72000000                       4)
+E        +        where <function cadence_change at 0x000001E10910B7E0> = M.cadence_change
+E        +        and      calc_time  funding_interval_hours\n0          0                       8\n1   28800000                       8\n2   57600000                       4\n3   72000000                       4 = funding(times=(0, 8, 16, 20))
+
+tests\test_longscout_v123.py:34: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v123.py::test_gap_does_not_confirm_shorter_interval
+1 failed in 1.37s

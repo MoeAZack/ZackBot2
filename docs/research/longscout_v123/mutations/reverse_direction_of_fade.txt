@@ -1,0 +1,6 @@
+BEFORE
+displacement <= -.01
+AFTER
+displacement >= .01
+DETECTED BY
+test_nonbear_fades_the_move

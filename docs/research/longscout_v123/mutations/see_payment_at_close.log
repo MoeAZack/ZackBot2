@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________ test_one_new_payment_is_visible_after_its_timestamp _____________
+
+    def test_one_new_payment_is_visible_after_its_timestamp():
+        close = np.array([8, 12, 16, 20, 24])*M.HOUR_MS
+        expected = [False, False, True, False, False]
+        flags = M.cadence_change(close, funding())
+>       assert flags.tolist() == expected
+E       assert [False, True,... False, False] == [False, False... False, False]
+E         
+E         At index 1 diff: True != False
+E         Use -v to get more diff
+
+tests\test_longscout_v123.py:27: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v123.py::test_one_new_payment_is_visible_after_its_timestamp
+1 failed in 1.24s

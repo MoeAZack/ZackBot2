@@ -1,0 +1,6 @@
+BEFORE
+ & confirmed & fresh
+AFTER
+ & fresh
+DETECTED BY
+test_gap_does_not_confirm_shorter_interval

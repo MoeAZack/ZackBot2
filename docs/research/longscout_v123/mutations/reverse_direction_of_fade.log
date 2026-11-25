@@ -1,0 +1,23 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_nonbear_fades_the_move _________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001BC6CC35430>
+
+    def test_nonbear_fades_the_move(monkeypatch):
+        t = pd.date_range('1970-01-01', periods=7, freq='4h')
+        d = pd.DataFrame(dict(t=t, c=[100., 100., 99., 97., 98., 100., 102.]))
+        monkeypatch.setattr(M.FUND, 'load_funding', lambda symbol: funding())
+        monkeypatch.setattr(M.L1, 'coin_regime', lambda frame: np.zeros(len(frame)))
+        monkeypatch.setattr(M.L1, 'btc_regime', lambda frame: np.ones(len(frame)))
+        out = M.sig_funding_cadence(d, {}, {'research_symbol': 'SYNTHETIC'})
+>       assert np.flatnonzero(out['le']).tolist() == [3] and not out['se'].any()
+E       assert ([] == [3]
+E         
+E         Right contains one more item: 3
+E         Use -v to get more diff)
+
+tests\test_longscout_v123.py:45: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v123.py::test_nonbear_fades_the_move - assert ([]...
+1 failed in 1.17s

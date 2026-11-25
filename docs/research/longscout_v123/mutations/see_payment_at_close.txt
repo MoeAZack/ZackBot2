@@ -1,0 +1,6 @@
+BEFORE
+side='left'
+AFTER
+side='right'
+DETECTED BY
+test_one_new_payment_is_visible_after_its_timestamp
