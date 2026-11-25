@@ -1,0 +1,6 @@
+BEFORE
+slot.shift().rolling(42, min_periods=42).median()
+AFTER
+slot.rolling(42, min_periods=42).median()
+DETECTED BY
+test_current_observation_cannot_create_historical_coverage

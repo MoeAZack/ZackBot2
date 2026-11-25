@@ -1,0 +1,6 @@
+BEFORE
+counts / expected
+AFTER
+counts
+DETECTED BY
+test_utc_slot_norm_removes_routine_intraday_pattern

@@ -1,0 +1,15 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________ test_current_observation_cannot_create_historical_coverage __________
+
+    def test_current_observation_cannot_create_historical_coverage():
+        times, count, turnover = sample()
+        count.iloc[90 * 6] /= 6
+        count.iloc[72 * 6] *= 6
+>       assert not M.arrival_shock(count, turnover).loc[times[72 * 6]]
+E       assert not np.True_
+
+tests\test_longscout_v151.py:47: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v151.py::test_current_observation_cannot_create_historical_coverage
+1 failed in 1.40s

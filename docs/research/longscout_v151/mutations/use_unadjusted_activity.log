@@ -1,0 +1,13 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________ test_utc_slot_norm_removes_routine_intraday_pattern _____________
+
+    def test_utc_slot_norm_removes_routine_intraday_pattern():
+        times, count, turnover = sample()
+>       assert M.arrival_shock(count, turnover).loc[times[90 * 6]]
+E       assert np.False_
+
+tests\test_longscout_v151.py:32: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v151.py::test_utc_slot_norm_removes_routine_intraday_pattern
+1 failed in 1.26s

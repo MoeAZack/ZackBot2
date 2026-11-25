@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_active_dollar_turnover_blocks_entry ___________________
+
+    def test_active_dollar_turnover_blocks_entry():
+        _, count, turnover = sample()
+        turnover.iloc[90 * 6:91 * 6] *= 3
+>       assert not M.arrival_shock(count, turnover).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n              ... ...False\n2024-04-06    False\n2024-04-07    False\n2024-04-08    False\n2024-04-09    False\nFreq: D, Length: 100, dtype: bool.any
+E        +      where 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n              ... ...False\n2024-04-06    False\n2024-04-07    False\n2024-04-08    False\n2024-04-09    False\nFreq: D, Length: 100, dtype: bool = <function arrival_shock at 0x000002D0FFBB6B60>(2024-01-01 00:00:00    9000.0\n2024-01-01 04:00:00     400.0\n2024-01-01 08:00:00    3000.0\n2024-01-01 12:00:00    1600....09 12:00:00    1600.0\n2024-04-09 16:00:00    2400.0\n2024-04-09 20:00:00     400.0\nFreq: 4h, Length: 600, dtype: float64, 2024-01-01 00:00:00    100.0\n2024-01-01 04:00:00    100.0\n2024-01-01 08:00:00    100.0\n2024-01-01 12:00:00    100.0\n20...04-09 12:00:00    100.0\n2024-04-09 16:00:00    100.0\n2024-04-09 20:00:00    100.0\nFreq: 4h, Length: 600, dtype: float64)
+E        +        where <function arrival_shock at 0x000002D0FFBB6B60> = M.arrival_shock
+
+tests\test_longscout_v151.py:40: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v151.py::test_active_dollar_turnover_blocks_entry
+1 failed in 1.38s
