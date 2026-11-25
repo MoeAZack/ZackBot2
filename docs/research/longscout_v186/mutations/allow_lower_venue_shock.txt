@@ -1,0 +1,6 @@
+BEFORE
+ & former_low_change.abs().le(.25)
+AFTER
+
+DETECTED BY
+test_lower_rate_must_be_stable

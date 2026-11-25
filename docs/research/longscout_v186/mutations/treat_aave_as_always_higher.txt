@@ -1,0 +1,6 @@
+BEFORE
+spread.shift().gt(0)
+AFTER
+spread.shift().notna()
+DETECTED BY
+test_either_venue_can_normalize

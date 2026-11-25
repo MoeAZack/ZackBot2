@@ -1,0 +1,6 @@
+BEFORE
+return pulse.shift(1, fill_value=False)
+AFTER
+return pulse
+DETECTED BY
+test_one_day_buffer

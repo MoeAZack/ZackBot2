@@ -2,7 +2,7 @@
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
  "registered_trials": 387,
- "completed_trials": 381,
+ "completed_trials": 382,
  "historical_screen_passes": 13,
  "versions": {
   "91": {
@@ -2224,14 +2224,21 @@
    ]
   },
   "186": {
-   "status": "PREREGISTERED",
+   "status": "COMPLETE_REJECTED",
    "source_freeze": "af71dcac99b1d8e84c9fb608560c743c7f67d8e4",
-   "batch_passes": null,
+   "batch_passes": 0,
    "candidates": [
     {
      "trial": 387,
      "key": "l186_same_usdc_lending_rate_gap_relief_1d",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "FAIL",
+     "meanR15_fee_plus_slip": 0.10574632384203406,
+     "failed_gates": [
+      "trades",
+      "order0_30_per_half",
+      "extra31"
+     ],
+     "forward_worthy": false
     }
    ]
   }

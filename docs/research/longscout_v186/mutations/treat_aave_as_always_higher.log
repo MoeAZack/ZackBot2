@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_either_venue_can_normalize _______________________
+
+    def test_either_venue_can_normalize():
+        quotes = sample()
+        reverse = quotes[['CompoundV3', 'AaveV3']].set_axis(M.FIELDS, axis=1)
+>       assert M.venue_gap_closes(reverse).tolist() == [False, False, True]
+E       assert [False, False, False] == [False, False, True]
+E         
+E         At index 2 diff: False != True
+E         Use -v to get more diff
+
+tests\test_longscout_v186.py:31: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v186.py::test_either_venue_can_normalize - assert...
+1 failed in 1.21s

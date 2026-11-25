@@ -1,0 +1,16 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________________ test_one_day_buffer _____________________________
+
+    def test_one_day_buffer():
+        quotes = sample()
+>       assert M.venue_gap_closes(quotes).tolist() == [False, False, True]
+E       assert [False, True, False] == [False, False, True]
+E         
+E         At index 1 diff: True != False
+E         Use -v to get more diff
+
+tests\test_longscout_v186.py:36: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v186.py::test_one_day_buffer - assert [False, Tru...
+1 failed in 1.42s

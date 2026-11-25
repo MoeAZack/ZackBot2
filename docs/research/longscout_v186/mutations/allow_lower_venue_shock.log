@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_lower_rate_must_be_stable ________________________
+
+    def test_lower_rate_must_be_stable():
+        quotes = sample()
+        quotes.loc[1:, 'CompoundV3'] = 3.5
+>       assert not M.venue_gap_closes(quotes).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0    False\n1    False\n2     True\ndtype: bool.any
+E        +      where 0    False\n1    False\n2     True\ndtype: bool = <function venue_gap_closes at 0x000001AE6B486A20>(   AaveV3  CompoundV3\n0     4.2         3.0\n1     3.3         3.5\n2     3.3         3.5)
+E        +        where <function venue_gap_closes at 0x000001AE6B486A20> = M.venue_gap_closes
+
+tests\test_longscout_v186.py:25: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v186.py::test_lower_rate_must_be_stable - assert ...
+1 failed in 1.22s
