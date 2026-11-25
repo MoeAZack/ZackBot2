@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_requires_prior_fee_elevation ______________________
+
+    def test_requires_prior_fee_elevation():
+        values = sample()
+        values.iloc[32, 0] = 1.
+>       assert not M.effective_fees_ease(values).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...27    False\n28    False\n29    False\n30    False\n31     True\n32     True\n33     True\n34     True\n35     True\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...27    False\n28    False\n29    False\n30    False\n31     True\n32     True\n33     True\n34     True\n35     True\ndtype: bool = <function effective_fees_ease at 0x0000025CE6666A20>(    ethereum_swap_fees_usd  ethereum_swap_volume_usd\n0                      1.0                    1000.0\n1           ...       1000.0\n34                     1.0                    1000.0\n35                     1.0                    1000.0)
+E        +        where <function effective_fees_ease at 0x0000025CE6666A20> = M.effective_fees_ease
+
+tests\test_longscout_v201.py:32: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v201.py::test_requires_prior_fee_elevation - asse...
+1 failed in 1.58s

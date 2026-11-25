@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________________ test_uses_prior_intervals __________________________
+
+    def test_uses_prior_intervals():
+        values = sample()
+        flags = M.effective_fees_ease(values)
+>       assert flags[flags].index.tolist() == [35]
+E       assert [33] == [35]
+E         
+E         At index 0 diff: 33 != 35
+E         Use -v to get more diff
+
+tests\test_longscout_v201.py:38: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v201.py::test_uses_prior_intervals - assert [33] ...
+1 failed in 1.82s

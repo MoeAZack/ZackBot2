@@ -1,0 +1,6 @@
+BEFORE
+effective.shift().ge(1.25 * median_fee) & 
+AFTER
+
+DETECTED BY
+test_requires_prior_fee_elevation

@@ -2,7 +2,7 @@
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
  "registered_trials": 401,
- "completed_trials": 395,
+ "completed_trials": 396,
  "historical_screen_passes": 13,
  "versions": {
   "91": {
@@ -2554,14 +2554,27 @@
    ]
   },
   "201": {
-   "status": "PREREGISTERED",
+   "status": "COMPLETE_REJECTED",
    "source_freeze": "066ce7d1b0d96c5e7f0c36e120956cd2ca2014fb",
-   "batch_passes": null,
+   "batch_passes": 0,
    "candidates": [
     {
      "trial": 401,
      "key": "l201_uniswap_eth_swap_fee_relief_1d",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "FAIL",
+     "meanR15_fee_plus_slip": -0.713634368988603,
+     "failed_gates": [
+      "trades",
+      "meanR15",
+      "early",
+      "late",
+      "ex_best_coin",
+      "meanR23",
+      "order0_30_per_half",
+      "fresh134",
+      "extra31"
+     ],
+     "forward_worthy": false
     }
    ]
   }

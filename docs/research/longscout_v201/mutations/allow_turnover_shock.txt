@@ -1,0 +1,6 @@
+BEFORE
+ & stable_volume
+AFTER
+
+DETECTED BY
+test_volume_must_hold
