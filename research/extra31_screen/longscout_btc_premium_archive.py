@@ -15,10 +15,12 @@ URL = 'https://data.binance.vision/data/futures/um/monthly/premiumIndexKlines/BT
 OUT = CACHE / 'longscout_codex_btc_premium_20261125'
 STABLE_URL = 'https://data.binance.vision/data/spot/monthly/klines/USDCUSDT/4h'
 STABLE_OUT = CACHE / 'longscout_codex_stablecoin_20261125'
+SPOT_TURNOVER_URL = 'https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/4h'
+SPOT_TURNOVER_OUT = CACHE / 'longscout_codex_btc_spot_turnover_20261125'
 STEP = 4 * HOUR_MS
 
 
-def collect(month, base_url, symbol):
+def collect(month, base_url, symbol, value_column):
     name = f'{symbol}-4h-{month}'
     url = f'{base_url}/{name}.zip'
     try:
@@ -39,7 +41,7 @@ def collect(month, base_url, symbol):
         csv_rows = csv_rows[1:]
     rows = {}
     for row in csv_rows:
-        start, end, value = int(row[0]), int(row[6]), Decimal(row[4])
+        start, end, value = int(row[0]), int(row[6]), Decimal(row[value_column])
         if start >= 10**15:
             if start % 1000 != 0 or end % 1000 != 999:
                 raise ValueError(f'{month}: invalid microsecond timestamps')
@@ -56,17 +58,22 @@ def collect(month, base_url, symbol):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--stablecoin', action='store_true')
+    inputs = parser.add_mutually_exclusive_group()
+    inputs.add_argument('--stablecoin', action='store_true')
+    inputs.add_argument('--spot-turnover', action='store_true')
     args = parser.parse_args()
-    source_url, symbol, field, target = (
-        (STABLE_URL, 'USDCUSDT', 'spot_close', STABLE_OUT) if args.stablecoin
-        else (URL, 'BTCUSDT', 'premium_index_close', OUT)
-    )
+    if args.stablecoin:
+        source_url, symbol, field, target, column = STABLE_URL, 'USDCUSDT', 'spot_close', STABLE_OUT, 4
+    elif args.spot_turnover:
+        source_url, symbol, field, target, column = SPOT_TURNOVER_URL, 'BTCUSDT', 'spot_quote_volume', SPOT_TURNOVER_OUT, 7
+    else:
+        source_url, symbol, field, target, column = URL, 'BTCUSDT', 'premium_index_close', OUT, 4
     first, end = price_bounds(PRICE / 'BTCUSDT_1h.csv')
     needed = list(range(first, end - STEP + 1, STEP))
     all_rows, source = {}, {}
     with ThreadPoolExecutor(max_workers=6) as pool:
-        for month, sha, rows in pool.map(partial(collect, base_url=source_url, symbol=symbol), months(first, end)):
+        request = partial(collect, base_url=source_url, symbol=symbol, value_column=column)
+        for month, sha, rows in pool.map(request, months(first, end)):
             if rows.keys() & all_rows.keys():
                 raise ValueError('months contain overlapping candles')
             all_rows.update(rows)
