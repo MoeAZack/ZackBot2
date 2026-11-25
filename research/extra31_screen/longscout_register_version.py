@@ -59,6 +59,8 @@ def main():
                                 'fresh134 median top-three winning trades / net profit < 50%. '
                                 'Use path trades and all 40 orders, with missing denominators failing the bar.')
         table['family_novelty'] = M.FAMILY_NOVELTY
+        table['runner'] = getattr(M, 'RUNNER', 'longscout_v91_run.py')
+        assert table['runner'] in ('longscout_v91_run.py', 'longscout_flow_run.py')
     table['publication']='SOURCE_PREVIOUSLY_PUSHED; case manifest locally committed before market execution; remote publication queued during workstation connection outage' if offline else 'Source and cases committed and pushed before market execution'
     candidates=[]
     for trial,(key,v) in enumerate(M.CANDIDATES.items(),prior+1):

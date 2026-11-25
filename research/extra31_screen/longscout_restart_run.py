@@ -69,9 +69,11 @@ def main():
     item = ledger['versions'][str(version)]
     assert item['status'] == 'PREREGISTERED'
     source = item['source_freeze']
+    runner = cases.get('runner', 'longscout_v91_run.py')
+    assert runner in ('longscout_v91_run.py', 'longscout_flow_run.py')
     git('merge-base', '--is-ancestor', source, head)
     git('diff', '--exit-code', source, '--', f'research/longscout_v{version}.py',
-        f'tests/test_longscout_v{version}.py', 'research/extra31_screen/longscout_v91_run.py',
+        f'tests/test_longscout_v{version}.py', f'research/extra31_screen/{runner}',
         'research/extra31_screen/longscout_version_report.py')
     git('diff', '--exit-code', head, '--', 'research/extra31_screen')
 
@@ -81,13 +83,18 @@ def main():
     run_checks(version, out)
     # Work in a private copy. The frozen runner validates every CSV.
     shutil.copytree(PINNED_DATA, out / '_data')
+    state_path = ROOT / 'research' / 'longscout_control_state.json'
+    state = json.loads(state_path.read_text(encoding='utf-8'))
+    state['running'] = dict(version=version, source=source, registration=head,
+                            output=str(out), start_cairo=datetime.now(ZoneInfo('Africa/Cairo')).isoformat())
+    state_path.write_text(json.dumps(state, indent=1) + '\n', encoding='utf-8', newline='\n')
     env = dict(os.environ, LONGSCOUT_CASES=case_file.name, PYTHONUTF8='1', OPENBLAS_NUM_THREADS='1')
     workers = []
     with ExitStack() as streams:
         try:
             for key in cases['cases']:
                 log = streams.enter_context((out / f'{key}.log').open('wb'))
-                command = [sys.executable, '-B', str(HERE / 'longscout_v91_run.py'),
+                command = [sys.executable, '-B', str(HERE / runner),
                            str(FRESH), str(EXTRA), str(out), '--case', key, '--orders', '40']
                 workers.append(subprocess.Popen(command, cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT))
             while any(worker.poll() is None for worker in workers):
