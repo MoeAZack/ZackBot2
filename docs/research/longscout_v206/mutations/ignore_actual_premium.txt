@@ -1,0 +1,6 @@
+BEFORE
+ & frame.ibit_nav_premium_pct.ge(.15)
+AFTER
+
+DETECTED BY
+test_requires_positive_premium

@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_requires_positive_premium ________________________
+
+    def test_requires_positive_premium():
+>       assert not M.premium_disagrees(sample(premium=.14)).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2026-03-08    True\ndtype: bool.any
+E        +      where 2026-03-08    True\ndtype: bool = <function premium_disagrees at 0x0000015A649F6B60>(            ibit_nav_premium_pct  binance_close  binance_hour_vwap\n2026-03-06                  0.14           99.9              100.0)
+E        +        where <function premium_disagrees at 0x0000015A649F6B60> = M.premium_disagrees
+E        +        and               ibit_nav_premium_pct  binance_close  binance_hour_vwap\n2026-03-06                  0.14           99.9              100.0 = sample(premium=0.14)
+
+tests\test_longscout_v206.py:28: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v206.py::test_requires_positive_premium - assert ...
+1 failed in 1.69s

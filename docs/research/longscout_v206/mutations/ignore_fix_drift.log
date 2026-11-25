@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_requires_opposing_fix_drift _______________________
+
+    def test_requires_opposing_fix_drift():
+>       assert not M.premium_disagrees(sample(close=100.1)).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2026-03-08    True\ndtype: bool.any
+E        +      where 2026-03-08    True\ndtype: bool = <function premium_disagrees at 0x0000025ED17DAB60>(            ibit_nav_premium_pct  binance_close  binance_hour_vwap\n2026-03-06                  0.15          100.1              100.0)
+E        +        where <function premium_disagrees at 0x0000025ED17DAB60> = M.premium_disagrees
+E        +        and               ibit_nav_premium_pct  binance_close  binance_hour_vwap\n2026-03-06                  0.15          100.1              100.0 = sample(close=100.1)
+
+tests\test_longscout_v206.py:24: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v206.py::test_requires_opposing_fix_drift - asser...
+1 failed in 2.35s

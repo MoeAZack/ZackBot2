@@ -1,0 +1,16 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________________ test_waits_two_utc_days ___________________________
+
+    def test_waits_two_utc_days():
+        flags = M.premium_disagrees(sample())
+>       assert flags[flags].index.tolist() == [pd.Timestamp('2026-03-08')]
+E       AssertionError: assert [Timestamp('2...06 00:00:00')] == [Timestamp('2...08 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2026-03-06 00:00:00') != Timestamp('2026-03-08 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v206.py:34: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v206.py::test_waits_two_utc_days - AssertionError...
+1 failed in 4.36s
