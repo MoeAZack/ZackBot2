@@ -1,0 +1,6 @@
+BEFORE
+ & width.ge(.25)
+AFTER
+
+DETECTED BY
+test_tiny_dispersion_is_not_a_shock

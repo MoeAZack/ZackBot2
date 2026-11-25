@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_missing_contract_blocks_the_shock ____________________
+
+    def test_missing_contract_blocks_the_shock():
+        values = sample()
+        values.iloc[100:, 4] = float('nan')
+>       assert not M.disagreement_shock(values).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0      False\n1      False\n2      False\n3      False\n4      False\n       ...  \n97     False\n98     False\n99     False\n100     True\n101    False\nLength: 102, dtype: bool.any
+E        +      where 0      False\n1      False\n2      False\n3      False\n4      False\n       ...  \n97     False\n98     False\n99     False\n100     True\n101    False\nLength: 102, dtype: bool = <function disagreement_shock at 0x0000019358DC1440>(       0    1    2    3    4\n0    1.0  2.0  3.0  4.0  5.0\n1    1.0  2.0  3.0  4.0  5.0\n2    1.0  2.0  3.0  4.0  5.0\n3 ...4.0  5.0\n99   1.0  2.0  3.0  4.0  5.0\n100  1.3  1.6  3.0  4.0  NaN\n101  1.3  1.6  3.0  4.0  NaN\n\n[102 rows x 5 columns])
+E        +        where <function disagreement_shock at 0x0000019358DC1440> = M.disagreement_shock
+
+tests\test_longscout_v168.py:37: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v168.py::test_missing_contract_blocks_the_shock
+1 failed in 2.36s

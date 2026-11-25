@@ -1,0 +1,21 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_tiny_dispersion_is_not_a_shock _____________________
+
+    def test_tiny_dispersion_is_not_a_shock():
+        values = sample()
+        values.iloc[:100:2, 0] = 1.01
+        values.iloc[1:100:2, 0] = .99
+        values.iloc[100:, 0] = 1.05
+        values.iloc[100:, 1] = 1.99
+>       assert not M.disagreement_shock(values).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0      False\n1      False\n2      False\n3      False\n4      False\n       ...  \n97     False\n98     False\n99     False\n100     True\n101    False\nLength: 102, dtype: bool.any
+E        +      where 0      False\n1      False\n2      False\n3      False\n4      False\n       ...  \n97     False\n98     False\n99     False\n100     True\n101    False\nLength: 102, dtype: bool = <function disagreement_shock at 0x000002233CCFB7E0>(        0     1    2    3    4\n0    1.01  2.00  3.0  4.0  5.0\n1    0.99  2.00  3.0  4.0  5.0\n2    1.01  2.00  3.0  4.0....0\n99   0.99  2.00  3.0  4.0  5.0\n100  1.05  1.99  3.0  4.0  5.0\n101  1.05  1.99  3.0  4.0  5.0\n\n[102 rows x 5 columns])
+E        +        where <function disagreement_shock at 0x000002233CCFB7E0> = M.disagreement_shock
+
+tests\test_longscout_v168.py:46: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v168.py::test_tiny_dispersion_is_not_a_shock - as...
+1 failed in 4.89s

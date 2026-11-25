@@ -1,0 +1,6 @@
+BEFORE
+relative.notna().all(axis=1)
+AFTER
+relative.notna().any(axis=1)
+DETECTED BY
+test_missing_contract_blocks_the_shock

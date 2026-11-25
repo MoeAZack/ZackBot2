@@ -1,0 +1,6 @@
+BEFORE
+ & center.abs().le(.05)
+AFTER
+
+DETECTED BY
+test_typical_market_must_remain_neutral
