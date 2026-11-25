@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 385,
+ "registered_trials": 386,
  "completed_trials": 380,
  "historical_screen_passes": 13,
  "versions": {
@@ -2199,6 +2199,18 @@
       "order0_30_per_half"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "185": {
+   "status": "PREREGISTERED",
+   "source_freeze": "3c7cc5063c9ec6c1aecf2c235209d2b24c3fec5e",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 386,
+     "key": "r185_cboe_vvix_dislocation_settles_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
