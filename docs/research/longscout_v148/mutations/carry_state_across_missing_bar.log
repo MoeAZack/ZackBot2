@@ -1,0 +1,28 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________ test_missing_observation_resets_regime_prior _________________
+
+    def test_missing_observation_resets_regime_prior():
+        observed = M.filter_states(pd.Series([2.] * 12 + [float('nan'), 0.]))
+        assert observed.iloc[-2].isna().all()
+>       pd.testing.assert_series_equal(observed.iloc[-1], M.filter_states(pd.Series([0.])).iloc[-1], check_names=False)
+
+tests\test_longscout_v148.py:40: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+pandas/_libs/testing.pyx:53: in pandas._libs.testing.assert_almost_equal
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+>   ???
+E   AssertionError: Series are different
+E   
+E   Series values are different (100.0 %)
+E   [index]: [range, up, down]
+E   [left]:  [0.17492644229378224, 0.8022774058560974, 0.0227961518501203]
+E   [right]: [0.5697360227881868, 0.21513198860590654, 0.21513198860590654]
+E   At positional index 0, first diff: 0.17492644229378224 != 0.5697360227881868
+
+pandas/_libs/testing.pyx:171: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v148.py::test_missing_observation_resets_regime_prior
+1 failed in 1.32s

@@ -1,0 +1,6 @@
+BEFORE
+ * emission
+AFTER
+
+DETECTED BY
+test_filter_uses_observable_direction_and_scale

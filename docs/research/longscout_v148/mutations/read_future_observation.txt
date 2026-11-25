@@ -1,0 +1,6 @@
+BEFORE
+enumerate(observed)
+AFTER
+enumerate(observed.shift(-1))
+DETECTED BY
+test_future_rows_cannot_relabel_filtered_regime

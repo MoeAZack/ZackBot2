@@ -1,0 +1,176 @@
+{
+ "note": "Descriptive diagnostics on an already-consumed calendar, not untouched or forward evidence.",
+ "cases": {
+  "r148_discrete_range_regime_posterior_1d": {
+   "status": "FAIL",
+   "medians": {
+    "n": 216.0,
+    "meanR7": 0.0015432169477242472,
+    "meanR15": -0.006749938476079905,
+    "meanR23": -0.015043093899884057,
+    "meanR15_early": -0.00038759333636739877,
+    "meanR15_late": -0.018912210302483405,
+    "meanR15_ex_best": -0.017941851170568276
+   },
+   "gates": {
+    "trades": true,
+    "meanR15": false,
+    "early": false,
+    "late": false,
+    "ex_best_coin": false,
+    "meanR23": false,
+    "order0_30_per_half": true
+   },
+   "subsets": {
+    "fresh134": {
+     "median_meanR15": 0.025362171288156335,
+     "median_n": 163.5
+    },
+    "extra31": {
+     "median_meanR15": -0.11179954896211229,
+     "median_n": 52.5
+    },
+    "pass": false
+   },
+   "cost_model": {
+    "primary_fee_bp_per_side": 15,
+    "slip_bp_per_side": 2,
+    "stress_fee_bp_per_side": 23,
+    "native_funding": "0.00005 per 4h of held notional, both sides pay; fixed model, not realized historical rates",
+    "legacy_field_names": "pnl15 / meanR15 now mean 15bp fee PLUS 2bp slip; pnl23=23bp fee PLUS2bp slip",
+    "exchange_rules": "frozen testnet snapshot; unknown rules reported by engine"
+   },
+   "no_closed_trades": false,
+   "dd": {
+    "order0_R": 5.790242423999782,
+    "order0_label": "Standard",
+    "median_R": 6.414850019696244,
+    "median_label": "Standard",
+    "max_R": 13.929398808273241,
+    "max_label": "Standard",
+    "per_order_R": [
+     5.790242423999782,
+     6.284959451285875,
+     7.643161492247978,
+     6.587530074266023,
+     7.267641249867172,
+     5.790306780596051,
+     9.352031236016341,
+     9.467485436165358,
+     4.757335177224818,
+     8.589811510423477,
+     5.962136360026848,
+     4.959505902586113,
+     10.167202947184116,
+     6.422091914451481,
+     13.929398808273241,
+     6.501670765630603,
+     4.084767478756727,
+     6.201574809277998,
+     4.705042891691295,
+     7.917447926017292,
+     5.2201579981997535,
+     5.571339056436528,
+     5.542602342731023,
+     4.990703170304116,
+     6.255364377287547,
+     7.3674720597406935,
+     8.016306687664256,
+     11.230989066424915,
+     6.592120608660757,
+     6.771719742517861,
+     7.586712589091226,
+     6.780554985740999,
+     6.407608124941008,
+     8.192468640168011,
+     4.6738566855666885,
+     5.941334991905171,
+     6.759902663593155,
+     4.6213347757476715,
+     4.494725528024867,
+     4.92558709253196
+    ],
+    "note": "Closed equity, initial zero included; not mark-to-market DD."
+   },
+   "btc_regimes": {
+    "rising": {
+     "median_n": 152.0,
+     "median_meanR15": 0.004782719961431553,
+     "positive_orders": 22
+    },
+    "sideways": {
+     "median_n": 66.0,
+     "median_meanR15": -0.03103463846587811,
+     "positive_orders": 2
+    },
+    "falling": {
+     "median_n": 0.0,
+     "median_meanR15": null,
+     "positive_orders": 0
+    }
+   },
+   "sides": {
+    "long": {
+     "median_n": 99.0,
+     "median_meanR15": -0.027436073227816694,
+     "positive_orders": 1
+    },
+    "short": {
+     "median_n": 117.0,
+     "median_meanR15": 0.005698323607185104,
+     "positive_orders": 25
+    }
+   },
+   "yearly": {
+    "2023": {
+     "median_n": 69.0,
+     "median_meanR15": -0.0017501550576778523,
+     "positive_orders": 19
+    },
+    "2024": {
+     "median_n": 76.0,
+     "median_meanR15": 0.002618873099167382,
+     "positive_orders": 21
+    },
+    "2025": {
+     "median_n": 48.0,
+     "median_meanR15": -0.017804171231355272,
+     "positive_orders": 10
+    },
+    "2026": {
+     "median_n": 23.0,
+     "median_meanR15": -0.021382454615475877,
+     "positive_orders": 12
+    }
+   },
+   "missing_rule_trades": {
+    "symbols": [
+     "ICPUSDT",
+     "TLMUSDT"
+    ],
+    "path_trades_all_orders": 112,
+    "order0": 2
+   },
+   "positive_orders": 12,
+   "saved_tape_gate_reconstruction": "MATCH; not independent price replay",
+   "forward_bar": {
+    "qualified": false,
+    "gates": {
+     "wide_screen": false,
+     "rising": true,
+     "sideways": true,
+     "stress": true,
+     "drawdown": true,
+     "top3": false
+    },
+    "fresh_regime_R15": {
+     "rising": 0.028027650484425654,
+     "sideways": 0.016714655083098884,
+     "falling": null
+    },
+    "fresh_R23": 0.01702767251491636,
+    "fresh_top3_share": null
+   }
+  }
+ }
+}

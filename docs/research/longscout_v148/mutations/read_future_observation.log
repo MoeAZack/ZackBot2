@@ -1,0 +1,29 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________ test_future_rows_cannot_relabel_filtered_regime _______________
+
+    def test_future_rows_cannot_relabel_filtered_regime():
+        observed = pd.Series([0., .3, -.9, 1., .1, .2, -4., 2.])
+        whole = M.filter_states(observed)
+        for prefix in (3, 5, 7):
+>           pd.testing.assert_frame_equal(M.filter_states(observed.iloc[:prefix]), whole.iloc[:prefix])
+
+tests\test_longscout_v148.py:34: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+pandas/_libs/testing.pyx:53: in pandas._libs.testing.assert_almost_equal
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+>   ???
+E   AssertionError: DataFrame.iloc[:, 0] (column name="range") are different
+E   
+E   DataFrame.iloc[:, 0] (column name="range") values are different (33.33333 %)
+E   [index]: [0, 1, 2]
+E   [left]:  [0.5390983964267289, 0.47265213120091143, nan]
+E   [right]: [0.5390983964267289, 0.47265213120091143, 0.36779121673888876]
+E   At positional index 2, first diff: nan != 0.36779121673888876
+
+pandas/_libs/testing.pyx:171: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v148.py::test_future_rows_cannot_relabel_filtered_regime
+1 failed in 1.30s

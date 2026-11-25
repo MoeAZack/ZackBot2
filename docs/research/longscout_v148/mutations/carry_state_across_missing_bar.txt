@@ -1,0 +1,7 @@
+BEFORE
+            posterior = PRIOR.copy()
+            continue
+AFTER
+            continue
+DETECTED BY
+test_missing_observation_resets_regime_prior

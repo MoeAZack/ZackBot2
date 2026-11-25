@@ -1,0 +1,15 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________ test_filter_uses_observable_direction_and_scale _______________
+
+    def test_filter_uses_observable_direction_and_scale():
+        calm = M.filter_states(pd.Series([0.] * 12)).iloc[-1]
+        upward = M.filter_states(pd.Series([1.7] * 12)).iloc[-1]
+        downward = M.filter_states(pd.Series([-1.7] * 12)).iloc[-1]
+>       assert calm['range'] > .8
+E       assert np.float64(0.43417554930330005) > 0.8
+
+tests\test_longscout_v148.py:25: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v148.py::test_filter_uses_observable_direction_and_scale
+1 failed in 2.03s
