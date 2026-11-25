@@ -1,0 +1,6 @@
+BEFORE
+np.argsort(distance, kind='stable')[:15]
+AFTER
+np.argsort(distance, kind='stable')[-15:]
+DETECTED BY
+test_matches_earlier_nonoverlapping_paths_only

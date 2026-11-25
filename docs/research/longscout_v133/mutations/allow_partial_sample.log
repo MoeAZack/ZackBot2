@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________________ test_known_sample_floor ___________________________
+
+    def test_known_sample_floor():
+        paths = np.ones((329, 5))
+        labels = np.ones(len(paths))
+        labels[80:140] = np.nan
+>       assert np.isnan(M.analogue_statistics(paths, labels)[300]).all()
+E       AssertionError: assert np.False_
+E        +  where np.False_ = <built-in method all of numpy.ndarray object at 0x0000016B7FB9A310>()
+E        +    where <built-in method all of numpy.ndarray object at 0x0000016B7FB9A310> = array([False, False, False]).all
+E        +      where array([False, False, False]) = <ufunc 'isnan'>(array([ 1., 15.,  0.]))
+E        +        where <ufunc 'isnan'> = np.isnan
+
+tests\test_longscout_v133.py:40: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v133.py::test_known_sample_floor - AssertionError...
+1 failed in 1.73s
