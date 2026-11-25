@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_current_reward_must_be_same_subsidy ___________________
+
+    def test_current_reward_must_be_same_subsidy():
+        height, difficulty = sample()
+        height += 129_550
+        difficulty.iloc[3:] = 45.
+>       assert not M.work_reward_improves(height, difficulty).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     False\n10     True\n11    False\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     False\n10     True\n11    False\ndtype: bool = <function work_reward_improves at 0x00000201D8AC6AC0>(0     629550\n1     629700\n2     629850\n3     630000\n4     630150\n5     630300\n6     630450\n7     630600\n8     630750\n9     630900\n10    631050\n11    631200\ndtype: int64, 0     100.0\n1     100.0\n2     100.0\n3      45.0\n4      45.0\n5      45.0\n6      45.0\n7      45.0\n8      45.0\n9      45.0\n10     45.0\n11     45.0\ndtype: float64)
+E        +        where <function work_reward_improves at 0x00000201D8AC6AC0> = M.work_reward_improves
+
+tests\test_longscout_v152.py:36: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v152.py::test_current_reward_must_be_same_subsidy
+1 failed in 1.74s

@@ -1,0 +1,6 @@
+BEFORE
+.shift(7, fill_value=False)
+AFTER
+.shift(0, fill_value=False)
+DETECTED BY
+test_retarg_signal_is_delayed_and_does_not_repeat

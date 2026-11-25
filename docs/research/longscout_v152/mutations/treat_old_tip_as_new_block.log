@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________________ test_height_must_advance ___________________________
+
+    def test_height_must_advance():
+        height, difficulty = sample()
+        height.iloc[3] = height.iloc[2]
+>       assert not M.work_reward_improves(height, difficulty).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     False\n10     True\n11    False\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     False\n10     True\n11    False\ndtype: bool = <function work_reward_improves at 0x000002594DC82AC0>(0     500000\n1     500150\n2     500300\n3     500300\n4     500600\n5     500750\n6     500900\n7     501050\n8     501200\n9     501350\n10    501500\n11    501650\ndtype: int64, 0     100.0\n1     100.0\n2     100.0\n3      96.0\n4      96.0\n5      96.0\n6      96.0\n7      96.0\n8      96.0\n9      96.0\n10     96.0\n11     96.0\ndtype: float64)
+E        +        where <function work_reward_improves at 0x000002594DC82AC0> = M.work_reward_improves
+
+tests\test_longscout_v152.py:42: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v152.py::test_height_must_advance - assert not np...
+1 failed in 3.61s

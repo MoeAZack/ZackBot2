@@ -1,0 +1,6 @@
+BEFORE
+ & height.diff().gt(0)
+AFTER
+
+DETECTED BY
+test_height_must_advance

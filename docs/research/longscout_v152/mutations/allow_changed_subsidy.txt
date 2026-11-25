@@ -1,0 +1,6 @@
+BEFORE
+ & subsidy.eq(subsidy.shift())
+AFTER
+
+DETECTED BY
+test_current_reward_must_be_same_subsidy

@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________ test_retarg_signal_is_delayed_and_does_not_repeat ______________
+
+    def test_retarg_signal_is_delayed_and_does_not_repeat():
+        height, difficulty = sample()
+        event = M.work_reward_improves(height, difficulty)
+>       assert event[event].index.tolist() == [10]
+E       assert [3] == [10]
+E         
+E         At index 0 diff: 3 != 10
+E         Use -v to get more diff
+
+tests\test_longscout_v152.py:28: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v152.py::test_retarg_signal_is_delayed_and_does_not_repeat
+1 failed in 1.41s
