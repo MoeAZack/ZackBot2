@@ -1,0 +1,6 @@
+BEFORE
+pd.Timedelta(days=4)
+AFTER
+pd.Timedelta(days=0)
+DETECTED BY
+test_delays_event

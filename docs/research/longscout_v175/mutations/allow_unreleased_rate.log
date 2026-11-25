@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________________ test_delays_event ______________________________
+
+    def test_delays_event():
+        rates = sample()
+        events = M.tail_eases(rates)
+>       assert events[events].index.tolist() == [rates.index[-1] + pd.Timedelta(days=4)]
+E       AssertionError: assert [Timestamp('2...03 00:00:00')] == [Timestamp('2...07 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2026-02-03 00:00:00') != Timestamp('2026-02-07 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v175.py:39: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v175.py::test_delays_event - AssertionError: asse...
+1 failed in 1.39s

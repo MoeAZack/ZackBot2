@@ -1,0 +1,6 @@
+BEFORE
+ & median.diff().abs().le(2)
+AFTER
+
+DETECTED BY
+test_typical_rate_must_be_stable

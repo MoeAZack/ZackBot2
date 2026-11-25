@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_full_baseline_required _________________________
+
+    def test_full_baseline_required():
+        rates = sample()
+        rates.iloc[7] = [float('nan'), float('nan')]
+>       assert not M.tail_eases(rates).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2026-01-09    False\n2026-01-10    False\n2026-01-11    False\n2026-01-12    False\n2026-01-13    False\n2026-01-16    Fals...  False\n2026-02-01    False\n2026-02-02    False\n2026-02-03    False\n2026-02-06    False\n2026-02-07     True\ndtype: bool.any
+E        +      where 2026-01-09    False\n2026-01-10    False\n2026-01-11    False\n2026-01-12    False\n2026-01-13    False\n2026-01-16    Fals...  False\n2026-02-01    False\n2026-02-02    False\n2026-02-03    False\n2026-02-06    False\n2026-02-07     True\ndtype: bool = <function tail_eases at 0x0000020D49396A20>(            median  upper\n2026-01-05     4.0   4.04\n2026-01-06     4.0   4.04\n2026-01-07     4.0   4.04\n2026-01-08    ...     4.0   4.04\n2026-01-29     4.0   4.04\n2026-01-30     4.0   4.04\n2026-02-02     4.0   4.08\n2026-02-03     4.0   4.04)
+E        +        where <function tail_eases at 0x0000020D49396A20> = M.tail_eases
+
+tests\test_longscout_v175.py:33: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v175.py::test_full_baseline_required - assert not...
+1 failed in 1.42s
