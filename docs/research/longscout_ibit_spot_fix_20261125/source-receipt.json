@@ -1,0 +1,51 @@
+{
+  "status": "COMPLETE_WITH_EXPLICIT_MASKS",
+  "frequency": "NYSE session",
+  "fields": [
+    "ibit_nav_premium_pct",
+    "binance_close",
+    "binance_hour_vwap"
+  ],
+  "attribution": [
+    "iShares Bitcoin Trust ETF published premium/discount chart",
+    "Binance public BTCUSDT spot klines"
+  ],
+  "issuer": "https://www.ishares.com/us/products/333011/ishares-bitcoin-trust-etf-ibit",
+  "raw_issuer_html_sha256": "903c37ef3f93a98d6afa4c81f574c4190d435aa1a8b921332c868051a3993b0c",
+  "spot_archive": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h",
+  "spot_month_sha256": {
+    "2025-01": "e7f2aaa5396a8062a57ab29ce9fab2d76b2c84ec58815d4ab7b3fe16f78c7118",
+    "2025-02": "7420f55c93f61d7e734fc9d2507c7f2fcb5eaf48112277cecd241d4e1dbf3bd5",
+    "2025-03": "b5ae8bb57e5e526c2050c9f8229b723871a5af47d80c53453abf61847a5f3aa6",
+    "2025-04": "bbec48ed5f7b603bbceff943ad0dccd3c29cae6d14161bcd2eabc9f762ff0a35",
+    "2025-05": "da6213bf4c57ea60faed3ef1f6a0ecb87f22ca7a3a67614604cf44d2d6b265fe",
+    "2025-06": "d0760943538f48032dd066401e53f46bbf4868e6545929678e23bcdee032a5e8",
+    "2025-07": "487738ee596380eaad32a2a93c75d17e1ebdd165a9b544c0e44be36079f5c02e",
+    "2025-08": "a99ec5bac64333fb521b2ab1bac5e8387eede6413cc7841656a02be95613c64f",
+    "2025-09": "b0ad5b54097f6adb440d07204fd215dae9b224fb73569fd4309a55c9234d46b3",
+    "2025-10": "5426b1b48905963d50e11d1243910b5fa05a89c9a2003bcd5082561d352a2123",
+    "2025-11": "1f28f02e33e1f19e5163cd45b67c07b3b75870e78dbbf9f861d1348ca372d942",
+    "2025-12": "d546c6e44b443e34cef5122043c5cdd3b9c76980e23cc408dafd9f6f76d65c05",
+    "2026-01": "a40e86beb4f1e6d4b19ca022c87b8b2f0e4e40874d349a5a75b27baa9634c858",
+    "2026-02": "0be4e5c92892495c5da5b371fe8755f2d508b28a58414b4171284480806ed6c4",
+    "2026-03": "44f383f9423f96cdc29e03b4ba8062296763dd740ab1d93f04b62c88bac30aa6",
+    "2026-04": "9f8e49b70978177414a005a6e84b1cf891f97b0196526cbd579535449c14b6f6",
+    "2026-05": "11b8537dc1769a7de9d6cb2e0354dd4a376018986a826c67d1078e25fbf8fb80",
+    "2026-06": "7c446aee297f382ee92b8d9b3300a1d7c21bed8166118f3bb261275bed5e308e",
+    "2026-07": "ec98553c10acdbf3f210c55045614e8d3daf616e407c36718269361b1e972b16",
+    "2026-08": "1fa85817e358f73e0dd9509f6f31c79bf9b23d9470971a882c8f814871a3fccf",
+    "2026-09": "39b31046d702bd7e482e03b125d6fbfd730147aa5d9ad03d8b04bf1961a8e9bd"
+  },
+  "scope": [
+    "2025-01-01",
+    "2026-09-30"
+  ],
+  "known_missing": "Issuer published chart starts in 2025. Early closes excluded. No fill outside chart sessions.",
+  "availability": "Use two extra UTC days beyond US session date; contemporaneous issuer chart with no revision vintages.",
+  "reference_basis": "BTCUSDT spot VWAP for 15:00-16:00 New York is a proxy for the multi-venue CF benchmark.",
+  "manifest_sha256": "2ffdeed209712e0ed169dab4ccf3017798801be4c6a2d39f80aad331dd6670c9",
+  "matched_sessions": 434,
+  "first_date": "2025-01-02",
+  "last_date": "2026-09-30",
+  "scope_note": "The original publisher chart and paired observations are archived locally. The Git receipt contains source and hash metadata."
+}
