@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_release_buffer_and_prefix ________________________
+
+    def test_release_buffer_and_prefix():
+        balances, period = sample()
+        signal = M.dealer_inventory_reduces(balances, period)
+>       assert signal[signal].index.tolist() == [balances.index[-1] + pd.Timedelta(days=15)]
+E       AssertionError: assert [Timestamp('2...09 00:00:00')] == [Timestamp('2...24 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2025-04-09 00:00:00') != Timestamp('2025-04-24 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v192.py:40: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v192.py::test_release_buffer_and_prefix - Asserti...
+1 failed in 1.43s

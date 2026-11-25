@@ -1,0 +1,6 @@
+BEFORE
+ & net.gt(0)
+AFTER
+
+DETECTED BY
+test_current_inventory_must_remain_long

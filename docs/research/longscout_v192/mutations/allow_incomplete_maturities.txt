@@ -1,0 +1,6 @@
+BEFORE
+min_count=len(FIELDS)
+AFTER
+min_count=len(FIELDS) - 1
+DETECTED BY
+test_all_coupon_buckets_required

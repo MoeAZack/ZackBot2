@@ -1,0 +1,6 @@
+BEFORE
+pd.Timedelta(days=15)
+AFTER
+pd.Timedelta(days=0)
+DETECTED BY
+test_release_buffer_and_prefix
