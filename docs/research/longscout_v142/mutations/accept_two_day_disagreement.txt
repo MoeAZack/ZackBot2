@@ -1,0 +1,6 @@
+BEFORE
+rolling(3, min_periods=3).sum().eq(3)
+AFTER
+rolling(2, min_periods=2).sum().eq(2)
+DETECTED BY
+test_three_consecutive_days_are_required

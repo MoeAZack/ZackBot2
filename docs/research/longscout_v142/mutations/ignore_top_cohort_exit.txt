@@ -1,0 +1,6 @@
+BEFORE
+ & top_accounts.ge(1.1) & all_accounts.ge(1.)
+AFTER
+ & all_accounts.ge(1.)
+DETECTED BY
+test_top_cohort_must_still_be_long

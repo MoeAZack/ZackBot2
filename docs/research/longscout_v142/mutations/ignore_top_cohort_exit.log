@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_top_cohort_must_still_be_long ______________________
+
+    def test_top_cohort_must_still_be_long():
+        top, broad = example()
+        top.iloc[4] = 1.0
+>       assert not M.breadth_catches_up(top, broad).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0    False\n1    False\n2    False\n3    False\n4     True\n5    False\ndtype: bool.any
+E        +      where 0    False\n1    False\n2    False\n3    False\n4     True\n5    False\ndtype: bool = <function breadth_catches_up at 0x000001ADEBC46AC0>(0    1.0\n1    1.1\n2    1.2\n3    1.3\n4    1.0\n5    1.4\ndtype: float64, 0    1.10\n1    0.90\n2    0.80\n3    0.95\n4    1.00\n5    1.10\ndtype: float64)
+E        +        where <function breadth_catches_up at 0x000001ADEBC46AC0> = M.breadth_catches_up
+
+tests\test_longscout_v142.py:37: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v142.py::test_top_cohort_must_still_be_long - ass...
+1 failed in 1.41s

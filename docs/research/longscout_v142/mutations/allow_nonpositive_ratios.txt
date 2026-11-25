@@ -1,0 +1,6 @@
+BEFORE
+ & all_accounts.gt(0)
+AFTER
+
+DETECTED BY
+test_invalid_history_blocks_a_signal
