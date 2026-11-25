@@ -559,6 +559,12 @@
    "trials_after": 386,
    "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7163221207",
    "head": "b924cfaf12ffc977f1980ebf9ab4c3c996128696"
+  },
+  "191": {
+   "passes": 0,
+   "trials_after": 387,
+   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7163308257",
+   "head": "e9da38d8064e287c1e1cb9a35513045f7c995ad6"
   }
  },
  "running": {},
@@ -647,9 +653,10 @@
   "automatic_restart": false
  },
  "runtime_followup": {
-  "status": "A2 first signal verified 25 Nov 14:00:20 Cairo (12:00:20 UTC). Stage capacity, code max_positions, decision not_taken.",
+  "status": "A2 first signal verified 25 Nov 14:00:20 Cairo (12:00:20 UTC). Stage capacity, code max_positions, decision not_taken. Capacity is checked before true books, so this event leaves a true-book pass unverified.",
   "bridge": "https://github.com/MoeAZack/ZackBot2/issues/219#issuecomment-7156499218",
-  "result": "https://github.com/MoeAZack/ZackBot2/issues/219#issuecomment-7161819939"
+  "result": "https://github.com/MoeAZack/ZackBot2/issues/219#issuecomment-7161819939",
+  "gate_order_clarification": "https://github.com/MoeAZack/ZackBot2/issues/219#issuecomment-7163352285"
  },
  "incomplete_versions": {
   "163": {
