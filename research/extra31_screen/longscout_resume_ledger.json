@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 392,
+ "registered_trials": 393,
  "completed_trials": 387,
  "historical_screen_passes": 13,
  "versions": {
@@ -2359,6 +2359,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "192": {
+   "status": "PREREGISTERED",
+   "source_freeze": "75e57fb96af1be10009b5b2b761551af335f6554",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 393,
+     "key": "l192_treasury_dealer_coupon_inventory_unloads_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
