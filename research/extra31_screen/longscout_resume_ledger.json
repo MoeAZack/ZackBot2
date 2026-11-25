@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 388,
+ "registered_trials": 389,
  "completed_trials": 383,
  "historical_screen_passes": 13,
  "versions": {
@@ -2264,6 +2264,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "188": {
+   "status": "PREREGISTERED",
+   "source_freeze": "d11d12044561925c5216fb52e70a75289b1ec45e",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 389,
+     "key": "l188_cross_coin_directed_leadership_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
