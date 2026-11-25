@@ -1,0 +1,6 @@
+BEFORE
+latest.ge(1.25 * typical).all(axis=1)
+AFTER
+latest.ge(1.25 * typical).any(axis=1)
+DETECTED BY
+test_both_transfer_counts_must_rise

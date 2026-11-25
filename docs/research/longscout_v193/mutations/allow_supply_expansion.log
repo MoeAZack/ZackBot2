@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_native_supply_must_stay_stable _____________________
+
+    def test_native_supply_must_stay_stable():
+        data = sample()
+        data.loc[data.index[45]:, 'usdt_eth_SplyCur'] = 100. + 4. * pd.Series(range(1, 17), index=data.index[45:])
+>       assert not M.transfers_broaden(data).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2025-01-01    False\n2025-01-02    False\n2025-01-03    False\n2025-01-04    False\n2025-01-05    False\n              ... ... False\n2025-02-27    False\n2025-02-28    False\n2025-03-01    False\n2025-03-02    False\nFreq: D, Length: 61, dtype: bool.any
+E        +      where 2025-01-01    False\n2025-01-02    False\n2025-01-03    False\n2025-01-04    False\n2025-01-05    False\n              ... ... False\n2025-02-27    False\n2025-02-28    False\n2025-03-01    False\n2025-03-02    False\nFreq: D, Length: 61, dtype: bool = <function transfers_broaden at 0x000002159D196A20>(            usdc_eth_TxTfrCnt  ...  usdt_eth_AssetEODCompletionTime\n2025-01-01              100.0  ...                ...                  1740884400\n2025-03-02              150.0  ...                       1740970800\n\n[61 rows x 6 columns])
+E        +        where <function transfers_broaden at 0x000002159D196A20> = M.transfers_broaden
+
+tests\test_longscout_v193.py:39: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v193.py::test_native_supply_must_stay_stable - as...
+1 failed in 1.65s

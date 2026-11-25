@@ -1,0 +1,20 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________________ test_checks_actual_completion ________________________
+
+    def test_checks_actual_completion():
+        data = sample()
+        flags = M.transfers_broaden(data)
+        assert flags[flags].index.tolist() == [data.index[50]]
+        data.loc[data.index[48], 'usdt_eth_AssetEODCompletionTime'] = data.index[53].timestamp()
+>       assert not M.transfers_broaden(data).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2025-01-01    False\n2025-01-02    False\n2025-01-03    False\n2025-01-04    False\n2025-01-05    False\n              ... ... False\n2025-02-27    False\n2025-02-28    False\n2025-03-01    False\n2025-03-02    False\nFreq: D, Length: 61, dtype: bool.any
+E        +      where 2025-01-01    False\n2025-01-02    False\n2025-01-03    False\n2025-01-04    False\n2025-01-05    False\n              ... ... False\n2025-02-27    False\n2025-02-28    False\n2025-03-01    False\n2025-03-02    False\nFreq: D, Length: 61, dtype: bool = <function transfers_broaden at 0x00000267FE426A20>(            usdc_eth_TxTfrCnt  ...  usdt_eth_AssetEODCompletionTime\n2025-01-01              100.0  ...                ...                  1740884400\n2025-03-02              150.0  ...                       1740970800\n\n[61 rows x 6 columns])
+E        +        where <function transfers_broaden at 0x00000267FE426A20> = M.transfers_broaden
+
+tests\test_longscout_v193.py:47: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v193.py::test_checks_actual_completion - assert n...
+1 failed in 2.35s

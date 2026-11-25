@@ -1,0 +1,6 @@
+BEFORE
+ & stable_supply
+AFTER
+
+DETECTED BY
+test_native_supply_must_stay_stable
