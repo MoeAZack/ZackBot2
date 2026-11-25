@@ -1,0 +1,6 @@
+BEFORE
+(lower >= .004) & 
+AFTER
+
+DETECTED BY
+test_needs_actual_lower_tail_improvement

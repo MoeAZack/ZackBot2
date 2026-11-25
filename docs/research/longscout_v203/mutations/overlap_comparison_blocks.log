@@ -1,0 +1,16 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________________ test_buys_lower_tail_recovery ________________________
+
+    def test_buys_lower_tail_recovery():
+        values = sample()
+>       assert M.lower_tail_recovers(values)[lambda x: x].index.tolist() == [47]
+E       assert [] == [47]
+E         
+E         Right contains one more item: 47
+E         Use -v to get more diff
+
+tests\test_longscout_v203.py:26: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v203.py::test_buys_lower_tail_recovery - assert [...
+1 failed in 1.24s

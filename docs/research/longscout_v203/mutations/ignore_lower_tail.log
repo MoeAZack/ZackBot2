@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_needs_actual_lower_tail_improvement ___________________
+
+    def test_needs_actual_lower_tail_improvement():
+>       assert not M.lower_tail_recovers(sample(lower=-.023)).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...39    False\n40    False\n41    False\n42    False\n43    False\n44    False\n45    False\n46    False\n47     True\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...39    False\n40    False\n41    False\n42    False\n43    False\n44    False\n45    False\n46    False\n47     True\ndtype: bool = <function lower_tail_recovers at 0x000001FCDE3CB740>(0    -0.025\n1    -0.002\n2     0.002\n3     0.020\n4    -0.025\n5    -0.002\n6     0.002\n7     0.020\n8    -0.025\n9    -0.00...  -0.023\n40    0.020\n41    0.002\n42    0.002\n43   -0.023\n44    0.020\n45    0.002\n46    0.002\n47   -0.023\ndtype: float64)
+E        +        where <function lower_tail_recovers at 0x000001FCDE3CB740> = M.lower_tail_recovers
+E        +        and   0    -0.025\n1    -0.002\n2     0.002\n3     0.020\n4    -0.025\n5    -0.002\n6     0.002\n7     0.020\n8    -0.025\n9    -0.00...  -0.023\n40    0.020\n41    0.002\n42    0.002\n43   -0.023\n44    0.020\n45    0.002\n46    0.002\n47   -0.023\ndtype: float64 = sample(lower=-0.023)
+
+tests\test_longscout_v203.py:31: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v203.py::test_needs_actual_lower_tail_improvement
+1 failed in 1.33s

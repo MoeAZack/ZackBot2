@@ -1,0 +1,6 @@
+BEFORE
+ & (upper <= .004)
+AFTER
+
+DETECTED BY
+test_rejects_broad_distribution_shift

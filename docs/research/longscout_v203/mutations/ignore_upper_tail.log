@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_rejects_broad_distribution_shift ____________________
+
+    def test_rejects_broad_distribution_shift():
+>       assert not M.lower_tail_recovers(sample(upper=.030)).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...39    False\n40    False\n41    False\n42    False\n43    False\n44    False\n45    False\n46    False\n47     True\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...39    False\n40    False\n41    False\n42    False\n43    False\n44    False\n45    False\n46    False\n47     True\ndtype: bool = <function lower_tail_recovers at 0x000002939F0AB740>(0    -0.025\n1    -0.002\n2     0.002\n3     0.020\n4    -0.025\n5    -0.002\n6     0.002\n7     0.020\n8    -0.025\n9    -0.00...  -0.012\n40    0.030\n41    0.002\n42    0.002\n43   -0.012\n44    0.030\n45    0.002\n46    0.002\n47   -0.012\ndtype: float64)
+E        +        where <function lower_tail_recovers at 0x000002939F0AB740> = M.lower_tail_recovers
+E        +        and   0    -0.025\n1    -0.002\n2     0.002\n3     0.020\n4    -0.025\n5    -0.002\n6     0.002\n7     0.020\n8    -0.025\n9    -0.00...  -0.012\n40    0.030\n41    0.002\n42    0.002\n43   -0.012\n44    0.030\n45    0.002\n46    0.002\n47   -0.012\ndtype: float64 = sample(upper=0.03)
+
+tests\test_longscout_v203.py:35: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v203.py::test_rejects_broad_distribution_shift - ...
+1 failed in 1.50s

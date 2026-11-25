@@ -1,0 +1,6 @@
+BEFORE
+pairs[complete, :WINDOW]
+AFTER
+pairs[complete, WINDOW:]
+DETECTED BY
+test_buys_lower_tail_recovery
