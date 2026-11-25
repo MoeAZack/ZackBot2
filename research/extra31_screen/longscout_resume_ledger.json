@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 356,
+ "registered_trials": 357,
  "completed_trials": 353,
  "historical_screen_passes": 13,
  "versions": {
@@ -1532,6 +1532,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "156": {
+   "status": "PREREGISTERED",
+   "source_freeze": "44fb3276e81c267f5f1fd5992d2cb78c41e66915",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 357,
+     "key": "r156_btc_settled_funding_premium_divergence_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
