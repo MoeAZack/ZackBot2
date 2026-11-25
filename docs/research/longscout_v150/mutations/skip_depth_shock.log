@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_recovery_requires_severe_low ______________________
+
+    def test_recovery_requires_severe_low():
+        amounts = sample()
+        amounts.iloc[50] = 70.
+>       assert not M.liquidity_recovers(amounts).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...46    False\n47    False\n48    False\n49    False\n50    False\n51    False\n52    False\n53     True\n54    False\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...46    False\n47    False\n48    False\n49    False\n50    False\n51    False\n52    False\n53     True\n54    False\ndtype: bool = <function liquidity_recovers at 0x0000025FA7002AC0>(0     100.0\n1     100.0\n2     100.0\n3     100.0\n4     100.0\n5     100.0\n6     100.0\n7     100.0\n8     100.0\n9     100....   100.0\n47    100.0\n48    100.0\n49    100.0\n50     70.0\n51     74.0\n52     80.0\n53    100.0\n54    102.0\ndtype: float64)
+E        +        where <function liquidity_recovers at 0x0000025FA7002AC0> = M.liquidity_recovers
+
+tests\test_longscout_v150.py:33: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v150.py::test_recovery_requires_severe_low - asse...
+1 failed in 1.34s

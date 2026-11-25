@@ -1,0 +1,6 @@
+BEFORE
+rolling(5, min_periods=5)
+AFTER
+rolling(5, min_periods=4)
+DETECTED BY
+test_recent_depth_gaps_block_recovery

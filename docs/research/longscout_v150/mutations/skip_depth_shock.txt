@@ -1,0 +1,6 @@
+BEFORE
+prior_low.le(.65) & 
+AFTER
+
+DETECTED BY
+test_recovery_requires_severe_low

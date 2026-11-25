@@ -1,0 +1,6 @@
+BEFORE
+ & previous.lt(.85)
+AFTER
+
+DETECTED BY
+test_crosses_once_without_future_rows

@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_crosses_once_without_future_rows ____________________
+
+    def test_crosses_once_without_future_rows():
+        amounts = sample()
+        signal = M.liquidity_recovers(amounts)
+>       assert signal[signal].index.tolist() == [53]
+E       assert [53, 54] == [53]
+E         
+E         Left contains one more item: 54
+E         Use -v to get more diff
+
+tests\test_longscout_v150.py:26: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v150.py::test_crosses_once_without_future_rows - ...
+1 failed in 4.89s
