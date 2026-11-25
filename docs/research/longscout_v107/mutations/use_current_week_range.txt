@@ -1,0 +1,6 @@
+BEFORE
+previous_week = week - pd.Timedelta(days=7)
+AFTER
+previous_week = week
+DETECTED BY
+test_both_sides_use_prior_range_and_current_open

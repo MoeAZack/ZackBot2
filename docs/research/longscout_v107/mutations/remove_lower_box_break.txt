@@ -1,0 +1,6 @@
+BEFORE
+close.le(anchor - .70 * width)
+AFTER
+close.le(anchor - 7 * width)
+DETECTED BY
+test_box_break_and_week_end_exits

@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________ test_both_sides_use_prior_range_and_current_open _______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001EFD6BD95B0>
+
+    def test_both_sides_use_prior_range_and_current_open(monkeypatch):
+        sideways(monkeypatch)
+        d = fixture()
+        anchor, width, _ = M.weekly_box(d)
+>       assert anchor.iloc[8] == 100 and width.iloc[8] == 20
+E       assert (np.float64(100.0) == 100 and np.float64(27.0) == 20)
+
+tests\test_longscout_v107.py:37: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v107.py::test_both_sides_use_prior_range_and_current_open
+1 failed in 3.86s

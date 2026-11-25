@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________ test_incomplete_previous_or_current_week_suppresses_entries _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B083E8C620>
+
+    def test_incomplete_previous_or_current_week_suppresses_entries(monkeypatch):
+        sideways(monkeypatch)
+        d = fixture()
+        missing_previous = M.sig_weekly_box(d.drop(index=2), {}, {})
+        assert not missing_previous['le'].any() and not missing_previous['se'].any()
+        missing_current = M.sig_weekly_box(d.drop(index=8), {}, {})
+>       assert not missing_current['se'].loc[10]
+E       assert not np.True_
+
+tests\test_longscout_v107.py:52: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v107.py::test_incomplete_previous_or_current_week_suppresses_entries
+1 failed in 3.73s

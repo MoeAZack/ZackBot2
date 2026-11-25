@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_box_break_and_week_end_exits ______________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000012510CF87D0>
+
+    def test_box_break_and_week_end_exits(monkeypatch):
+        sideways(monkeypatch)
+        result = M.sig_weekly_box(fixture(), {}, {})
+        assert not result['lx'].iloc[8]
+        assert result['lx'].iloc[9]
+>       assert result['lx'].iloc[11]
+E       assert np.False_
+
+tests\test_longscout_v107.py:60: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v107.py::test_box_break_and_week_end_exits - asse...
+1 failed in 4.07s

@@ -1,0 +1,6 @@
+BEFORE
+complete_to_date & width.gt(0)
+AFTER
+width.gt(0)
+DETECTED BY
+test_incomplete_previous_or_current_week_suppresses_entries
