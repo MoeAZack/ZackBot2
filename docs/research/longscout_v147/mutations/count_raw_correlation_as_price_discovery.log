@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______ test_comovement_without_incremental_information_does_not_qualify _______
+
+    def test_comovement_without_incremental_information_does_not_qualify():
+        rng = np.random.default_rng(18)
+        target = pd.Series(np.zeros(220))
+        for i in range(1, len(target)):
+            target.iloc[i] = .9 * target.iloc[i-1] + rng.normal(0, .1)
+        predictor = target + pd.Series(rng.normal(0, .04, 220))
+        effect = M.directional_lead(target, predictor).iloc[-1]
+>       assert abs(effect) < .20
+E       assert np.float64(0.8575396069033583) < 0.2
+E        +  where np.float64(0.8575396069033583) = abs(np.float64(0.8575396069033583))
+
+tests\test_longscout_v147.py:53: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v147.py::test_comovement_without_incremental_information_does_not_qualify
+1 failed in 1.37s

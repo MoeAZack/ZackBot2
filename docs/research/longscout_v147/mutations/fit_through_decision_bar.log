@@ -1,0 +1,16 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_current_bar_cannot_change_fitted_lead __________________
+
+    def test_current_bar_cannot_change_fitted_lead():
+        spot, perpetual = direct_lead()
+        before = M.directional_lead(perpetual, spot)
+        perpetual.iloc[205] = .8
+        after = M.directional_lead(perpetual, spot)
+>       assert before.iloc[205] == after.iloc[205]
+E       assert np.float64(0.8694654757969873) == np.float64(0.25311242977479176)
+
+tests\test_longscout_v147.py:42: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v147.py::test_current_bar_cannot_change_fitted_lead
+1 failed in 1.27s

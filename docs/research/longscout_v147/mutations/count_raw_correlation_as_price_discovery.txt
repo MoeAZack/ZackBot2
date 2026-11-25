@@ -1,0 +1,6 @@
+BEFORE
+(raw - target_own * suggested_own) / np.sqrt(denom.where(denom.gt(1e-6)))
+AFTER
+raw
+DETECTED BY
+test_comovement_without_incremental_information_does_not_qualify

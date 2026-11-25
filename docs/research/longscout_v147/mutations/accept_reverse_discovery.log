@@ -1,0 +1,15 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_directional_source_must_lead ______________________
+
+    def test_directional_source_must_lead():
+        spot, perpetual = direct_lead()
+        spot.iloc[-1] = .02
+        perpetual.iloc[-1] = .001
+>       assert M.spot_confirmation(spot, perpetual).iloc[-1]
+E       assert np.False_
+
+tests\test_longscout_v147.py:33: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v147.py::test_directional_source_must_lead - asse...
+1 failed in 2.45s

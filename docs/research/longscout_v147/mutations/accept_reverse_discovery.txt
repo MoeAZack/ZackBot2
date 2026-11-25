@@ -1,0 +1,6 @@
+BEFORE
+directional_lead(perpetual, spot)
+AFTER
+directional_lead(spot, perpetual)
+DETECTED BY
+test_directional_source_must_lead

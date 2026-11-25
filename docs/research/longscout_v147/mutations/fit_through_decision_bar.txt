@@ -1,0 +1,6 @@
+BEFORE
+partial.clip(-1., 1.).shift()
+AFTER
+partial.clip(-1., 1.)
+DETECTED BY
+test_current_bar_cannot_change_fitted_lead
