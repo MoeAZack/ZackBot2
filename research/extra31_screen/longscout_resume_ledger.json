@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 339,
+ "registered_trials": 340,
  "completed_trials": 336,
  "historical_screen_passes": 12,
  "versions": {
@@ -1148,6 +1148,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "139": {
+   "status": "PREREGISTERED",
+   "source_freeze": "4ae541673da0cacdbbe60d94094b55a1c99dcfd5",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 340,
+     "key": "l139_btc_mining_work_recovery_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
