@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 403,
+ "registered_trials": 404,
  "completed_trials": 398,
  "historical_screen_passes": 13,
  "versions": {
@@ -2619,6 +2619,18 @@
       "fresh134"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "204": {
+   "status": "PREREGISTERED",
+   "source_freeze": "dc2b014576750c0fd3163d708d3003fe897650c6",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 404,
+     "key": "r204_nyse_full_closure_us_open_fade_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
