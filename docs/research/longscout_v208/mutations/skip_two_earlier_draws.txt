@@ -1,0 +1,6 @@
+BEFORE
+ & earlier_draws
+AFTER
+
+DETECTED BY
+test_needs_two_inventory_draws

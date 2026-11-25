@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_not_during_utilization_decline _____________________
+
+    def test_not_during_utilization_decline():
+>       assert not M.crude_inventory_rebuild(*sample(refinery=(95., 94., 91., 90.))).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2022-06-10    False\n2022-06-17    False\n2022-07-01     True\nName: commercial_crude_thousand_barrels, dtype: bool.any
+E        +      where 2022-06-10    False\n2022-06-17    False\n2022-07-01     True\nName: commercial_crude_thousand_barrels, dtype: bool = <function crude_inventory_rebuild at 0x000001D11269AA20>(*(2022-06-03   2022-06-08\n2022-06-10   2022-06-15\n2022-06-17   2022-06-29\n2022-06-24   2022-06-29\nFreq: W-FRI, dtype: d....0                               91.0\n2022-06-24                              434.0                               90.0))
+E        +        where <function crude_inventory_rebuild at 0x000001D11269AA20> = M.crude_inventory_rebuild
+E        +        and   (2022-06-03   2022-06-08\n2022-06-10   2022-06-15\n2022-06-17   2022-06-29\n2022-06-24   2022-06-29\nFreq: W-FRI, dtype: d....0                               91.0\n2022-06-24                              434.0                               90.0) = sample(refinery=(95.0, 94.0, 91.0, 90.0))
+
+tests\test_longscout_v208.py:33: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v208.py::test_not_during_utilization_decline - as...
+1 failed in 3.98s

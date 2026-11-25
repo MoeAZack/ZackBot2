@@ -1,0 +1,6 @@
+BEFORE
+ & refinery.diff().ge(0)
+AFTER
+
+DETECTED BY
+test_not_during_utilization_decline

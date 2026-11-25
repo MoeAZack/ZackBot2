@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________________ test_uses_actual_release_date ________________________
+
+    def test_uses_actual_release_date():
+        flags = M.crude_inventory_rebuild(*sample())
+        assert flags.index.is_unique
+>       assert flags[flags].index.tolist() == [pd.Timestamp('2022-07-01')]
+E       AssertionError: assert [Timestamp('2...26 00:00:00')] == [Timestamp('2...01 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2022-06-26 00:00:00') != Timestamp('2022-07-01 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v208.py:29: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v208.py::test_uses_actual_release_date - Assertio...
+1 failed in 2.61s

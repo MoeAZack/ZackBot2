@@ -1,0 +1,6 @@
+BEFORE
+released.loc[known] + pd.Timedelta(days=2)
+AFTER
+released.loc[known].index + pd.Timedelta(days=2)
+DETECTED BY
+test_uses_actual_release_date

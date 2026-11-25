@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_needs_two_inventory_draws ________________________
+
+    def test_needs_two_inventory_draws():
+>       assert not M.crude_inventory_rebuild(*sample(stocks=(431., 433., 430., 434.))).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2022-06-10    False\n2022-06-17    False\n2022-07-01     True\ndtype: bool.any
+E        +      where 2022-06-10    False\n2022-06-17    False\n2022-07-01     True\ndtype: bool = <function crude_inventory_rebuild at 0x0000024B0C576A20>(*(2022-06-03   2022-06-08\n2022-06-10   2022-06-15\n2022-06-17   2022-06-29\n2022-06-24   2022-06-29\nFreq: W-FRI, dtype: d....0                               91.0\n2022-06-24                              434.0                               92.0))
+E        +        where <function crude_inventory_rebuild at 0x0000024B0C576A20> = M.crude_inventory_rebuild
+E        +        and   (2022-06-03   2022-06-08\n2022-06-10   2022-06-15\n2022-06-17   2022-06-29\n2022-06-24   2022-06-29\nFreq: W-FRI, dtype: d....0                               91.0\n2022-06-24                              434.0                               92.0) = sample(stocks=(431.0, 433.0, 430.0, 434.0))
+
+tests\test_longscout_v208.py:37: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v208.py::test_needs_two_inventory_draws - assert ...
+1 failed in 6.06s
