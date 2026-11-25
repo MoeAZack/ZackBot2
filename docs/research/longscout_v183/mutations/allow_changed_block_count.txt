@@ -1,0 +1,6 @@
+BEFORE
+ & stable_count
+AFTER
+
+DETECTED BY
+test_blocks_must_stay_near_normal

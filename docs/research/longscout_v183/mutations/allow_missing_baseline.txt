@@ -1,0 +1,6 @@
+BEFORE
+benchmark = share.shift(2).rolling(30, min_periods=30).median()
+AFTER
+benchmark = share.shift(2).rolling(30, min_periods=29).median()
+DETECTED BY
+test_requires_full_gap_baseline

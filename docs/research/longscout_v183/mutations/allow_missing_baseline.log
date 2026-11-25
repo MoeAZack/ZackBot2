@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_requires_full_gap_baseline _______________________
+
+    def test_requires_full_gap_baseline():
+        rows = sample()
+        rows.iloc[10, 1] = float('nan')
+>       assert not M.long_gaps_normalize(rows).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...25    False\n26    False\n27    False\n28    False\n29    False\n30    False\n31    False\n32    False\n33     True\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...25    False\n26    False\n27    False\n28    False\n29    False\n30    False\n31    False\n32    False\n33     True\ndtype: bool = <function long_gaps_normalize at 0x0000022819226A20>(    block_count  absolute_header_gap_at_least_30m\n0         145.0                               7.0\n1         145.0   ...                6.0\n32        145.0                               7.0\n33        145.0                               7.0)
+E        +        where <function long_gaps_normalize at 0x0000022819226A20> = M.long_gaps_normalize
+
+tests\test_longscout_v183.py:32: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v183.py::test_requires_full_gap_baseline - assert...
+1 failed in 1.48s

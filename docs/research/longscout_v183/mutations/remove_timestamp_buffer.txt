@@ -1,0 +1,6 @@
+BEFORE
+return relief.shift(2, fill_value=False)
+AFTER
+return relief
+DETECTED BY
+test_uses_header_buffer

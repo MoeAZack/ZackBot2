@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________________ test_uses_header_buffer ___________________________
+
+    def test_uses_header_buffer():
+        rows = sample()
+        flag = M.long_gaps_normalize(rows)
+>       assert flag[flag].index.tolist() == [33]
+E       assert [31] == [33]
+E         
+E         At index 0 diff: 31 != 33
+E         Use -v to get more diff
+
+tests\test_longscout_v183.py:38: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v183.py::test_uses_header_buffer - assert [31] ==...
+1 failed in 1.18s
