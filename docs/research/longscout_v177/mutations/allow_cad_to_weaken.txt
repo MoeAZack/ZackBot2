@@ -1,0 +1,6 @@
+BEFORE
+ & cad.diff().gt(0)
+AFTER
+
+DETECTED BY
+test_both_currencies_must_strengthen

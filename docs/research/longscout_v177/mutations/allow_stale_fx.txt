@@ -1,0 +1,6 @@
+BEFORE
+consecutive & weak
+AFTER
+weak
+DETECTED BY
+test_stale_inputs_masked

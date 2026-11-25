@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_release_buffer_and_quote_cancellation __________________
+
+    def test_release_buffer_and_quote_cancellation():
+        quotes = sample()
+        event = M.cyclicals_recover(quotes)
+>       assert event[event].index.tolist() == [quotes.index[-1] + pd.Timedelta(days=1)]
+E       AssertionError: assert [Timestamp('2...13 00:00:00')] == [Timestamp('2...14 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2026-01-13 00:00:00') != Timestamp('2026-01-14 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v177.py:39: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v177.py::test_release_buffer_and_quote_cancellation
+1 failed in 1.39s

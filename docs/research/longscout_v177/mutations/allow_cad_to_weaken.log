@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_both_currencies_must_strengthen _____________________
+
+    def test_both_currencies_must_strengthen():
+        quotes = sample()
+        quotes.iloc[-1, :2] = [1.50, 1.535]
+>       assert not M.cyclicals_recover(quotes).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2026-01-06    False\n2026-01-07    False\n2026-01-08    False\n2026-01-09    False\n2026-01-10    False\n2026-01-13    False\n2026-01-14     True\ndtype: bool.any
+E        +      where 2026-01-06    False\n2026-01-07    False\n2026-01-08    False\n2026-01-09    False\n2026-01-10    False\n2026-01-13    False\n2026-01-14     True\ndtype: bool = <function cyclicals_recover at 0x000002C2769A6AC0>(             AUD    CAD  CHF    JPY\n2026-01-05  1.50  1.500  1.0  150.0\n2026-01-06  1.50  1.500  1.0  150.0\n2026-01-07... 1.0  150.0\n2026-01-09  1.50  1.500  1.0  150.0\n2026-01-12  1.53  1.530  1.0  150.0\n2026-01-13  1.50  1.535  1.0  150.0)
+E        +        where <function cyclicals_recover at 0x000002C2769A6AC0> = M.cyclicals_recover
+
+tests\test_longscout_v177.py:27: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v177.py::test_both_currencies_must_strengthen - a...
+1 failed in 1.25s
