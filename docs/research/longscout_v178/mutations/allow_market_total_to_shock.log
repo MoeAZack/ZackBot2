@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_total_must_stay_stable _________________________
+
+    def test_total_must_stay_stable():
+        volume = sample()
+        volume.iloc[32:] = [80., 50., 30.]
+>       assert not M.rotation(volume).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...31    False\n32    False\n33    False\n34     True\n35    False\n36    False\n37    False\n38    False\n39    False\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...31    False\n32    False\n33    False\n34     True\n35    False\n36    False\n37    False\n38    False\n39    False\ndtype: bool = <function rotation at 0x000002130F6F6B60>(    Ethereum  Arbitrum  Optimism\n0       80.0      15.0       5.0\n1       80.0      15.0       5.0\n2       80.0      1...      50.0      30.0\n37      80.0      50.0      30.0\n38      80.0      50.0      30.0\n39      80.0      50.0      30.0)
+E        +        where <function rotation at 0x000002130F6F6B60> = M.rotation
+
+tests\test_longscout_v178.py:32: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v178.py::test_total_must_stay_stable - assert not...
+1 failed in 1.45s

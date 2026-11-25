@@ -1,0 +1,6 @@
+BEFORE
+return event.shift(2, fill_value=False)
+AFTER
+return event
+DETECTED BY
+test_two_day_delay

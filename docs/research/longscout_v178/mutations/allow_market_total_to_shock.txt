@@ -1,0 +1,6 @@
+BEFORE
+ & (latest_total / total_normal).between(.85, 1.15)
+AFTER
+
+DETECTED BY
+test_total_must_stay_stable

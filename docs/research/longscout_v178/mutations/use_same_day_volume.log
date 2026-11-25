@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________________ test_two_day_delay ______________________________
+
+    def test_two_day_delay():
+        volume = sample()
+        fixed = M.rotation(volume)
+>       assert fixed[fixed].index.tolist() == [35]
+E       assert [33] == [35]
+E         
+E         At index 0 diff: 33 != 35
+E         Use -v to get more diff
+
+tests\test_longscout_v178.py:38: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v178.py::test_two_day_delay - assert [33] == [35]
+1 failed in 1.36s

@@ -1,0 +1,6 @@
+BEFORE
+ & latest.Optimism.ge(1.20 * typical.Optimism)
+AFTER
+
+DETECTED BY
+test_each_rollup_participates

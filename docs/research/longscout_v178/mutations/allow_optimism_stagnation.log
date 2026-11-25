@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________________ test_each_rollup_participates ________________________
+
+    def test_each_rollup_participates():
+        volume = sample()
+        volume.iloc[32:] = [65., 30., 5.]
+>       assert not M.rotation(volume).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...31    False\n32    False\n33    False\n34    False\n35     True\n36    False\n37    False\n38    False\n39    False\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...31    False\n32    False\n33    False\n34    False\n35     True\n36    False\n37    False\n38    False\n39    False\ndtype: bool = <function rotation at 0x00000212D5DD6AC0>(    Ethereum  Arbitrum  Optimism\n0       80.0      15.0       5.0\n1       80.0      15.0       5.0\n2       80.0      1...      30.0       5.0\n37      65.0      30.0       5.0\n38      65.0      30.0       5.0\n39      65.0      30.0       5.0)
+E        +        where <function rotation at 0x00000212D5DD6AC0> = M.rotation
+
+tests\test_longscout_v178.py:26: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v178.py::test_each_rollup_participates - assert n...
+1 failed in 1.89s
