@@ -1,0 +1,6 @@
+BEFORE
+pair = inputs.reindex(btc.index)
+AFTER
+pair = inputs.reindex(btc.index).ffill()
+DETECTED BY
+test_prefix_and_history_gap

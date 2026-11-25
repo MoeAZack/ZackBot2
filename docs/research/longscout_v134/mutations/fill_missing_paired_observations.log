@@ -1,0 +1,21 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_prefix_and_history_gap _________________________
+
+    def test_prefix_and_history_gap():
+        btc, pair = fixture()
+        signals = M.rotation(btc, pair)
+        for i in (3, 4, 5, 8):
+            pd.testing.assert_series_equal(M.rotation(btc.iloc[:i], pair.iloc[:i]), signals.iloc[:i])
+        pair.iloc[3, 1] = np.nan
+>       assert not M.rotation(btc, pair).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05     True\n2024-01-06    False\n2024-01-07    False\n2024-01-08    False\n2024-01-09    False\nFreq: D, dtype: bool.any
+E        +      where 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05     True\n2024-01-06    False\n2024-01-07    False\n2024-01-08    False\n2024-01-09    False\nFreq: D, dtype: bool = <function rotation at 0x000002397F986A20>(2024-01-01    100\n2024-01-02    101\n2024-01-03    102\n2024-01-04    103\n2024-01-05    104\n2024-01-06    105\n2024-01-07    106\n2024-01-08    107\n2024-01-09    108\nFreq: D, dtype: int64,             btc_bvol_percent  eth_bvol_percent  eth_perp_close\n2024-01-01              60.0              65.0         ...1-08              60.0              53.0           104.0\n2024-01-09              60.0              53.0           104.0)
+E        +        where <function rotation at 0x000002397F986A20> = M.rotation
+
+tests\test_longscout_v134.py:47: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v134.py::test_prefix_and_history_gap - assert not...
+1 failed in 2.01s

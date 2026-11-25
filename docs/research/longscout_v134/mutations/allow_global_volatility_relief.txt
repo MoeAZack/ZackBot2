@@ -1,0 +1,6 @@
+BEFORE
+ & pair.btc_bvol_percent.diff().ge(0)
+AFTER
+
+DETECTED BY
+test_ethereum_specific_change_required
