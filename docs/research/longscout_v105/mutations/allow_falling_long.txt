@@ -1,0 +1,6 @@
+BEFORE
+np.isin(L1.coin_regime(d),(0.,1.))
+AFTER
+np.isfinite(L1.coin_regime(d))
+DETECTED BY
+test_real_entries_regime_prefix_and_next_day

@@ -1,0 +1,15 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________ test_conditional_prior_window_reference_and_future_invariance ________
+
+    def test_conditional_prior_window_reference_and_future_invariance():
+        d=conditional_fixture();D=M._days(d);st=M.conditional_statistics(D);j=84
+        nu,nd,mu,md=conditional_reference(D,j)
+        assert nu>=8 and nd>=8 and mu<=-.002 and md>=.002
+>       assert st.n_up.iloc[j]==nu and st.n_down.iloc[j]==nd
+E       assert (np.float64(1.0) == 10)
+
+tests\test_longscout_v105.py:68: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v105.py::test_conditional_prior_window_reference_and_future_invariance
+1 failed in 1.96s

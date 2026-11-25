@@ -1,0 +1,6 @@
+BEFORE
+(rv-bv).clip(lower=0)
+AFTER
+(rv-rv).clip(lower=0)
+DETECTED BY
+test_discontinuity_math_and_causality

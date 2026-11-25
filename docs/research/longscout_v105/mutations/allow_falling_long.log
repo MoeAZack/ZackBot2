@@ -1,0 +1,28 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________ test_real_entries_regime_prefix_and_next_day _________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000018CB5350680>
+
+    def test_real_entries_regime_prefix_and_next_day(monkeypatch):
+        monkeypatch.setattr(M.L1,'coin_regime',lambda d:np.zeros(len(d)))
+        r=np.zeros(10);r[4]=-.06;d=from_daily_returns(r,np.full(10,6.))
+        sig=M.sig_discontinuity(d,{},{});assert list(np.flatnonzero(sig['le']))==[30]
+        cond=conditional_fixture();sig=M.sig_conditional(cond,{}, {})
+        long_idx=list(np.flatnonzero(sig['le']));short_idx=list(np.flatnonzero(sig['se']))
+        assert long_idx and short_idx
+        assert all(cond.t.iloc[i].hour==0 for i in long_idx+short_idx)
+        for cut in (30,31,84*6,85*6+1,90*6+1):
+            for fn,src in ((M.sig_discontinuity,d),(M.sig_conditional,cond)):
+                cut2=min(cut,len(src));a=fn(src,{},{});b=fn(src.iloc[:cut2],{}, {})
+                for key in a:np.testing.assert_array_equal(a[key].iloc[:cut2],b[key])
+        monkeypatch.setattr(M.L1,'coin_regime',lambda d:np.full(len(d),-1.))
+>       assert not M.sig_discontinuity(d,{}, {})['le'].any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...51    False\n52    False\n53    False\n54    False\n55    False\n56    False\n57    False\n58    False\n59    False\ndtype: bool.any
+
+tests\test_longscout_v105.py:91: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v105.py::test_real_entries_regime_prefix_and_next_day
+1 failed in 2.83s

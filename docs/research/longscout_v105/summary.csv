@@ -1,0 +1,3 @@
+candidate,status,median_closes,meanR15_fee_plus_slip,fresh134,extra31,median_closedDD_R,DD_label
+l105_downside_bipower_discontinuity_4h,FAIL,217.0,-0.0546878691034998,-0.04666595153306271,-0.04039867480241795,24.570153317104257,Elevated
+r105_volume_conditional_reversal_4h,FAIL,213.0,-0.05773958306457589,-0.005781562223074899,-0.21343715088433757,19.709325703724534,Elevated
