@@ -1,0 +1,6 @@
+BEFORE
+or not consecutive[i]
+AFTER
+
+DETECTED BY
+test_gap_resets_open_bucket

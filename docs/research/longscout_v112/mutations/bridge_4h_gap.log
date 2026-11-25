@@ -1,0 +1,21 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_gap_resets_open_bucket _________________________
+
+    def test_gap_resets_open_bucket():
+        d = fixture()
+        # The last bucket begins at 60 and needs bar 61 to close.
+        d.loc[60, 'qv'] = 50.
+        assert M.turnover_flags(d)[61]
+        d.loc[61:, 't'] += pd.Timedelta(hours=4)
+>       assert not M.turnover_flags(d).any()
+E       assert not np.True_
+E        +  where np.True_ = <built-in method any of numpy.ndarray object at 0x000002C6C3964330>()
+E        +    where <built-in method any of numpy.ndarray object at 0x000002C6C3964330> = array([False, False, False, False, False, False, False, False, False,\n       False, False, False, False, False, False,...False, False, False, False, False, False, False, False,\n       False, False, False, False, False, False, False,  True]).any
+E        +      where array([False, False, False, False, False, False, False, False, False,\n       False, False, False, False, False, False,...False, False, False, False, False, False, False, False,\n       False, False, False, False, False, False, False,  True]) = <function turnover_flags at 0x000002C6A83EB7E0>(                     t    qv      c\n0  2024-01-01 00:00:00  10.0  100.0\n1  2024-01-01 04:00:00  10.0  100.0\n2  2024-01...10 20:00:00  10.0   98.0\n60 2024-01-11 00:00:00  50.0  101.0\n61 2024-01-11 08:00:00  10.0  100.0\n\n[62 rows x 3 columns])
+E        +        where <function turnover_flags at 0x000002C6A83EB7E0> = M.turnover_flags
+
+tests\test_longscout_v112.py:48: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v112.py::test_gap_resets_open_bucket - assert not...
+1 failed in 1.19s

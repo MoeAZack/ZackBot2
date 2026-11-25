@@ -1,0 +1,6 @@
+BEFORE
+duration < span
+AFTER
+duration > span
+DETECTED BY
+test_complete_bucket_timing

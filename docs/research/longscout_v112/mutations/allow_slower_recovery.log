@@ -1,0 +1,16 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_complete_bucket_timing _________________________
+
+    def test_complete_bucket_timing():
+        d = fixture()
+>       assert np.flatnonzero(M.turnover_flags(d)).tolist() == [60]
+E       assert [] == [60]
+E         
+E         Right contains one more item: 60
+E         Use -v to get more diff
+
+tests\test_longscout_v112.py:35: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v112.py::test_complete_bucket_timing - assert [] ...
+1 failed in 1.27s

@@ -1,0 +1,6 @@
+BEFORE
+if used < target:
+AFTER
+if used < target / 2:
+DETECTED BY
+test_complete_bucket_timing
