@@ -1,0 +1,6 @@
+BEFORE
+ and np.isfinite(y[lag])
+AFTER
+
+DETECTED BY
+test_fit_freezes_after_last_observed_label

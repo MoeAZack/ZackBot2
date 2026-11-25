@@ -1,0 +1,6 @@
+BEFORE
+ & price_return.gt(0)
+AFTER
+
+DETECTED BY
+test_recovery_requires_rising_btc

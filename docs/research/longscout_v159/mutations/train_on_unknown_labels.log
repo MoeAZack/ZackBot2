@@ -1,0 +1,20 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_fit_freezes_after_last_observed_label __________________
+
+    def test_fit_freezes_after_last_observed_label():
+        x, y = sample()
+        y.iloc[128:] = np.nan
+        margin = M.forecast_pressure(x, y)
+        assert margin.iloc[:121].isna().all()
+>       assert np.isfinite(margin.iloc[145:]).all()
+E       AssertionError: assert np.False_
+E        +  where np.False_ = all()
+E        +    where all = 145    False\n146    False\n147    False\n148    False\n149    False\ndtype: bool.all
+E        +      where 145    False\n146    False\n147    False\n148    False\n149    False\ndtype: bool = <ufunc 'isfinite'>(145   NaN\n146   NaN\n147   NaN\n148   NaN\n149   NaN\ndtype: float64)
+E        +        where <ufunc 'isfinite'> = np.isfinite
+
+tests\test_longscout_v159.py:39: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v159.py::test_fit_freezes_after_last_observed_label
+1 failed in 2.47s

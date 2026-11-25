@@ -1,0 +1,6 @@
+BEFORE
+lag = position - 2
+AFTER
+lag = position - 1
+DETECTED BY
+test_unpublished_label_cannot_change_fit
