@@ -1,0 +1,22 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________ test_scalar_filter_matches_full_matrix_reference _______________
+
+    def test_scalar_filter_matches_full_matrix_reference():
+        price = fixture()
+>       np.testing.assert_allclose(M.distortion_z(price), reference(price), atol=1e-11, rtol=1e-11)
+E       AssertionError: 
+E       Not equal to tolerance rtol=1e-11, atol=1e-11
+E       
+E       nan location mismatch:
+E        ACTUAL: array([      nan,       nan,       nan,       nan,       nan,       nan,
+E                    nan,       nan,       nan,       nan,       nan,       nan,
+E                    nan,       nan,       nan,       nan,       nan,       nan,...
+E        DESIRED: array([      nan,       nan,       nan,       nan,       nan,       nan,
+E                    nan,       nan,       nan,       nan,       nan,       nan,
+E                    nan,       nan,       nan,       nan,       nan,       nan,...
+
+tests\test_longscout_v129.py:51: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v129.py::test_scalar_filter_matches_full_matrix_reference
+1 failed in 1.70s

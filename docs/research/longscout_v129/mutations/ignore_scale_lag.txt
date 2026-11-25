@@ -1,0 +1,6 @@
+BEFORE
+log_price.diff().shift().rolling
+AFTER
+log_price.diff().rolling
+DETECTED BY
+test_scalar_filter_matches_full_matrix_reference

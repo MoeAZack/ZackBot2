@@ -1,0 +1,30 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________ test_scalar_filter_matches_full_matrix_reference _______________
+
+    def test_scalar_filter_matches_full_matrix_reference():
+        price = fixture()
+>       np.testing.assert_allclose(M.distortion_z(price), reference(price), atol=1e-11, rtol=1e-11)
+E       AssertionError: 
+E       Not equal to tolerance rtol=1e-11, atol=1e-11
+E       
+E       Mismatched elements: 49 / 110 (44.5%)
+E       First 5 mismatches are at indices:
+E        [61]: 0.457388882814796 (ACTUAL), 1.7730897255761344 (DESIRED)
+E        [62]: -0.2889604973836998 (ACTUAL), 0.6942773048059524 (DESIRED)
+E        [63]: -0.8192810470163356 (ACTUAL), 0.05522944892467531 (DESIRED)
+E        [64]: -0.21944152702395972 (ACTUAL), 0.661872729258301 (DESIRED)
+E        [65]: -1.5522621541003896 (ACTUAL), -0.800805304588654 (DESIRED)
+E       Max absolute difference among violations: 2.86820065
+E       Max relative difference among violations: 27.74033628
+E        ACTUAL: array([      nan,       nan,       nan,       nan,       nan,       nan,
+E                    nan,       nan,       nan,       nan,       nan,       nan,
+E                    nan,       nan,       nan,       nan,       nan,       nan,...
+E        DESIRED: array([      nan,       nan,       nan,       nan,       nan,       nan,
+E                    nan,       nan,       nan,       nan,       nan,       nan,
+E                    nan,       nan,       nan,       nan,       nan,       nan,...
+
+tests\test_longscout_v129.py:51: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v129.py::test_scalar_filter_matches_full_matrix_reference
+1 failed in 1.48s

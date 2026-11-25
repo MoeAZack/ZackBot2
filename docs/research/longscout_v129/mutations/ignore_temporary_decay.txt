@@ -1,0 +1,6 @@
+BEFORE
+temporary *= DECAY
+AFTER
+temporary *= 1.
+DETECTED BY
+test_scalar_filter_matches_full_matrix_reference

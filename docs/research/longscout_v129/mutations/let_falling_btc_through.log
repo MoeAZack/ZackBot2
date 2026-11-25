@@ -1,0 +1,29 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________ test_buy_and_sell_turns_require_correct_regimes _______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000245B2D5DA30>
+
+    def test_buy_and_sell_turns_require_correct_regimes(monkeypatch):
+        price = fixture().iloc[:8].copy()
+        price.iloc[:] = [100, 97, 98, 99, 102, 101, 100, 101]
+        frame = pd.DataFrame(dict(t=price.index, c=price.to_numpy(), qv=2e7))
+        outcomes = pd.Series([0, -2, -1, -.5, 2, 1, .5, 0], index=price.index)
+        monkeypatch.setattr(M, 'distortion_z', lambda values: outcomes)
+        monkeypatch.setattr(M.L1, 'regime_daily', lambda close: pd.Series(0., index=close.index))
+        M.set_btc(frame)
+        flags = M.sig_state_fade(frame, {}, {})
+        assert np.flatnonzero(flags['le']).tolist() == [2]
+        assert np.flatnonzero(flags['se']).tolist() == [5]
+        monkeypatch.setattr(M.L1, 'regime_daily', lambda close: pd.Series(-1., index=close.index))
+        M.set_btc(frame)
+        monkeypatch.setattr(M.L1, 'regime_daily', lambda close: pd.Series(0., index=close.index))
+>       assert not M.sig_state_fade(frame, {}, {})['le'].any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0    False\n1    False\n2     True\n3    False\n4    False\n5    False\n6    False\n7    False\ndtype: bool.any
+
+tests\test_longscout_v129.py:77: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v129.py::test_buy_and_sell_turns_require_correct_regimes
+1 failed in 1.61s

@@ -1,0 +1,6 @@
+BEFORE
+L1.regime_daily(close).isin((0., 1.))
+AFTER
+L1.regime_daily(close).notna()
+DETECTED BY
+test_buy_and_sell_turns_require_correct_regimes
