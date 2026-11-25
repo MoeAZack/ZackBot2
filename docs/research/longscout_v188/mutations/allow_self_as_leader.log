@@ -1,0 +1,23 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_target_cannot_lead_itself ________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001955D31C980>
+
+    def test_target_cannot_lead_itself(monkeypatch):
+        frame = pd.DataFrame({'A': [1., 2.], 'B': [3., 4.]})
+        monkeypatch.setattr(M, 'directed_strength', lambda targets, leader: pd.DataFrame(.8, columns=targets.columns,
+                                                                                       index=targets.index))
+        result = M.select_leader_move(frame, ('A',))
+>       assert result.A.isna().all() and result.B.tolist() == [1., 2.]
+E       assert (np.False_)
+E        +  where np.False_ = all()
+E        +    where all = 0    False\n1    False\nName: A, dtype: bool.all
+E        +      where 0    False\n1    False\nName: A, dtype: bool = isna()
+E        +        where isna = 0    1.0\n1    2.0\nName: A, dtype: float64.isna
+E        +          where 0    1.0\n1    2.0\nName: A, dtype: float64 =      A    B\n0  1.0  1.0\n1  2.0  2.0.A
+
+tests\test_longscout_v188.py:46: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v188.py::test_target_cannot_lead_itself - assert ...
+1 failed in 1.19s

@@ -1,0 +1,6 @@
+BEFORE
+.corr(leader.shift()).shift()
+AFTER
+.corr(leader.shift())
+DETECTED BY
+test_fit_lags_the_latest_target_label

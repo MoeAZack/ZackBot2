@@ -1,0 +1,7 @@
+BEFORE
+        rank[symbol] = np.nan
+
+AFTER
+
+DETECTED BY
+test_target_cannot_lead_itself

@@ -1,0 +1,22 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_same_day_correlation_is_not_leadership _________________
+
+    def test_same_day_correlation_is_not_leadership():
+        lead = observations()
+        twin = (lead + .50 * lead.shift()).to_frame('target')
+>       assert M.directed_strength(twin, lead).isna().all().all()
+E       assert np.False_
+E        +  where np.False_ = all()
+E        +    where all = target    False\ndtype: bool.all
+E        +      where target    False\ndtype: bool = all()
+E        +        where all =      target\n0      True\n1      True\n2      True\n3      True\n4      True\n..      ...\n125   False\n126   False\n127   False\n128   False\n129   False\n\n[130 rows x 1 columns].all
+E        +          where      target\n0      True\n1      True\n2      True\n3      True\n4      True\n..      ...\n125   False\n126   False\n127   False\n128   False\n129   False\n\n[130 rows x 1 columns] = isna()
+E        +            where isna =        target\n0         NaN\n1         NaN\n2         NaN\n3         NaN\n4         NaN\n..        ...\n125  0.446781\n126  0.470450\n127  0.483940\n128  0.481299\n129  0.489286\n\n[130 rows x 1 columns].isna
+E        +              where        target\n0         NaN\n1         NaN\n2         NaN\n3         NaN\n4         NaN\n..        ...\n125  0.446781\n126  0.470450\n127  0.483940\n128  0.481299\n129  0.489286\n\n[130 rows x 1 columns] = <function directed_strength at 0x000002372CCC2C00>(       target\n0         NaN\n1   -0.155990\n2   -1.776041\n3    0.447609\n4    1.336181\n..        ...\n125  1.750528\n126  0.907479\n127  1.729708\n128  0.529701\n129 -1.201369\n\n[130 rows x 1 columns], 0     -0.793122\n1      0.240571\n2     -1.896326\n3      1.395772\n4      0.638295\n         ...   \n125    1.390378\n126    0.212290\n127    1.623563\n128   -0.282080\n129   -1.060329\nLength: 130, dtype: float64)
+E        +                where <function directed_strength at 0x000002372CCC2C00> = M.directed_strength
+
+tests\test_longscout_v188.py:38: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v188.py::test_same_day_correlation_is_not_leadership
+1 failed in 1.24s

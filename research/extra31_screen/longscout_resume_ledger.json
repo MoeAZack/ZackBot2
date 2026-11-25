@@ -2,7 +2,7 @@
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
  "registered_trials": 389,
- "completed_trials": 383,
+ "completed_trials": 384,
  "historical_screen_passes": 13,
  "versions": {
   "91": {
@@ -2268,14 +2268,23 @@
    ]
   },
   "188": {
-   "status": "PREREGISTERED",
+   "status": "COMPLETE_REJECTED",
    "source_freeze": "d11d12044561925c5216fb52e70a75289b1ec45e",
-   "batch_passes": null,
+   "batch_passes": 0,
    "candidates": [
     {
      "trial": 389,
      "key": "l188_cross_coin_directed_leadership_1d",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "FAIL",
+     "meanR15_fee_plus_slip": 0.012992959924170155,
+     "failed_gates": [
+      "trades",
+      "early",
+      "ex_best_coin",
+      "order0_30_per_half",
+      "extra31"
+     ],
+     "forward_worthy": false
     }
    ]
   }
