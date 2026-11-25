@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 324,
+ "registered_trials": 325,
  "completed_trials": 321,
  "historical_screen_passes": 12,
  "versions": {
@@ -803,6 +803,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "124": {
+   "status": "PREREGISTERED",
+   "source_freeze": "f93dcccf038c4ef7dc6a305828d42338d98e61a9",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 325,
+     "key": "r124_btc_orderbook_depth_redistribution_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
