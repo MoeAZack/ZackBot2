@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 317,
+ "registered_trials": 318,
  "completed_trials": 314,
  "historical_screen_passes": 12,
  "versions": {
@@ -644,6 +644,18 @@
       "order0_30_per_half"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "117": {
+   "status": "PREREGISTERED",
+   "source_freeze": "96d0c5e2a4827e44097433623ec61af8090a627b",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 318,
+     "key": "l117_negative_funding_squeeze_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
