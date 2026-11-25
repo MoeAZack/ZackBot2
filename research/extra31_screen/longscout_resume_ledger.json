@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 360,
+ "registered_trials": 361,
  "completed_trials": 357,
  "historical_screen_passes": 13,
  "versions": {
@@ -1628,6 +1628,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "160": {
+   "status": "PREREGISTERED",
+   "source_freeze": "1d6bfb3bc8d4f0c1fbc95e8385aba04314297817",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 361,
+     "key": "r160_cross_coin_residual_reversal_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
