@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 391,
+ "registered_trials": 392,
  "completed_trials": 386,
  "historical_screen_passes": 13,
  "versions": {
@@ -2334,6 +2334,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "191": {
+   "status": "PREREGISTERED",
+   "source_freeze": "e853fb3a0c7c75c7c2721da2342e221a8dd83a06",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 392,
+     "key": "l191_treasury_delivery_fails_normalize_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
