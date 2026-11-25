@@ -17,6 +17,26 @@ def dd_label(x):
     return 'Standard' if x <= 15 else 'Elevated' if x <= 30 else 'High' if x <= 60 else 'Extreme'
 
 
+def forward_bar(path, status, median_dd):
+    orders = range(40)
+    grouped = path.groupby('order')
+    mean_stress = grouped.pnl23.mean().reindex(orders) / SV.RISK_USD
+    net = grouped.pnl15.sum().reindex(orders)
+    top_three = grouped.pnl15.apply(lambda pnl: pnl[pnl > 0].nlargest(3).sum()).reindex(orders)
+    concentration = top_three / net.where(net > 0)
+    regimes = {}
+    for name, value in [('rising', 1.), ('sideways', 0.), ('falling', -1.)]:
+        means = path[path.btc_regime_at_signal == value].groupby('order').pnl15.mean().reindex(orders) / SV.RISK_USD
+        regimes[name] = None if means.isna().any() else float(means.median())
+    stress = None if mean_stress.isna().any() else float(mean_stress.median())
+    top3 = None if concentration.isna().any() else float(concentration.median())
+    gates = dict(wide_screen=status == 'WIDE165_PASS', rising=(regimes['rising'] or 0) > 0,
+                 sideways=(regimes['sideways'] or 0) > 0, stress=stress is not None and stress >= 0,
+                 drawdown=median_dd <= 30, top3=top3 is not None and top3 < 0.5)
+    return dict(qualified=all(gates.values()), gates=gates, fresh_regime_R15=regimes,
+                fresh_R23=stress, fresh_top3_share=top3)
+
+
 def main():
     out = Path(sys.argv[1])
     audit = json.loads((out/'input_audit.json').read_text())
@@ -34,7 +54,7 @@ def main():
         except pd.errors.EmptyDataError:
             tape = pd.DataFrame({k:pd.Series(dtype=dt) for k,dt in
                                  [('sym','str'),('side','int64'),('t_in','datetime64[ns]'),('t_out','datetime64[ns]'),
-                                  ('pnl15','float64'),('order','int64'),('scen','str')]})
+                                  ('pnl15','float64'),('pnl23','float64'),('order','int64'),('scen','str')]})
         tr = tape[tape.scen == 'path'].copy()
         # All frozen candidates enter on the bar after their signal bar.
         tr['btc_regime_at_signal'] = regimes.reindex(pd.DatetimeIndex(tr.t_in)-pd.Timedelta(hours=RS.BAR_H[tf])).to_numpy()
@@ -76,6 +96,8 @@ def main():
             expected=raw_subset['median_meanR15'] if isinstance(raw_subset,dict) else None
             assert (actual is None and expected is None) or np.isclose(actual,expected,rtol=1e-12,atol=1e-12),(key,name)
         diag['saved_tape_gate_reconstruction'] = 'MATCH; not independent price replay'
+        if 'forward_bar' in cases:
+            diag['forward_bar'] = forward_bar(tr[tr.sym.isin(fresh)], diag['status'], diag['dd']['median_R'])
         report['cases'][key] = diag
     (out/'diagnostics.json').write_text(json.dumps(report,indent=1)+'\n',encoding='utf-8')
     print(json.dumps(report,indent=1))
