@@ -1,0 +1,6 @@
+BEFORE
+quality & aligned & downside.ge
+AFTER
+quality & downside.ge
+DETECTED BY
+test_close_and_opposite_extremes_must_be_consistent

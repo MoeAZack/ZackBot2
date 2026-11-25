@@ -1,0 +1,6 @@
+BEFORE
+np.minimum(mark.low, index.low)
+AFTER
+mark.low
+DETECTED BY
+test_both_references_must_disagree_with_trade_low

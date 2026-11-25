@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________ test_both_references_must_disagree_with_trade_low ______________
+
+    def test_both_references_must_disagree_with_trade_low():
+        trade, mark, idx = fixture()
+        assert np.flatnonzero(M.traded_excess(trade, mark, idx)).tolist() == [4]
+        idx.iloc[4, 1] = 98.31
+>       assert not M.traded_excess(trade, mark, idx).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01 00:00:00    False\n2024-01-01 04:00:00    False\n2024-01-01 08:00:00    False\n2024-01-01 12:00:00    False\n20...0     True\n2024-01-01 20:00:00    False\n2024-01-02 00:00:00    False\n2024-01-02 04:00:00    False\nFreq: 4h, dtype: bool.any
+E        +      where 2024-01-01 00:00:00    False\n2024-01-01 04:00:00    False\n2024-01-01 08:00:00    False\n2024-01-01 12:00:00    False\n20...0     True\n2024-01-01 20:00:00    False\n2024-01-02 00:00:00    False\n2024-01-02 04:00:00    False\nFreq: 4h, dtype: bool = <function traded_excess at 0x00000239477D5620>(                      high   low  close\n2024-01-01 00:00:00  101.0  99.0  100.0\n2024-01-01 04:00:00  101.0  99.0  100....2024-01-01 20:00:00  101.0  99.0  100.0\n2024-01-02 00:00:00  101.0  99.0  100.0\n2024-01-02 04:00:00  101.0  99.0  100.0,                       high   low  close\n2024-01-01 00:00:00  101.0  99.0  100.0\n2024-01-01 04:00:00  101.0  99.0  100....2024-01-01 20:00:00  101.0  99.0  100.0\n2024-01-02 00:00:00  101.0  99.0  100.0\n2024-01-02 04:00:00  101.0  99.0  100.0,                       high    low  close\n2024-01-01 00:00:00  101.0  99.00  100.0\n2024-01-01 04:00:00  101.0  99.00  1...4-01-01 20:00:00  101.0  99.00  100.0\n2024-01-02 00:00:00  101.0  99.00  100.0\n2024-01-02 04:00:00  101.0  99.00  100.0)
+E        +        where <function traded_excess at 0x00000239477D5620> = M.traded_excess
+
+tests\test_longscout_v128.py:34: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v128.py::test_both_references_must_disagree_with_trade_low
+1 failed in 1.53s

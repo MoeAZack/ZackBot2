@@ -1,0 +1,6 @@
+BEFORE
+ & upside.le(.5 * downside)
+AFTER
+
+DETECTED BY
+test_close_and_opposite_extremes_must_be_consistent
