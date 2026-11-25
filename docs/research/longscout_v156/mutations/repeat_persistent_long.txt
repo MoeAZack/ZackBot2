@@ -1,0 +1,6 @@
+BEFORE
+ & ~long.shift(fill_value=False)
+AFTER
+
+DETECTED BY
+test_persistent_cases_emit_one_entry

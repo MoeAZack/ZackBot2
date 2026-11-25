@@ -1,0 +1,6 @@
+BEFORE
+long & before &
+AFTER
+long &
+DETECTED BY
+test_missing_prior_is_not_a_clean_transition

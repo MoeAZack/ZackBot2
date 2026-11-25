@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_opposing_legs_are_required _______________________
+
+    def test_opposing_legs_are_required():
+        paid = pd.Series([0., .0003, .0003, 0., -.0003])
+        premium = pd.Series([0., .0003, -.0003, 0., .0003])
+        state = M.divergence(paid, premium)
+>       assert state.index[state['long']].tolist() == [2]
+E       assert [1] == [2]
+E         
+E         At index 0 diff: 1 != 2
+E         Use -v to get more diff
+
+tests\test_longscout_v156.py:22: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v156.py::test_opposing_legs_are_required - assert...
+1 failed in 3.26s

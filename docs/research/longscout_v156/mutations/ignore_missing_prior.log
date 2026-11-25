@@ -1,0 +1,20 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________ test_missing_prior_is_not_a_clean_transition _________________
+
+    def test_missing_prior_is_not_a_clean_transition():
+        paid = pd.Series([0., float('nan'), .0003, .0003])
+        premium = pd.Series([0., 0., -.0003, -.0003])
+>       assert not M.divergence(paid, premium).any().any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = long      True\nshort    False\ndtype: bool.any
+E        +      where long      True\nshort    False\ndtype: bool = any()
+E        +        where any =     long  short\n0  False  False\n1  False  False\n2   True  False\n3  False  False.any
+E        +          where     long  short\n0  False  False\n1  False  False\n2   True  False\n3  False  False = <function divergence at 0x0000025FF0629BC0>(0    0.0000\n1       NaN\n2    0.0003\n3    0.0003\ndtype: float64, 0    0.0000\n1    0.0000\n2   -0.0003\n3   -0.0003\ndtype: float64)
+E        +            where <function divergence at 0x0000025FF0629BC0> = M.divergence
+
+tests\test_longscout_v156.py:29: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v156.py::test_missing_prior_is_not_a_clean_transition
+1 failed in 1.78s

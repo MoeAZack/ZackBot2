@@ -1,0 +1,6 @@
+BEFORE
+premium.le(-.0002)
+AFTER
+premium.ge(.0002)
+DETECTED BY
+test_opposing_legs_are_required
