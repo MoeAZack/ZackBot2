@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________ test_stale_and_not_yet_published_values_are_excluded _____________
+
+    def test_stale_and_not_yet_published_values_are_excluded():
+        linear = events([0, 8, 16], [.00025, .00025, -.00025], [8]*3)
+        inverse = events([0, 8, 16], [-.0002]*3, [8]*3)
+        ts = np.array([8, 12, 16, 20, 28])*M.HOUR_MS
+>       assert M.divergence(ts, linear, inverse).tolist() == [False, True, True, False, False]
+E       assert [True, True, ... False, False] == [False, True,... False, False]
+E         
+E         At index 0 diff: True != False
+E         Use -v to get more diff
+
+tests\test_longscout_v135.py:41: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v135.py::test_stale_and_not_yet_published_values_are_excluded
+1 failed in 1.19s

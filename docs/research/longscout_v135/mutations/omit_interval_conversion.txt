@@ -1,0 +1,6 @@
+BEFORE
+signed[latest[fresh]] * 8 / hours[latest[fresh]]
+AFTER
+signed[latest[fresh]]
+DETECTED BY
+test_rates_compare_in_equal_time_units

@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_rates_compare_in_equal_time_units ____________________
+
+    def test_rates_compare_in_equal_time_units():
+        linear = events([0, 8, 16], [.00015]*3, [8]*3)
+        inverse = events([4, 8, 12, 16], [-.00009]*4, [4]*4)
+>       assert M.divergence(np.array([19])*M.HOUR_MS, linear, inverse).tolist() == [True]
+E       assert [False] == [True]
+E         
+E         At index 0 diff: False != True
+E         Use -v to get more diff
+
+tests\test_longscout_v135.py:34: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v135.py::test_rates_compare_in_equal_time_units
+1 failed in 1.22s

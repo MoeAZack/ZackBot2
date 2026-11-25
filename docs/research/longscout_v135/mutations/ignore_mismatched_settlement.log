@@ -1,0 +1,21 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_settlements_must_match _________________________
+
+    def test_settlements_must_match():
+        linear = events([0, 8, 16], [.00025]*3, [8]*3)
+        inverse = events([2, 10, 18], [-.00025]*3, [8]*3)
+>       assert not M.divergence(np.array([20])*M.HOUR_MS, linear, inverse).any()
+E       assert not np.True_
+E        +  where np.True_ = <built-in method any of numpy.ndarray object at 0x0000017FC362E1F0>()
+E        +    where <built-in method any of numpy.ndarray object at 0x0000017FC362E1F0> = array([ True]).any
+E        +      where array([ True]) = <function divergence at 0x0000017FC2FB2B60>((array([20]) * 3600000), [(0, 8, 0.00025), (28800000, 8, 0.00025), (57600000, 8, 0.00025)], [(7200000, 8, -0.00025), (36000000, 8, -0.00025), (64800000, 8, -0.00025)])
+E        +        where <function divergence at 0x0000017FC2FB2B60> = M.divergence
+E        +        and   array([20]) = <built-in function array>([20])
+E        +          where <built-in function array> = np.array
+E        +        and   3600000 = M.HOUR_MS
+
+tests\test_longscout_v135.py:28: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v135.py::test_settlements_must_match - assert not...
+1 failed in 1.35s
