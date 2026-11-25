@@ -1,0 +1,6 @@
+BEFORE
+min_periods=3).max()
+AFTER
+min_periods=3).min()
+DETECTED BY
+test_three_prior_days_must_all_be_inverted

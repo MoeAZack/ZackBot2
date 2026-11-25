@@ -1,0 +1,20 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_missing_leg_blocks_signal ________________________
+
+    def test_missing_leg_blocks_signal():
+        days, contracts, expiries = sample()
+        full = M.spread_signal(days, contracts, expiries)
+        pd.testing.assert_series_equal(M.spread_signal(days[:-1], contracts, expiries), full.iloc[:-1])
+        contracts['front'] = contracts['front'].drop(days[2])
+>       assert not M.spread_signal(days, contracts, expiries).any()
+E       AssertionError: assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2025-02-01    False\n2025-02-02    False\n2025-02-03    False\n2025-02-04    False\n2025-02-05     True\nFreq: D, dtype: bool.any
+E        +      where 2025-02-01    False\n2025-02-02    False\n2025-02-03    False\n2025-02-04    False\n2025-02-05     True\nFreq: D, dtype: bool = <function spread_signal at 0x0000026C15B71440>(DatetimeIndex(['2025-02-01', '2025-02-02', '2025-02-03', '2025-02-04',\n               '2025-02-05'],\n              dtype='datetime64[us]', freq='D'), {'front': 2025-02-01    100.0\n2025-02-02    100.0\n2025-02-04    100.0\n2025-02-05    100.0\ndtype: float64, 'back': 2025-02-01    101.0\n2025-02-02     99.0\n2025-02-03     99.0\n2025-02-04     99.0\n2025-02-05    100.0\nFreq: D, dtype: float64}, {'front': Timestamp('2025-03-28 00:00:00'), 'back': Timestamp('2025-06-27 00:00:00')})
+E        +        where <function spread_signal at 0x0000026C15B71440> = M.spread_signal
+
+tests\test_longscout_v137.py:39: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v137.py::test_missing_leg_blocks_signal - Asserti...
+1 failed in 1.86s

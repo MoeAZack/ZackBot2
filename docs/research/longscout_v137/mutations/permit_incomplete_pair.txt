@@ -1,0 +1,6 @@
+BEFORE
+min_periods=3
+AFTER
+min_periods=2
+DETECTED BY
+test_missing_leg_blocks_signal
