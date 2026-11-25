@@ -1,0 +1,6 @@
+BEFORE
+ & cover.ge(past_cover)
+AFTER
+
+DETECTED BY
+test_requires_at_least_typical_bid_cover

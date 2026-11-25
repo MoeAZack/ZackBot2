@@ -1,0 +1,6 @@
+BEFORE
+ & similar_size
+AFTER
+
+DETECTED BY
+test_excludes_offering_size_change

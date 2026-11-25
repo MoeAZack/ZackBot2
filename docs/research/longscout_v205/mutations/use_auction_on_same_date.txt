@@ -1,0 +1,6 @@
+BEFORE
+pulse.set_axis(pulse.index + pd.Timedelta(days=2))
+AFTER
+pulse
+DETECTED BY
+test_applies_release_buffer
