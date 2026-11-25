@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 374,
+ "registered_trials": 375,
  "completed_trials": 369,
  "historical_screen_passes": 13,
  "versions": {
@@ -1941,6 +1941,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "174": {
+   "status": "PREREGISTERED",
+   "source_freeze": "d48f1fbf9d6bd4c2e6a4d19e8a00daf05671761c",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 375,
+     "key": "l174_cboe_short_end_vol_inversion_unwind_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
