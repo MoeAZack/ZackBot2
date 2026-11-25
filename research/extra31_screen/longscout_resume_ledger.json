@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 316,
+ "registered_trials": 317,
  "completed_trials": 313,
  "historical_screen_passes": 12,
  "versions": {
@@ -625,6 +625,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "116": {
+   "status": "PREREGISTERED",
+   "source_freeze": "d20b963bb072fb3c02071e02f6df118135b6af33",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 317,
+     "key": "r116_daily_spectral_cycle_fade_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
