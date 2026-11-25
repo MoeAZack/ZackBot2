@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 371,
+ "registered_trials": 372,
  "completed_trials": 366,
  "historical_screen_passes": 13,
  "versions": {
@@ -1873,6 +1873,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "171": {
+   "status": "PREREGISTERED",
+   "source_freeze": "cfdbf10a4e93eb57cbb8ad304f01721c5d24c324",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 372,
+     "key": "l171_btc_flow_response_asymmetry_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
