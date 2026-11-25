@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_both_alt_contracts_must_expand _____________________
+
+    def test_both_alt_contracts_must_expand():
+        data = quantities()
+        data['SOLUSDT'] = 1000.
+>       assert not M.rotation(data).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0    False\n1    False\n2    False\n3    False\n4     True\n5    False\n6    False\ndtype: bool.any
+E        +      where 0    False\n1    False\n2    False\n3    False\n4     True\n5    False\n6    False\ndtype: bool = <function rotation at 0x000001CA095F6B60>(   BTCUSDT  ETHUSDT  SOLUSDT\n0    100.0    300.0   1000.0\n1    100.0    300.0   1000.0\n2    100.0    300.0   1000.0\n3    100.0    300.0   1000.0\n4     97.0    309.0   1000.0\n5     96.0    312.0   1000.0\n6     95.0    315.0   1000.0)
+E        +        where <function rotation at 0x000001CA095F6B60> = M.rotation
+
+tests\test_longscout_v144.py:35: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v144.py::test_both_alt_contracts_must_expand - as...
+1 failed in 2.06s

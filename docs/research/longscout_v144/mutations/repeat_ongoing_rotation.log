@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_rotation_is_only_first_observed_day ___________________
+
+    def test_rotation_is_only_first_observed_day():
+        data = quantities()
+        signal = M.rotation(data)
+>       assert signal[signal].index.tolist() == [4]
+E       assert [4, 5, 6] == [4]
+E         
+E         Left contains 2 more items, first extra item: 5
+E         Use -v to get more diff
+
+tests\test_longscout_v144.py:28: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v144.py::test_rotation_is_only_first_observed_day
+1 failed in 1.73s

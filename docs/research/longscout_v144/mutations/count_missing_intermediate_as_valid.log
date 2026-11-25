@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_no_observation_gap_in_transition ____________________
+
+    def test_no_observation_gap_in_transition():
+        data = quantities()
+        data.loc[2, 'ETHUSDT'] = float('nan')
+>       assert not M.rotation(data).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0    False\n1    False\n2    False\n3    False\n4     True\n5    False\n6     True\ndtype: bool.any
+E        +      where 0    False\n1    False\n2    False\n3    False\n4     True\n5    False\n6     True\ndtype: bool = <function rotation at 0x0000021C46656B60>(   BTCUSDT  ETHUSDT  SOLUSDT\n0    100.0    300.0   1000.0\n1    100.0    300.0   1000.0\n2    100.0      NaN   1000.0\n3    100.0    300.0   1000.0\n4     97.0    309.0   1030.0\n5     96.0    312.0   1040.0\n6     95.0    315.0   1050.0)
+E        +        where <function rotation at 0x0000021C46656B60> = M.rotation
+
+tests\test_longscout_v144.py:41: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v144.py::test_no_observation_gap_in_transition - ...
+1 failed in 1.49s

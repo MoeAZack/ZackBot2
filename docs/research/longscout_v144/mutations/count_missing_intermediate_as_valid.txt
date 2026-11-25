@@ -1,0 +1,6 @@
+BEFORE
+rolling(4, min_periods=4).sum().eq(4)
+AFTER
+rolling(4, min_periods=4).sum().ge(3)
+DETECTED BY
+test_no_observation_gap_in_transition

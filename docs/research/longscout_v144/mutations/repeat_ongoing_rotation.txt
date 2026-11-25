@@ -1,0 +1,6 @@
+BEFORE
+ & ~state.shift(fill_value=False)
+AFTER
+
+DETECTED BY
+test_rotation_is_only_first_observed_day
