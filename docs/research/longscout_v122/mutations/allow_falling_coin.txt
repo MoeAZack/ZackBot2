@@ -1,0 +1,6 @@
+BEFORE
+ & np.isin(L1.coin_regime(d), (0., 1.))
+AFTER
+
+DETECTED BY
+test_nonbear_coin_required

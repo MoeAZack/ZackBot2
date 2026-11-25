@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________ test_perpetual_turnover_collapse_does_not_count _______________
+
+    def test_perpetual_turnover_collapse_does_not_count():
+        spot, perp = fixture()
+        perp.iloc[46] = 200.
+>       assert np.flatnonzero(M.spot_share_accelerates(spot, perp)).tolist() == [48]
+E       assert [46, 48] == [48]
+E         
+E         At index 0 diff: 46 != 48
+E         Left contains one more item: 48
+E         Use -v to get more diff
+
+tests\test_longscout_v122.py:34: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v122.py::test_perpetual_turnover_collapse_does_not_count
+1 failed in 1.29s

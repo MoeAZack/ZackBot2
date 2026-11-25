@@ -1,0 +1,7 @@
+BEFORE
+    valid = np.isfinite(spot) & np.isfinite(perp)
+AFTER
+    spot = spot.ffill()
+    valid = np.isfinite(spot) & np.isfinite(perp)
+DETECTED BY
+test_history_gap_is_unavailable

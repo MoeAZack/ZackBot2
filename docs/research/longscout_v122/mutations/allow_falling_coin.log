@@ -1,0 +1,24 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_nonbear_coin_required __________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002354E590B30>
+
+    def test_nonbear_coin_required(monkeypatch):
+        spot, perp = fixture()
+        c = 100 + np.arange(len(spot), dtype=float)
+        btc = pd.DataFrame(dict(t=spot.index, c=c, qv=perp.to_numpy()))
+        monkeypatch.setattr(M, 'load_spot_turnover', lambda: spot)
+        monkeypatch.setattr(M.L1, 'coin_regime', lambda d: np.zeros(len(d), dtype=float))
+        M.set_btc(btc)
+        assert np.flatnonzero(M.sig_spot_lead(btc, {}, {})['le']).tolist() == [48]
+        monkeypatch.setattr(M.L1, 'coin_regime', lambda d: np.full(len(d), -1.))
+>       assert not M.sig_spot_lead(btc, {}, {})['le'].any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...45    False\n46    False\n47    False\n48     True\n49    False\n50    False\n51    False\n52    False\n53    False\ndtype: bool.any
+
+tests\test_longscout_v122.py:55: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v122.py::test_nonbear_coin_required - assert not ...
+1 failed in 1.42s

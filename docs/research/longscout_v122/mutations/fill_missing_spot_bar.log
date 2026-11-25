@@ -1,0 +1,21 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_history_gap_is_unavailable _______________________
+
+    def test_history_gap_is_unavailable():
+        spot, perp = fixture()
+        result = M.spot_share_accelerates(spot, perp)
+        for stop in (41, 49, 52):
+            pd.testing.assert_series_equal(M.spot_share_accelerates(spot.iloc[:stop], perp.iloc[:stop]), result.iloc[:stop])
+        spot.iloc[24] = np.nan
+>       assert not M.spot_share_accelerates(spot, perp).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01 00:00:00    False\n2024-01-01 04:00:00    False\n2024-01-01 08:00:00    False\n2024-01-01 12:00:00    False\n20...0    False\n2024-01-09 12:00:00    False\n2024-01-09 16:00:00    False\n2024-01-09 20:00:00    False\nFreq: 4h, dtype: bool.any
+E        +      where 2024-01-01 00:00:00    False\n2024-01-01 04:00:00    False\n2024-01-01 08:00:00    False\n2024-01-01 12:00:00    False\n20...0    False\n2024-01-09 12:00:00    False\n2024-01-09 16:00:00    False\n2024-01-09 20:00:00    False\nFreq: 4h, dtype: bool = <function spot_share_accelerates at 0x000001CF636554E0>(2024-01-01 00:00:00    100.0\n2024-01-01 04:00:00    100.0\n2024-01-01 08:00:00    100.0\n2024-01-01 12:00:00    100.0\n20...  100.0\n2024-01-09 12:00:00    100.0\n2024-01-09 16:00:00    100.0\n2024-01-09 20:00:00    100.0\nFreq: 4h, dtype: float64, 2024-01-01 00:00:00    900.0\n2024-01-01 04:00:00    900.0\n2024-01-01 08:00:00    900.0\n2024-01-01 12:00:00    900.0\n20...  900.0\n2024-01-09 12:00:00    900.0\n2024-01-09 16:00:00    900.0\n2024-01-09 20:00:00    900.0\nFreq: 4h, dtype: float64)
+E        +        where <function spot_share_accelerates at 0x000001CF636554E0> = M.spot_share_accelerates
+
+tests\test_longscout_v122.py:43: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v122.py::test_history_gap_is_unavailable - assert...
+1 failed in 2.05s

@@ -1,0 +1,6 @@
+BEFORE
+ & spot.ge(1.25 * prior_spot)
+AFTER
+
+DETECTED BY
+test_perpetual_turnover_collapse_does_not_count
