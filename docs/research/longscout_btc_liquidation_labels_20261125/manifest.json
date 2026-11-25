@@ -1,0 +1,2866 @@
+{
+ "days": [
+  {
+   "date": "2023-06-25",
+   "observed_sell_filled_contracts": "7013",
+   "sha256": "2068add7e570b1e17afc71e53e22fee716010f08976643ead345d6c96bfbd60b",
+   "source_rows": 146
+  },
+  {
+   "date": "2023-06-26",
+   "observed_sell_filled_contracts": "6812",
+   "sha256": "8be7e36bf47290854b3d2f37a38515bfb8d434cd134703b4f86fd78654d7a0c1",
+   "source_rows": 216
+  },
+  {
+   "date": "2023-06-27",
+   "observed_sell_filled_contracts": "4533",
+   "sha256": "12a8b7c5f8a7b7c7bb75f684fc5c417d0f2ea485e180a9aa3058f140ebf4372e",
+   "source_rows": 180
+  },
+  {
+   "date": "2023-06-28",
+   "observed_sell_filled_contracts": "10849",
+   "sha256": "f112d39830fff8bba1be537f93600001647f8a1e7f5e2ef1607fd958f60ecb13",
+   "source_rows": 250
+  },
+  {
+   "date": "2023-06-29",
+   "observed_sell_filled_contracts": "3303",
+   "sha256": "e460b14bb9ff9e2f61e37fa4f24cffb0bb9596788f4ca219f3886c211e629a84",
+   "source_rows": 150
+  },
+  {
+   "date": "2023-06-30",
+   "observed_sell_filled_contracts": "25935",
+   "sha256": "7c72072abd908ebe8ce7360d47ee087dbbd273cd565a9f4807b9c32da0ba02f9",
+   "source_rows": 466
+  },
+  {
+   "date": "2023-07-01",
+   "observed_sell_filled_contracts": "96",
+   "sha256": "7660acdd3ae2ca404017f908861f079f72c01f1be2658c9aaac75273798a69f3",
+   "source_rows": 24
+  },
+  {
+   "date": "2023-07-02",
+   "observed_sell_filled_contracts": "1395",
+   "sha256": "509b47a4c87f185300c7d89813e0d4a0b537fea41c25e63064c0dabc816e79c5",
+   "source_rows": 96
+  },
+  {
+   "date": "2023-07-03",
+   "observed_sell_filled_contracts": "2133",
+   "sha256": "637aa63f9067ead815e1935d7893fa4163a5b1810acbfae8f9e911ff501e7651",
+   "source_rows": 194
+  },
+  {
+   "date": "2023-07-04",
+   "observed_sell_filled_contracts": "2249",
+   "sha256": "c563e2d7031bac1fd51d2512aa89a45e86210bdce7240d8a1dbb41b9c22494c9",
+   "source_rows": 112
+  },
+  {
+   "date": "2023-07-05",
+   "observed_sell_filled_contracts": "12574",
+   "sha256": "ff19b0c84e44cc726fde39538a1fcb4199c34662854b63827ea25a514bbe9043",
+   "source_rows": 162
+  },
+  {
+   "date": "2023-07-06",
+   "observed_sell_filled_contracts": "23177",
+   "sha256": "08a074c2637f723b4b537a69187ea69c2d8da6441b0a8902643d235623e3ceef",
+   "source_rows": 492
+  },
+  {
+   "date": "2023-07-07",
+   "observed_sell_filled_contracts": "2369",
+   "sha256": "183cfba70b27bfff3dcfc5c115f7592b3cbdde3f7152a2653e79f6b8f3ba8dcc",
+   "source_rows": 104
+  },
+  {
+   "date": "2023-07-08",
+   "observed_sell_filled_contracts": "546",
+   "sha256": "273b6f1853b22467cdbe87126c78a02e8c28e5f39154259aeab6d4c9b7cea822",
+   "source_rows": 36
+  },
+  {
+   "date": "2023-07-09",
+   "observed_sell_filled_contracts": "1025",
+   "sha256": "736a6c85a79cc8e54d67ce73ec2e8420d3e98f8d0ea58fc4b0ace6ca29be4843",
+   "source_rows": 56
+  },
+  {
+   "date": "2023-07-10",
+   "observed_sell_filled_contracts": "7427",
+   "sha256": "c42b17cb2b74473c8a62fea5356c7714dc9a14cbbe320d7a55e67c2d34ab9d2c",
+   "source_rows": 222
+  },
+  {
+   "date": "2023-07-11",
+   "observed_sell_filled_contracts": "2437",
+   "sha256": "6569241a3e08c5e04f3b8f6b9fe738ba1c019e80fd321f1140964bd66fb25ac5",
+   "source_rows": 90
+  },
+  {
+   "date": "2023-07-12",
+   "observed_sell_filled_contracts": "8897",
+   "sha256": "40ff13597d2d3f1cbe4be62ed3ba3b73bf4425d7b4390dd42d9fb5091084cc39",
+   "source_rows": 154
+  },
+  {
+   "date": "2023-07-13",
+   "observed_sell_filled_contracts": "2541",
+   "sha256": "c9e52104383f007219a89a4ed470bd6a543ffb14f19b6a7b652f7baeed38aca9",
+   "source_rows": 290
+  },
+  {
+   "date": "2023-07-14",
+   "observed_sell_filled_contracts": "13872",
+   "sha256": "015be7577c8c64123557e3ad84f3373698afdc3021303e1011a2389d77489004",
+   "source_rows": 280
+  },
+  {
+   "date": "2023-07-15",
+   "observed_sell_filled_contracts": "0",
+   "sha256": "a10c208ed3868a369ece74141b822bd97272831bbe8735909dc9cb75c70846e9",
+   "source_rows": 2
+  },
+  {
+   "date": "2023-07-16",
+   "observed_sell_filled_contracts": "4659",
+   "sha256": "6c195095c3922c88f06db5e4c88faaa09a3684958dcc58e1eec70d970bb9e656",
+   "source_rows": 82
+  },
+  {
+   "date": "2023-07-17",
+   "observed_sell_filled_contracts": "7227",
+   "sha256": "ceca9ac0f8f5f7ad454e9a11790d9b671baca70ee5a5c3c2d0ce9458de9147be",
+   "source_rows": 160
+  },
+  {
+   "date": "2023-07-18",
+   "observed_sell_filled_contracts": "5502",
+   "sha256": "95a3c704fe94069a29a2a3bed6291e129bf424936ed74ae25b1ece94a65085ed",
+   "source_rows": 122
+  },
+  {
+   "date": "2023-07-19",
+   "observed_sell_filled_contracts": "2089",
+   "sha256": "f5a0875bdea0777d16857b084065fd74732225c0d778c8ac7ce21cd276b4a9d1",
+   "source_rows": 100
+  },
+  {
+   "date": "2023-07-20",
+   "observed_sell_filled_contracts": "4715",
+   "sha256": "631ecb19559e1f7e471078a5adf06d2971d369c5ba616b51f14cf972b1ffbf09",
+   "source_rows": 172
+  },
+  {
+   "date": "2023-07-21",
+   "observed_sell_filled_contracts": "328",
+   "sha256": "e3bbf270c766bbb644951b2f1cff60e969b5c57ab9487c774b20bdd7dcf68ecf",
+   "source_rows": 48
+  },
+  {
+   "date": "2023-07-22",
+   "observed_sell_filled_contracts": "1432",
+   "sha256": "99b3a19513e6c9f7b59e82c64728a1672d6751efb1f95d568b54b5901ac64de4",
+   "source_rows": 42
+  },
+  {
+   "date": "2023-07-23",
+   "observed_sell_filled_contracts": "362",
+   "sha256": "3f85b23ba34d0e065b0190892c3c7ac1bc658e09c78dd3504e65b5f1ca2906d4",
+   "source_rows": 78
+  },
+  {
+   "date": "2023-07-24",
+   "observed_sell_filled_contracts": "12244",
+   "sha256": "a3ab484534473b905172a69e52de48d2d135f3725b75d692389c098334706449",
+   "source_rows": 232
+  },
+  {
+   "date": "2023-07-25",
+   "observed_sell_filled_contracts": "521",
+   "sha256": "9766a5d6e9c243154cfd7fbb1b35e9f3eef59a4f2444240967dd0bd3cbf5877b",
+   "source_rows": 46
+  },
+  {
+   "date": "2023-07-26",
+   "observed_sell_filled_contracts": "2058",
+   "sha256": "9ddc8501fd6007dd656939835d9bf2ecaa8010dd854d3c3201b9562486c59901",
+   "source_rows": 110
+  },
+  {
+   "date": "2023-07-27",
+   "observed_sell_filled_contracts": "2702",
+   "sha256": "c7dbbe2c70f9ed49d5f3cf13f90cff960cdd6654605b4b63eb719db3cd5e3e6f",
+   "source_rows": 78
+  },
+  {
+   "date": "2023-07-28",
+   "observed_sell_filled_contracts": "264",
+   "sha256": "a1b4689d7473011143a83e98bcfac558653e7042ea52a850f20cccbdad8f98b6",
+   "source_rows": 64
+  },
+  {
+   "date": "2023-07-29",
+   "observed_sell_filled_contracts": "82",
+   "sha256": "06078de2ef2f0638dba3b5c2419b6a78d73e4688e9689d5c2082d7f0f1ae7a21",
+   "source_rows": 12
+  },
+  {
+   "date": "2023-07-30",
+   "observed_sell_filled_contracts": "2142",
+   "sha256": "65ae9c5810c5824e64c698bce4ee8a2fdd800bcce5c259d69688d81931b60431",
+   "source_rows": 60
+  },
+  {
+   "date": "2023-07-31",
+   "observed_sell_filled_contracts": "1193",
+   "sha256": "0fa6ce0e57daefb47c72d1e31011c0e941f0b2cb764d33a8bd19245d1870fe53",
+   "source_rows": 64
+  },
+  {
+   "date": "2023-08-01",
+   "observed_sell_filled_contracts": "11328",
+   "sha256": "4d089388b88a828710d42c442ea492db4d73ab7b1c10262f140d7c6a071a359b",
+   "source_rows": 220
+  },
+  {
+   "date": "2023-08-02",
+   "observed_sell_filled_contracts": "4106",
+   "sha256": "3356d0cacf908c2a3ff02a8de7adc8ae4fb7631f8d81993b46b1ad20f7d7ad18",
+   "source_rows": 224
+  },
+  {
+   "date": "2023-08-03",
+   "observed_sell_filled_contracts": "1297",
+   "sha256": "16d08a4f5014098d9e6f43e5940cdbe921d620d8aaf27a16f86a232a3e5cad70",
+   "source_rows": 66
+  },
+  {
+   "date": "2023-08-04",
+   "observed_sell_filled_contracts": "3466",
+   "sha256": "6fed7f392afeb80ce4488023194a0831ca2f1a301f815a1a06a2ac05d8127720",
+   "source_rows": 80
+  },
+  {
+   "date": "2023-08-05",
+   "observed_sell_filled_contracts": "17",
+   "sha256": "94018f82b0d42636ac1f75da63ef81a497635feea86c012a77aed1f3df9aa850",
+   "source_rows": 4
+  },
+  {
+   "date": "2023-08-06",
+   "observed_sell_filled_contracts": "46",
+   "sha256": "59b103a5a749a2726f281a04c943d5bfe1b7da70f3113d756ca3d626cde2cd5f",
+   "source_rows": 24
+  },
+  {
+   "date": "2023-08-07",
+   "observed_sell_filled_contracts": "4245",
+   "sha256": "8b1c39835bac1860157ff375ab6426205d0ffd143d53513beab1452bc5ab9bc8",
+   "source_rows": 132
+  },
+  {
+   "date": "2023-08-08",
+   "observed_sell_filled_contracts": "2905",
+   "sha256": "0e9fdcd2d16c31fe9807023dd5c1e32574d26b4ee0e590ad3dae5f5f13c97dcc",
+   "source_rows": 188
+  },
+  {
+   "date": "2023-08-09",
+   "observed_sell_filled_contracts": "2783",
+   "sha256": "4e29b92075b237432ce5a7f654fcd7964d0a1b6f16d361b7bb25b2185acf8716",
+   "source_rows": 132
+  },
+  {
+   "date": "2023-08-10",
+   "observed_sell_filled_contracts": "4736",
+   "sha256": "b42bfd2028ca79ffcacc6a1092460575bba06771e1be92ac4a4f9f1552e90f5d",
+   "source_rows": 54
+  },
+  {
+   "date": "2023-08-11",
+   "observed_sell_filled_contracts": "2243",
+   "sha256": "931ccf3e7d835000e9985ab93f410a2e7ae29a73f3229bbd6c934bcf6c50dd5d",
+   "source_rows": 38
+  },
+  {
+   "date": "2023-08-12",
+   "observed_sell_filled_contracts": "0",
+   "sha256": "dae59f674b2afa181b6134a0fa141ab375bc03b80d8eef557312416b7e243bdc",
+   "source_rows": 2
+  },
+  {
+   "date": "2023-08-13",
+   "observed_sell_filled_contracts": "1133",
+   "sha256": "37d37fcc1b1a9df4b874c3c5b5b9a2d7f24dd59f3533670d46b5cef846f94fcf",
+   "source_rows": 30
+  },
+  {
+   "date": "2023-08-14",
+   "observed_sell_filled_contracts": "5914",
+   "sha256": "4f2cffff1f41046b4a1a4d9abcfcafcef761d3362d40418372be59655754ab6e",
+   "source_rows": 150
+  },
+  {
+   "date": "2023-08-15",
+   "observed_sell_filled_contracts": "4099",
+   "sha256": "f40664b6c0f680686e03a27f1b84e80dc5d2cbd60d50b9c35a708acde9ae0cb4",
+   "source_rows": 78
+  },
+  {
+   "date": "2023-08-16",
+   "observed_sell_filled_contracts": "5323",
+   "sha256": "3086ec6a8d6a56c18933c811844dd3554795f7b39fc7183c7dbc7b99b4357d33",
+   "source_rows": 138
+  },
+  {
+   "date": "2023-08-17",
+   "observed_sell_filled_contracts": "80368",
+   "sha256": "3fe8c888b80564c350ebd9fba5134e34c2c10ac43e9d6052570d47b6c13221ce",
+   "source_rows": 816
+  },
+  {
+   "date": "2023-08-18",
+   "observed_sell_filled_contracts": "11878",
+   "sha256": "0b77f283c7312d5b083d60061f5185a1588f4f362b8b8188e144a5685865f14e",
+   "source_rows": 392
+  },
+  {
+   "date": "2023-08-19",
+   "observed_sell_filled_contracts": "1773",
+   "sha256": "d033d2c85af974f008d918943a93d4c36e810bc2c0b61e3dd5c0b27b1bb0b8a3",
+   "source_rows": 86
+  },
+  {
+   "date": "2023-08-20",
+   "observed_sell_filled_contracts": "387",
+   "sha256": "cc0de70295f8bce465ccf724c72385de4618c840a6331d6d370186c6a2d7ef94",
+   "source_rows": 44
+  },
+  {
+   "date": "2023-08-21",
+   "observed_sell_filled_contracts": "993",
+   "sha256": "7eed97e2f8d6d8d28f120ea5b8e165d95e1cc35c4e8000b8f1520508fc37bbbc",
+   "source_rows": 116
+  },
+  {
+   "date": "2023-08-22",
+   "observed_sell_filled_contracts": "9044",
+   "sha256": "ae4a8c13121d74c77f8b95edf178176d9d6afc3d1ecebc34cb2a0f245c286051",
+   "source_rows": 182
+  },
+  {
+   "date": "2023-08-23",
+   "observed_sell_filled_contracts": "3940",
+   "sha256": "599a598b1d36f406410faed6a1463a9648f1d8ffe4b7813335918f73694b5ad4",
+   "source_rows": 228
+  },
+  {
+   "date": "2023-08-24",
+   "observed_sell_filled_contracts": "7132",
+   "sha256": "7d1a6bc1e0d86d898d196bca1504ad7a876ecc30714776544d89a48af46f534e",
+   "source_rows": 128
+  },
+  {
+   "date": "2023-08-25",
+   "observed_sell_filled_contracts": "3475",
+   "sha256": "9cc180b031b216154000dff54ff2a2d4cbb6409468f1a2d6a1cade25c2ecdae1",
+   "source_rows": 126
+  },
+  {
+   "date": "2023-08-26",
+   "observed_sell_filled_contracts": "0",
+   "sha256": "64fd2e8045504dfa6f329bbf8dcccbe6b2747d49726aea3bf6264edc1bf0d93d",
+   "source_rows": 4
+  },
+  {
+   "date": "2023-08-27",
+   "observed_sell_filled_contracts": "1096",
+   "sha256": "493661ae832ece7edb77dd1c56d14a025677d67cc42e4cb46efc7e179647f2fa",
+   "source_rows": 32
+  },
+  {
+   "date": "2023-08-28",
+   "observed_sell_filled_contracts": "4289",
+   "sha256": "5dbe8a4c5a404fbc6a8842cb85787218b275006e2c8e121164aa1b3318fb97a7",
+   "source_rows": 88
+  },
+  {
+   "date": "2023-08-29",
+   "observed_sell_filled_contracts": "4568",
+   "sha256": "2d3d316f985222223f1ecc4bf1c488830216dd9e726f47fcca07626c1f6edcd4",
+   "source_rows": 382
+  },
+  {
+   "date": "2023-08-30",
+   "observed_sell_filled_contracts": "3296",
+   "sha256": "7b636190ccedb1a154d045a79eec1e18db6a7c2d485dd66f204227fef8d5cc10",
+   "source_rows": 134
+  },
+  {
+   "date": "2023-08-31",
+   "observed_sell_filled_contracts": "13656",
+   "sha256": "3ce993a0e96b667b0a75576d743230fed6efd7c98d37d5ae149312aa9e3ba8e1",
+   "source_rows": 314
+  },
+  {
+   "date": "2023-09-01",
+   "observed_sell_filled_contracts": "5130",
+   "sha256": "4d7cf9ef41ba3ecd897c9f7480abe0a2aedf6efd48e56f3205941ee1769296e8",
+   "source_rows": 194
+  },
+  {
+   "date": "2023-09-02",
+   "observed_sell_filled_contracts": "150",
+   "sha256": "2fa7b70736b103e0c16f32d5ba6dce3310ee82d4391cc7a80a991c0f61d0ad0f",
+   "source_rows": 20
+  },
+  {
+   "date": "2023-09-03",
+   "observed_sell_filled_contracts": "412",
+   "sha256": "b853b9098036762ee1571d7f17a050507814157b656543be35531a00a5ffb8c8",
+   "source_rows": 48
+  },
+  {
+   "date": "2023-09-04",
+   "observed_sell_filled_contracts": "4156",
+   "sha256": "48b05323b8fecb1c9c0d1fe1191ebd6a137bd740d280f7e526e139535452fff5",
+   "source_rows": 88
+  },
+  {
+   "date": "2023-09-05",
+   "observed_sell_filled_contracts": "1525",
+   "sha256": "4b6c27bf11fe0c389ce9dbe87ce3ae0e1d20d2500e63df0375e00e15ce5c0361",
+   "source_rows": 58
+  },
+  {
+   "date": "2023-09-06",
+   "observed_sell_filled_contracts": "1770",
+   "sha256": "72cce23f37ffd45a7356c34c9909e682cf4832dbe30deddc09e13dea4fb98e66",
+   "source_rows": 132
+  },
+  {
+   "date": "2023-09-07",
+   "observed_sell_filled_contracts": "5185",
+   "sha256": "37e837523a57015b7101241388b0032fab03e2d7fad86d6c25e7e63063f15bcd",
+   "source_rows": 118
+  },
+  {
+   "date": "2023-09-08",
+   "observed_sell_filled_contracts": "4319",
+   "sha256": "a78ca7b42287ebe1a038189e8cbd14c6911e7413c1fc12776a401e8237be7172",
+   "source_rows": 98
+  },
+  {
+   "date": "2023-09-09",
+   "missing": true
+  },
+  {
+   "date": "2023-09-10",
+   "observed_sell_filled_contracts": "2784",
+   "sha256": "9dafcf1de2095d447493b0f94bf47bbd94c33a6f14d3f985a8de0c0b8207420b",
+   "source_rows": 60
+  },
+  {
+   "date": "2023-09-11",
+   "observed_sell_filled_contracts": "7057",
+   "sha256": "052dacf1a22ed064a4a71d1bdd6e69c63e284260e6da262e0caf1343fbe8bd91",
+   "source_rows": 234
+  },
+  {
+   "date": "2023-09-12",
+   "observed_sell_filled_contracts": "1904",
+   "sha256": "0e8008ea33aa6e68af1750ea549256bdacd27e803fed1288d38efaedecbde9b0",
+   "source_rows": 228
+  },
+  {
+   "date": "2023-09-13",
+   "observed_sell_filled_contracts": "2215",
+   "sha256": "ccabad2af95535101f92fc80bf6a68fd211a48f90b4011eb2d29a0d10b3567b5",
+   "source_rows": 88
+  },
+  {
+   "date": "2023-09-14",
+   "observed_sell_filled_contracts": "2032",
+   "sha256": "526f7a3219e65cbb0888a152903146ddb9d377aa4969e64cba73beecd4296726",
+   "source_rows": 130
+  },
+  {
+   "date": "2023-09-15",
+   "observed_sell_filled_contracts": "1279",
+   "sha256": "c9fbc8f0b86c6c797857e003be308e71c5cccccb3bf559387be737222bb29854",
+   "source_rows": 126
+  },
+  {
+   "date": "2023-09-16",
+   "observed_sell_filled_contracts": "1465",
+   "sha256": "d95f343a5eb0e5f0493fa03e06f7609b9566d2bd6768ef964bdc882a1b3f0ff7",
+   "source_rows": 24
+  },
+  {
+   "date": "2023-09-17",
+   "observed_sell_filled_contracts": "454",
+   "sha256": "36390869ab7b7600ecaa3aed29f7a9f9f3c933bc4e3966ad322bce95fb178bc1",
+   "source_rows": 28
+  },
+  {
+   "date": "2023-09-18",
+   "observed_sell_filled_contracts": "8374",
+   "sha256": "aec33b1ae16b2201b51445517c1c77b41b245320e552a654fbd11e1792471d45",
+   "source_rows": 278
+  },
+  {
+   "date": "2023-09-19",
+   "observed_sell_filled_contracts": "3730",
+   "sha256": "de2e4ff8f13a065e6ea523aa29ae0d18763a397302064c019a71a74e3441d9d3",
+   "source_rows": 214
+  },
+  {
+   "date": "2023-09-20",
+   "observed_sell_filled_contracts": "4130",
+   "sha256": "86b974abbad97b588d8fde08f96c671bdb3c79de473b6d59900c326198d4ceba",
+   "source_rows": 156
+  },
+  {
+   "date": "2023-09-21",
+   "observed_sell_filled_contracts": "6694",
+   "sha256": "4c4da1b25d12951fff04c392d953f1996146395a0fd1cdb03234bee175de56d7",
+   "source_rows": 196
+  },
+  {
+   "date": "2023-09-22",
+   "observed_sell_filled_contracts": "406",
+   "sha256": "ae9013b5103b61fee28edd7736d1d3047de2c96a6b538b468d74af062100b1c0",
+   "source_rows": 28
+  },
+  {
+   "date": "2023-09-23",
+   "missing": true
+  },
+  {
+   "date": "2023-09-24",
+   "observed_sell_filled_contracts": "6428",
+   "sha256": "a5ca952feefbac27ca8d5d29e7b9db432509e97bd8fc9a47867db415672a9919",
+   "source_rows": 94
+  },
+  {
+   "date": "2023-09-25",
+   "missing": true
+  },
+  {
+   "date": "2023-09-26",
+   "observed_sell_filled_contracts": "848",
+   "sha256": "0c6c30375914c43f7d984969d223c97c5cbcc7c8c3864d89b92b607a70a11f36",
+   "source_rows": 62
+  },
+  {
+   "date": "2023-09-27",
+   "observed_sell_filled_contracts": "5823",
+   "sha256": "26db6cc33c5a2b72c9f9cab2371a8a09a21c363fe5680cf553f4ce5b4d1167ac",
+   "source_rows": 196
+  },
+  {
+   "date": "2023-09-28",
+   "observed_sell_filled_contracts": "2372",
+   "sha256": "2f04c4bf6aaea754781d687f00474cec9238f91c809716ac7c6749e6ecc05cf3",
+   "source_rows": 202
+  },
+  {
+   "date": "2023-09-29",
+   "observed_sell_filled_contracts": "5492",
+   "sha256": "b599f5a4cfa8dc2ff4f2efb4bd55c9165242bf80e28af25ff164abd99acc882c",
+   "source_rows": 136
+  },
+  {
+   "date": "2023-09-30",
+   "observed_sell_filled_contracts": "6",
+   "sha256": "7280543168851feda907099d2aaf6fade3dfc6ec098cd57fb8a3717c71b9f2e4",
+   "source_rows": 14
+  },
+  {
+   "date": "2023-10-01",
+   "observed_sell_filled_contracts": "1147",
+   "sha256": "038a8b449a2e72dad6f3bf4e1bbefd5c333c22b52eb53df14e95ef7be47975d6",
+   "source_rows": 114
+  },
+  {
+   "date": "2023-10-02",
+   "observed_sell_filled_contracts": "13404",
+   "sha256": "65440a473efeaebed2db73c8dca9f438360295adebec9896d933203d2958e796",
+   "source_rows": 346
+  },
+  {
+   "date": "2023-10-03",
+   "observed_sell_filled_contracts": "8033",
+   "sha256": "33961a988a9efc0eb5de079e4d2778752336e9f6b801f68b69a86a04f6ac762f",
+   "source_rows": 108
+  },
+  {
+   "date": "2023-10-04",
+   "observed_sell_filled_contracts": "2780",
+   "sha256": "e877076318f04c79ef04e4ca2ca516ffc9a4597a36b8af6399b9cbde96805896",
+   "source_rows": 110
+  },
+  {
+   "date": "2023-10-05",
+   "observed_sell_filled_contracts": "4146",
+   "sha256": "b373469171bd92b499bcbd16a275344c7d8c1d0970c855cc867f195a1996d67e",
+   "source_rows": 158
+  },
+  {
+   "date": "2023-10-06",
+   "observed_sell_filled_contracts": "5291",
+   "sha256": "230db90959349e77cb36d19d1f1002f3c77e28ecd1e1ab650b6d4305505f0522",
+   "source_rows": 176
+  },
+  {
+   "date": "2023-10-07",
+   "observed_sell_filled_contracts": "18",
+   "sha256": "20bd1ceb1a36e3ad230d81c02a9a27a1433b9566e5fa72e30fc7a4177cb6fe63",
+   "source_rows": 10
+  },
+  {
+   "date": "2023-10-08",
+   "observed_sell_filled_contracts": "601",
+   "sha256": "0d390e02c75f7e059236bd53cca5e35421f985dd36eeab86a3b4cc51acf36403",
+   "source_rows": 66
+  },
+  {
+   "date": "2023-10-09",
+   "observed_sell_filled_contracts": "6333",
+   "sha256": "e2059c53da689aeac11f4a5ad3ae06446b2fb293e34cc0ee1033a1c0b854d728",
+   "source_rows": 166
+  },
+  {
+   "date": "2023-10-10",
+   "observed_sell_filled_contracts": "1951",
+   "sha256": "df91c8bb3741c78cdadca3c4c30f9c8d473e12f9452b0bbaa8b79d87b381fe46",
+   "source_rows": 98
+  },
+  {
+   "date": "2023-10-11",
+   "observed_sell_filled_contracts": "12650",
+   "sha256": "db77c2bd4ead4e2a224304620e52db64b7095af7c7a08c4cffae2d5549b07392",
+   "source_rows": 244
+  },
+  {
+   "date": "2023-10-12",
+   "observed_sell_filled_contracts": "788",
+   "sha256": "d371e9b60265f353e5e2190b692ea3fb5ccd9b740eb57dfd996f29199c183017",
+   "source_rows": 54
+  },
+  {
+   "date": "2023-10-13",
+   "observed_sell_filled_contracts": "853",
+   "sha256": "a3a499c65c32eb649686741e7c8bd2f8e56e6210f6d87520541875280a27c1de",
+   "source_rows": 84
+  },
+  {
+   "date": "2023-10-14",
+   "observed_sell_filled_contracts": "12",
+   "sha256": "1428136c2652c14d2de64a6cf785eaed75cd28d5e12bbed802e019ba79d4a827",
+   "source_rows": 6
+  },
+  {
+   "date": "2023-10-15",
+   "observed_sell_filled_contracts": "845",
+   "sha256": "e1361932d730e4ba0d7349b63ae75ace4b6c52f55a0dce509fe910ba86f2e90d",
+   "source_rows": 54
+  },
+  {
+   "date": "2023-10-16",
+   "observed_sell_filled_contracts": "21650",
+   "sha256": "c6ebd8a856a4558d0b84f7ad507a2f98c55c7d84409e054f0d12d02435cafcc4",
+   "source_rows": 516
+  },
+  {
+   "date": "2023-10-17",
+   "observed_sell_filled_contracts": "2880",
+   "sha256": "58c3e204725344092ff95748d3320133f16ed6828aa3f24d9c44b60fa20fd639",
+   "source_rows": 164
+  },
+  {
+   "date": "2023-10-18",
+   "observed_sell_filled_contracts": "2027",
+   "sha256": "99df3ceed3c6e30fcc2c82368b149c1a60ea1a44f5a060a85870a95f2d5354c8",
+   "source_rows": 100
+  },
+  {
+   "date": "2023-10-19",
+   "observed_sell_filled_contracts": "2842",
+   "sha256": "af0448140765a6c995432cd706db3a7d8317b1f237e505cbd89b99fac5915a59",
+   "source_rows": 138
+  },
+  {
+   "date": "2023-10-20",
+   "observed_sell_filled_contracts": "4907",
+   "sha256": "e606bef730cf5e09bd09083b1f760a54e621cc9c33e4aef231ccfbb711590e74",
+   "source_rows": 330
+  },
+  {
+   "date": "2023-10-21",
+   "observed_sell_filled_contracts": "1644",
+   "sha256": "57ee4e72f8d881a9e2686be5467ca24b1761172c64e2c5c1fb50844fd7ceb0ba",
+   "source_rows": 144
+  },
+  {
+   "date": "2023-10-22",
+   "observed_sell_filled_contracts": "2884",
+   "sha256": "2e2b69f095aa84d97f34c7125d5f5e4002d116a4bfcb5b76d2315b35128ab3de",
+   "source_rows": 100
+  },
+  {
+   "date": "2023-10-23",
+   "observed_sell_filled_contracts": "12291",
+   "sha256": "9b04fd0f538cfeb737499c40ccf8c6711e2884f0984cd341c6c2c001178fbb75",
+   "source_rows": 822
+  },
+  {
+   "date": "2023-10-24",
+   "observed_sell_filled_contracts": "19295",
+   "sha256": "59f63c37e3fc7193d8ee1dd4b6dde2c05f3698b708ffe029c09a2c44c913f5c3",
+   "source_rows": 816
+  },
+  {
+   "date": "2023-10-25",
+   "observed_sell_filled_contracts": "8848",
+   "sha256": "ef73571a3c3c441a56766c0358aed514a2c17c96c9274cf33029b19ba282e90e",
+   "source_rows": 348
+  },
+  {
+   "date": "2023-10-26",
+   "observed_sell_filled_contracts": "8287",
+   "sha256": "e93fabde957a98e0de6440dfc45df07724df4386e626cd2f03bf4db6fdbadc44",
+   "source_rows": 266
+  },
+  {
+   "date": "2023-10-27",
+   "observed_sell_filled_contracts": "15066",
+   "sha256": "4564c5e83e7c8d0454f98221309a91b712f169acfeaf43d3a9c6b81fac3e9337",
+   "source_rows": 198
+  },
+  {
+   "date": "2023-10-28",
+   "observed_sell_filled_contracts": "1439",
+   "sha256": "5f15ae062bc46f832cb44d85631aa848918d241fc88210218038d9e9093b2fdc",
+   "source_rows": 76
+  },
+  {
+   "date": "2023-10-29",
+   "observed_sell_filled_contracts": "933",
+   "sha256": "f79d302ceb7a452fbd916c5550ac728696d59becec72beed9d0656a78b6459af",
+   "source_rows": 126
+  },
+  {
+   "date": "2023-10-30",
+   "observed_sell_filled_contracts": "9731",
+   "sha256": "a9b3e61b55f4c8e603ca57ea128f7998dedcc6ab7f43df1ed2773d87f9b69c06",
+   "source_rows": 164
+  },
+  {
+   "date": "2023-10-31",
+   "observed_sell_filled_contracts": "4577",
+   "sha256": "59cea9d80777cf7e28b52435afe6ed316ec05afa65d7d66a8f7ace9d514f6cf9",
+   "source_rows": 150
+  },
+  {
+   "date": "2023-11-01",
+   "observed_sell_filled_contracts": "12181",
+   "sha256": "6e423743d6de5e14f77e01e3d9c246ecaf156fad65212d01ad2b644fabcabe7e",
+   "source_rows": 310
+  },
+  {
+   "date": "2023-11-02",
+   "observed_sell_filled_contracts": "15675",
+   "sha256": "1f21c17fce5987c5da1ce65456c6ec8e4e73837d3560a38feb6c578c4701ea7d",
+   "source_rows": 282
+  },
+  {
+   "date": "2023-11-03",
+   "observed_sell_filled_contracts": "15975",
+   "sha256": "19fe927751cd4e9d98b231be7511e90fdc3a066a5d128bbc65c7eb7bb65844ec",
+   "source_rows": 206
+  },
+  {
+   "date": "2023-11-04",
+   "observed_sell_filled_contracts": "1118",
+   "sha256": "6a9e9ccf7562382a3b33c724a633e4ffc6b50b37668f9f18cca728b0ba6f249a",
+   "source_rows": 84
+  },
+  {
+   "date": "2023-11-05",
+   "observed_sell_filled_contracts": "7197",
+   "sha256": "6d17b1e7d684f549b8f5101f2f70654f49189f85f468a2b5e74edd23d5fdb0cd",
+   "source_rows": 168
+  },
+  {
+   "date": "2023-11-06",
+   "observed_sell_filled_contracts": "6687",
+   "sha256": "6add6c5f9634541966dd4c114ddfcad4ba6462470bd05e434634acc065c305d4",
+   "source_rows": 86
+  },
+  {
+   "date": "2023-11-07",
+   "observed_sell_filled_contracts": "1961",
+   "sha256": "2dd342fa197313ec19199f609be6e91f395ccb7eeb5a208df3ae8d5f000fa35c",
+   "source_rows": 236
+  },
+  {
+   "date": "2023-11-08",
+   "observed_sell_filled_contracts": "3228",
+   "sha256": "3e434f0620122d0b122e1e79ac42402c487edac9ea0916c64a75b638850107c0",
+   "source_rows": 152
+  },
+  {
+   "date": "2023-11-09",
+   "observed_sell_filled_contracts": "22582",
+   "sha256": "7df388b80556d40eb7ab8665facaccd416192a668e85b570352cd455987a4946",
+   "source_rows": 642
+  },
+  {
+   "date": "2023-11-10",
+   "observed_sell_filled_contracts": "3319",
+   "sha256": "d7841b013d46ae7e4c75fb7b55f1c0fc17a274e0533d7d7a23fb7e5fde913819",
+   "source_rows": 238
+  },
+  {
+   "date": "2023-11-11",
+   "observed_sell_filled_contracts": "3391",
+   "sha256": "e16c7c5fe500957377f6bd14c3930537afe8b300c1d7319cb9b8b9c3a5f22587",
+   "source_rows": 116
+  },
+  {
+   "date": "2023-11-12",
+   "observed_sell_filled_contracts": "19471",
+   "sha256": "5351fe37a527aca3c994b1430f5fb6612ed8caa9b504ebb75c74557901900e51",
+   "source_rows": 54
+  },
+  {
+   "date": "2023-11-13",
+   "observed_sell_filled_contracts": "8453",
+   "sha256": "95c0e0bf779ec170853c1b1c8725deeae8fc942c31c78904f3de6611ee4c6eea",
+   "source_rows": 198
+  },
+  {
+   "date": "2023-11-14",
+   "observed_sell_filled_contracts": "34168",
+   "sha256": "8a3000d8e3769ea7852da0de653ff2b51119efd69afa130f6885b5fc433662fd",
+   "source_rows": 374
+  },
+  {
+   "date": "2023-11-15",
+   "observed_sell_filled_contracts": "1826",
+   "sha256": "8a5142b10803d821516e5c789580715b3db8703b66aeacde873ba6e238a8bf54",
+   "source_rows": 332
+  },
+  {
+   "date": "2023-11-16",
+   "observed_sell_filled_contracts": "45051",
+   "sha256": "6ade50f218218fb3825495bb7de4f4c9aaa0fa93b7538bdd4adadf8d558fd93e",
+   "source_rows": 462
+  },
+  {
+   "date": "2023-11-17",
+   "observed_sell_filled_contracts": "7094",
+   "sha256": "8bc007f77d3847d9baf34f0688b165705f60690748813fd52c4cf3491b034904",
+   "source_rows": 168
+  },
+  {
+   "date": "2023-11-18",
+   "observed_sell_filled_contracts": "1669",
+   "sha256": "5778711b7abcc8f85eacfaeb854eb25ebd07febd1c2b75d71c9b426f4550bcef",
+   "source_rows": 68
+  },
+  {
+   "date": "2023-11-19",
+   "observed_sell_filled_contracts": "247",
+   "sha256": "dacfb51dc1e0e638a5bf7b0c6030d11b7176cd188384633438fc5d9505cce74a",
+   "source_rows": 124
+  },
+  {
+   "date": "2023-11-20",
+   "observed_sell_filled_contracts": "3048",
+   "sha256": "96eed2e0331c30224f2a5e306fd52117342e9ecb251995a5ffa62181ae161848",
+   "source_rows": 164
+  },
+  {
+   "date": "2023-11-21",
+   "observed_sell_filled_contracts": "19605",
+   "sha256": "d7a71c5756bd019ae3938c10b89879a8a2801cdbeabe13327345139d65876249",
+   "source_rows": 390
+  },
+  {
+   "date": "2023-11-22",
+   "observed_sell_filled_contracts": "1854",
+   "sha256": "6e634963e36afedab2a0c2f61c6fe6068c60958d2350a3b983d26dd6b521ebbb",
+   "source_rows": 184
+  },
+  {
+   "date": "2023-11-23",
+   "observed_sell_filled_contracts": "3729",
+   "sha256": "f5f5975a787022997a833f2c743d273a5bdc04a227059017aeffa0cd8ea92b99",
+   "source_rows": 96
+  },
+  {
+   "date": "2023-11-24",
+   "observed_sell_filled_contracts": "2142",
+   "sha256": "c6f2d058c74d98e407eea82c2cef2e5510b57323a1108c0c7db59bd09469620d",
+   "source_rows": 226
+  },
+  {
+   "date": "2023-11-25",
+   "observed_sell_filled_contracts": "91",
+   "sha256": "2cef24b014f911c749947a4dab31eaea1c8d4ff1b28e4cac8ea98186a9d3d2fd",
+   "source_rows": 6
+  },
+  {
+   "date": "2023-11-26",
+   "observed_sell_filled_contracts": "5399",
+   "sha256": "36d2390c777a3688c17e6f8c011637590ab8bc2b219a2521ab390fbac98deb8b",
+   "source_rows": 98
+  },
+  {
+   "date": "2023-11-27",
+   "observed_sell_filled_contracts": "4672",
+   "sha256": "941b7f7820d4e0a8532ac5fcfb70ac1b5644cff09c7b96c37e8e8c2aca49b5ca",
+   "source_rows": 134
+  },
+  {
+   "date": "2023-11-28",
+   "observed_sell_filled_contracts": "2730",
+   "sha256": "cb08949dbda139bbc8c46642ab2b5f7ea492be5dd5ce97451024cf064d40e409",
+   "source_rows": 186
+  },
+  {
+   "date": "2023-11-29",
+   "observed_sell_filled_contracts": "2779",
+   "sha256": "60ff3fceec3fefe5d3ead0828a0d11ddb7c54358434ed23c32f6372393c8dfd3",
+   "source_rows": 140
+  },
+  {
+   "date": "2023-11-30",
+   "observed_sell_filled_contracts": "2393",
+   "sha256": "a30828c0ac0e7a22ca72ff37061e96f9107aca2a7b1d3ea564872b95078c2787",
+   "source_rows": 90
+  },
+  {
+   "date": "2023-12-01",
+   "observed_sell_filled_contracts": "2622",
+   "sha256": "b0bd9b067680bd560ddfe0f91c0305103231feea009b64a5acdac9e0fe93f9a9",
+   "source_rows": 250
+  },
+  {
+   "date": "2023-12-02",
+   "observed_sell_filled_contracts": "929",
+   "sha256": "a0ed684331553404d5c7f0c35675053c8784e9af6d966c193f344c7f0dd085bd",
+   "source_rows": 114
+  },
+  {
+   "date": "2023-12-03",
+   "observed_sell_filled_contracts": "2248",
+   "sha256": "ff4bdacd90341d2fd007a4d7402a6b310fe99e57a965ea533c88d6bad1301950",
+   "source_rows": 144
+  },
+  {
+   "date": "2023-12-04",
+   "observed_sell_filled_contracts": "9993",
+   "sha256": "dc566efa7c4041258c8b5fef92915b94c7464b14faf7623c7cd94272274c8922",
+   "source_rows": 670
+  },
+  {
+   "date": "2023-12-05",
+   "observed_sell_filled_contracts": "10659",
+   "sha256": "ce89e9042c67eef5069f39cc8d771761d85b01709451d7813000b1211dce360f",
+   "source_rows": 546
+  },
+  {
+   "date": "2023-12-06",
+   "observed_sell_filled_contracts": "20002",
+   "sha256": "bea2b6f63024ede7d2a9a86dfbb749f2c84423c65e0df7906b9288fdf89fed8f",
+   "source_rows": 320
+  },
+  {
+   "date": "2023-12-07",
+   "observed_sell_filled_contracts": "14370",
+   "sha256": "c110864ec3067e7d167517fa8a8f96a068e2850eb3acbd7aec5374f2ff416f4f",
+   "source_rows": 274
+  },
+  {
+   "date": "2023-12-08",
+   "observed_sell_filled_contracts": "4584",
+   "sha256": "8bd3ce2062194dbfc7e9333cecf96f60719547cfc2b6a27d2e6e5c104262c3e5",
+   "source_rows": 210
+  },
+  {
+   "date": "2023-12-09",
+   "observed_sell_filled_contracts": "10232",
+   "sha256": "92e736aa76a3cf689e708d6b255a892c23ec872b84574b89c890ccfca4a2e952",
+   "source_rows": 114
+  },
+  {
+   "date": "2023-12-10",
+   "observed_sell_filled_contracts": "1814",
+   "sha256": "b5075bd75b1ccd8a99cecfe9bf3b298477714b06bca8348ce7222a259b799f99",
+   "source_rows": 64
+  },
+  {
+   "date": "2023-12-11",
+   "observed_sell_filled_contracts": "75812",
+   "sha256": "6894363311b411693b7a6e9d6b574aa8757a39716b23ac58ed4e59059ed7320a",
+   "source_rows": 676
+  },
+  {
+   "date": "2023-12-12",
+   "observed_sell_filled_contracts": "14598",
+   "sha256": "8ef4ebc1b93fd5ce88e1ecc230fbf50457f8f4366cb33511de3d86189c667a8b",
+   "source_rows": 306
+  },
+  {
+   "date": "2023-12-13",
+   "observed_sell_filled_contracts": "11624",
+   "sha256": "96deaa2008ee3e9a4ccd1c120faa834cead9ea0e8980796871909eb758dc4e13",
+   "source_rows": 278
+  },
+  {
+   "date": "2023-12-14",
+   "observed_sell_filled_contracts": "13770",
+   "sha256": "ae0528e9f657a7b90d20924f89eaa8d582316ca1d08a79f3d549fcb14f10875b",
+   "source_rows": 208
+  },
+  {
+   "date": "2023-12-15",
+   "observed_sell_filled_contracts": "8530",
+   "sha256": "78f9be6509b5cf310eeb071c8132e33218ce8ea69d228cd2e67ccc1f836ac649",
+   "source_rows": 194
+  },
+  {
+   "date": "2023-12-16",
+   "observed_sell_filled_contracts": "2117",
+   "sha256": "cb53f616de58b17d1c6dd3deff953c889e725e105936dd94f2df143e8e1c30c9",
+   "source_rows": 90
+  },
+  {
+   "date": "2023-12-17",
+   "observed_sell_filled_contracts": "21934",
+   "sha256": "fea8d2287b3269bac2f59470c0931584b65c23b39c6c6dfb84a681059a95c951",
+   "source_rows": 238
+  },
+  {
+   "date": "2023-12-18",
+   "observed_sell_filled_contracts": "9598",
+   "sha256": "122ea67983f45807bf7a5956bb21f6835ee4091d197b6aeb9c6d4260eb0f9aad",
+   "source_rows": 350
+  },
+  {
+   "date": "2023-12-19",
+   "observed_sell_filled_contracts": "18263",
+   "sha256": "60ab6818ab9d17a309878120080cccef3d7f9707cef65088289c7a7e7e6dc8b1",
+   "source_rows": 280
+  },
+  {
+   "date": "2023-12-20",
+   "observed_sell_filled_contracts": "8371",
+   "sha256": "0667c94130e45f327cfb6684bde90268f6c559d801724f260dc90c82a6d27569",
+   "source_rows": 286
+  },
+  {
+   "date": "2023-12-21",
+   "observed_sell_filled_contracts": "5715",
+   "sha256": "eea67d5d970293baa0bce9ff4cf339bbe0ca2b76ee97308ab9594aa1721777b2",
+   "source_rows": 166
+  },
+  {
+   "date": "2023-12-22",
+   "observed_sell_filled_contracts": "2908",
+   "sha256": "e914956624a2427771b46849c9498dea00dc1779e5a2e98e04b82588f70d5086",
+   "source_rows": 124
+  },
+  {
+   "date": "2023-12-23",
+   "observed_sell_filled_contracts": "8294",
+   "sha256": "762538914a28d61a70200c6ee612fde4152349aff4f4f243f1e6be6d927109a9",
+   "source_rows": 48
+  },
+  {
+   "date": "2023-12-24",
+   "observed_sell_filled_contracts": "7304",
+   "sha256": "7320f7655b25fff705658be1e5cd7a804500a6f247188806cc63b33abb6c9f9b",
+   "source_rows": 134
+  },
+  {
+   "date": "2023-12-25",
+   "observed_sell_filled_contracts": "1735",
+   "sha256": "003d56024f4e2a2e82cb95abd7c4b930d8218de8b1cdffa6856d2380b4cc445b",
+   "source_rows": 88
+  },
+  {
+   "date": "2023-12-26",
+   "observed_sell_filled_contracts": "29144",
+   "sha256": "d76cfeb5ded646c0e37b201df8fbbb7ff1fddac1cde020052e50902233b16168",
+   "source_rows": 308
+  },
+  {
+   "date": "2023-12-27",
+   "observed_sell_filled_contracts": "1763",
+   "sha256": "1d2213f86872c8f3a3acc2ef2f20cb83ef5f61d6df5cbda5217ef3bcd728ec02",
+   "source_rows": 146
+  },
+  {
+   "date": "2023-12-28",
+   "observed_sell_filled_contracts": "10332",
+   "sha256": "82a694f406a28ac74f235e0baafa8549d6badffcaece8472d9c5c8678a7480ed",
+   "source_rows": 208
+  },
+  {
+   "date": "2023-12-29",
+   "observed_sell_filled_contracts": "20799",
+   "sha256": "fd46941b65d8fa00a8beb60a00b7429923aeb4889f8246ade1c5119c8f2455a0",
+   "source_rows": 308
+  },
+  {
+   "date": "2023-12-30",
+   "observed_sell_filled_contracts": "4113",
+   "sha256": "38015452f35d888194e9fe1e2cbb4ac6c721bbbbcd4d8699725ec7725faa7ea4",
+   "source_rows": 116
+  },
+  {
+   "date": "2023-12-31",
+   "observed_sell_filled_contracts": "2461",
+   "sha256": "5c9900eb03ccf281a242a7db2df6aab84156df6886fd6e12739f0add29b2af8c",
+   "source_rows": 114
+  },
+  {
+   "date": "2024-01-01",
+   "observed_sell_filled_contracts": "937",
+   "sha256": "d2c2fe30499c3e3390674e0e1aa51434a95196c4071363cec2c50c6250dbd2aa",
+   "source_rows": 188
+  },
+  {
+   "date": "2024-01-02",
+   "observed_sell_filled_contracts": "10692",
+   "sha256": "3104680f53f0a2c0759b81dc31236546678913c70f590824572faf39e3b7d995",
+   "source_rows": 422
+  },
+  {
+   "date": "2024-01-03",
+   "observed_sell_filled_contracts": "32336",
+   "sha256": "48ff08f14d378c6b3ddfedfeada03fa274032362f8f1471765e36208ea13877f",
+   "source_rows": 552
+  },
+  {
+   "date": "2024-01-04",
+   "observed_sell_filled_contracts": "2606",
+   "sha256": "b42d86b289e133bc1c8d85658f34ec80e066459f39aa50f8b3156fcff534fea6",
+   "source_rows": 240
+  },
+  {
+   "date": "2024-01-05",
+   "observed_sell_filled_contracts": "10971",
+   "sha256": "a59f8a6aef3b22435f7f41c85cddc6d38a3e138f0477e1255a448619676a16c5",
+   "source_rows": 242
+  },
+  {
+   "date": "2024-01-06",
+   "observed_sell_filled_contracts": "3519",
+   "sha256": "f3a415529d36932f9fbcae13ad300e80fe9b0d7524a4f686b3e9efdf24a52c23",
+   "source_rows": 62
+  },
+  {
+   "date": "2024-01-07",
+   "observed_sell_filled_contracts": "5185",
+   "sha256": "4b6cfd70c8c8acc97236369fdd09a07d791d60c0fbde8db8d9effb6f7e666d30",
+   "source_rows": 144
+  },
+  {
+   "date": "2024-01-08",
+   "observed_sell_filled_contracts": "6469",
+   "sha256": "4f87ce583b4776e53f9f4799323684ae0f272a549ee0ca3e74afd2bf4ffb724c",
+   "source_rows": 508
+  },
+  {
+   "date": "2024-01-09",
+   "observed_sell_filled_contracts": "31547",
+   "sha256": "75fefc61e19ed4e7d0cbb38b40bffb3afd3432a6cdf400e94c2cb7d92fb4c374",
+   "source_rows": 416
+  },
+  {
+   "date": "2024-01-10",
+   "observed_sell_filled_contracts": "17798",
+   "sha256": "86b4f4cd4f845744fbccc8394b90b1f41ca4f586c638523b89433c790e3d0e34",
+   "source_rows": 550
+  },
+  {
+   "date": "2024-01-11",
+   "observed_sell_filled_contracts": "35392",
+   "sha256": "f079a59855cd5b6144027eb84427e435c4e00812671bcdf21996600604ba8b94",
+   "source_rows": 658
+  },
+  {
+   "date": "2024-01-12",
+   "observed_sell_filled_contracts": "48357",
+   "sha256": "a9c15fbed8e464883376e0b0a72fab5803d99d0aa7ac36daa7d15ffce135c222",
+   "source_rows": 748
+  },
+  {
+   "date": "2024-01-13",
+   "observed_sell_filled_contracts": "3709",
+   "sha256": "226500da94b298e4e1f0e13bc0b5f92038feedeed1f6ff5346d5dcab079bdb27",
+   "source_rows": 128
+  },
+  {
+   "date": "2024-01-14",
+   "observed_sell_filled_contracts": "9293",
+   "sha256": "1528a5b4030c3e2948adae0f379c68e1405e9f7008efaaab6fa78a3d7fa21527",
+   "source_rows": 242
+  },
+  {
+   "date": "2024-01-15",
+   "observed_sell_filled_contracts": "8919",
+   "sha256": "a30a8d93bf7bdf454a968255d68c881747bceb94a00dec247cf0538c443effc1",
+   "source_rows": 206
+  },
+  {
+   "date": "2024-01-16",
+   "observed_sell_filled_contracts": "3532",
+   "sha256": "d05ab5aa02f7126308550914f25ac2af31a6d17c549246896f9be31d09c6f1de",
+   "source_rows": 232
+  },
+  {
+   "date": "2024-01-17",
+   "observed_sell_filled_contracts": "8614",
+   "sha256": "f891ac07ad12ea12f64b0a660e4986e61a38fc2b71c3b8a8f62bc7210d17dbb4",
+   "source_rows": 180
+  },
+  {
+   "date": "2024-01-18",
+   "observed_sell_filled_contracts": "22706",
+   "sha256": "1588744940e7ce3d030263cb1cad3ff27dc158f8f525accccf7652358f8d8279",
+   "source_rows": 410
+  },
+  {
+   "date": "2024-01-19",
+   "observed_sell_filled_contracts": "14417",
+   "sha256": "82f6d4c58ab8f4e570351c029c019d37b43ab14829e61132584c89b3352fd86a",
+   "source_rows": 366
+  },
+  {
+   "date": "2024-01-20",
+   "observed_sell_filled_contracts": "331",
+   "sha256": "577ca6421edcd9095b1990d8bfa066f985521ca5a9773f391ce0ecb7a711912e",
+   "source_rows": 30
+  },
+  {
+   "date": "2024-01-21",
+   "observed_sell_filled_contracts": "337",
+   "sha256": "6816f4f38d2677c8fe8137eccc8c6ef1c474cff52091531d2dd183866bc91e6e",
+   "source_rows": 32
+  },
+  {
+   "date": "2024-01-22",
+   "observed_sell_filled_contracts": "19849",
+   "sha256": "06dbe9171582b678bca31971ca5920f91852ac4f1e2e1b2fef95044950bad8b3",
+   "source_rows": 480
+  },
+  {
+   "date": "2024-01-23",
+   "observed_sell_filled_contracts": "27283",
+   "sha256": "caddeef7fe85898a329aca11c6e185d5b640dd519e321ded26b9dd14f6f55fe7",
+   "source_rows": 478
+  },
+  {
+   "date": "2024-01-24",
+   "observed_sell_filled_contracts": "2328",
+   "sha256": "1e5c783de20af4211f6ead4df40937273552ee85e89a1f86600f4dbe83f3eccc",
+   "source_rows": 224
+  },
+  {
+   "date": "2024-01-25",
+   "observed_sell_filled_contracts": "2380",
+   "sha256": "3e7eddffbfaeaafcb73f82a720130079058533fae9414c029ddaeb047e2d69c0",
+   "source_rows": 96
+  },
+  {
+   "date": "2024-01-26",
+   "observed_sell_filled_contracts": "1293",
+   "sha256": "401ec7b2e009bd37b91f8d751911ccc5e84311e385aef0337fd12505afe690a0",
+   "source_rows": 314
+  },
+  {
+   "date": "2024-01-27",
+   "observed_sell_filled_contracts": "307",
+   "sha256": "7e5b95294b33d6fe107d282ff5fa8a95b7f63e9088045694cf3a554f73e7803c",
+   "source_rows": 50
+  },
+  {
+   "date": "2024-01-28",
+   "observed_sell_filled_contracts": "15107",
+   "sha256": "000b6bde3f81a75e1f63f80bb54f90052261bbba463871ba19569df3817e0db4",
+   "source_rows": 200
+  },
+  {
+   "date": "2024-01-29",
+   "observed_sell_filled_contracts": "2143",
+   "sha256": "500535ee6b10073c277fc5dd5d71421264d8290936f4476c25418f275d41e703",
+   "source_rows": 206
+  },
+  {
+   "date": "2024-01-30",
+   "observed_sell_filled_contracts": "3184",
+   "sha256": "a20cd5016115f2bb984a788d438c239147f4a0b642557216dae707ce39163a72",
+   "source_rows": 188
+  },
+  {
+   "date": "2024-01-31",
+   "observed_sell_filled_contracts": "20525",
+   "sha256": "9e74ffd80fc3187f6aeb55a3fd4cba865ea21198291678b3463a80b9c2351177",
+   "source_rows": 242
+  },
+  {
+   "date": "2024-02-01",
+   "observed_sell_filled_contracts": "4509",
+   "sha256": "257281bfaa748997103ed782810c22f601605f7ff40480f1eb99d8089eeadf66",
+   "source_rows": 182
+  },
+  {
+   "date": "2024-02-02",
+   "observed_sell_filled_contracts": "1506",
+   "sha256": "9cf61a3584ad1c2256b5572779c0203b13468e093fd9ce7f9f8defcbec3cb686",
+   "source_rows": 134
+  },
+  {
+   "date": "2024-02-03",
+   "observed_sell_filled_contracts": "139",
+   "sha256": "483ac515b2daa3a1f7021e1eb0fb02a3d6a739abb4736d774d4e1f4cd164776c",
+   "source_rows": 26
+  },
+  {
+   "date": "2024-02-04",
+   "observed_sell_filled_contracts": "10221",
+   "sha256": "ab27be5d2fdc6a064fee3d1b0639a981daa3f34caf1c921ca4c5710b97dc1735",
+   "source_rows": 80
+  },
+  {
+   "date": "2024-02-05",
+   "observed_sell_filled_contracts": "6173",
+   "sha256": "db6474dce641dc4ba4d59ec07c99fc223af27fd747b16e67f7f059addec94516",
+   "source_rows": 154
+  },
+  {
+   "date": "2024-02-06",
+   "observed_sell_filled_contracts": "721",
+   "sha256": "ec2ca5842088e451bc566af332cb9acf0b9e512640b9a066ae52120b05cf9407",
+   "source_rows": 58
+  },
+  {
+   "date": "2024-02-07",
+   "observed_sell_filled_contracts": "1802",
+   "sha256": "44385c86b8d7514db12b6a2756975be59e5e91588e746660017c7373f4f4f2d0",
+   "source_rows": 180
+  },
+  {
+   "date": "2024-02-08",
+   "observed_sell_filled_contracts": "1780",
+   "sha256": "18598c87450a87247ef05b819d583e0b8eb3aeb5672e30388ae9e40be837f9c2",
+   "source_rows": 204
+  },
+  {
+   "date": "2024-02-09",
+   "observed_sell_filled_contracts": "13244",
+   "sha256": "3177f073ea2fda3d69730419a64d2854b879589185505c6f6a7b3040ceb5b23d",
+   "source_rows": 484
+  },
+  {
+   "date": "2024-02-10",
+   "observed_sell_filled_contracts": "2734",
+   "sha256": "12456d57134f9440b8b7ea4c70cb4dae2ca58ba9ce26e517101275793b1f42e4",
+   "source_rows": 144
+  },
+  {
+   "date": "2024-02-11",
+   "observed_sell_filled_contracts": "3299",
+   "sha256": "595c374599a2dd132abd122670eb690090cdffaf3fbbaf9afb8c671bf52d92de",
+   "source_rows": 168
+  },
+  {
+   "date": "2024-02-12",
+   "observed_sell_filled_contracts": "11292",
+   "sha256": "22db40b9a3e45d928e60def92e27826b8b7c613259a16ffdb32b2ba80049a880",
+   "source_rows": 504
+  },
+  {
+   "date": "2024-02-13",
+   "observed_sell_filled_contracts": "14127",
+   "sha256": "39e0d64e75354d0fb5ad496967574ae404ea6028c4b9940eb476256d5965d194",
+   "source_rows": 340
+  },
+  {
+   "date": "2024-02-14",
+   "observed_sell_filled_contracts": "1686",
+   "sha256": "9375716209eddbf1153d8e2259b796b785255c74ab7e7bd9b1f65cc2bd3cd5a8",
+   "source_rows": 392
+  },
+  {
+   "date": "2024-02-15",
+   "observed_sell_filled_contracts": "11354",
+   "sha256": "91e8e0ee8eb9b8641fd8637ac5646b6a0bd466c1492ebbd87885cd95587ed861",
+   "source_rows": 300
+  },
+  {
+   "date": "2024-02-16",
+   "observed_sell_filled_contracts": "6562",
+   "sha256": "9ded89be566f086c5c4ffcda77a11fa3af7c2effc231332093e26b5199d8d303",
+   "source_rows": 168
+  },
+  {
+   "date": "2024-02-17",
+   "observed_sell_filled_contracts": "3295",
+   "sha256": "c847f02ba4a9fb8f9a4408458c7b802d79da036bc68c230ef95f9b4915d7dab6",
+   "source_rows": 188
+  },
+  {
+   "date": "2024-02-18",
+   "observed_sell_filled_contracts": "2381",
+   "sha256": "13fe4487c84059908308afe51d2962d0207c1d60de0bc32055aee13b8ed95c8f",
+   "source_rows": 124
+  },
+  {
+   "date": "2024-02-19",
+   "observed_sell_filled_contracts": "2107",
+   "sha256": "54f7db19eaa3ad804cb1cdf1d30ae230baa45db8bfdb95b578bad937ae927c8f",
+   "source_rows": 142
+  },
+  {
+   "date": "2024-02-20",
+   "observed_sell_filled_contracts": "42155",
+   "sha256": "99137720ca8507be0721fd7426df32c680ebc4637181e47eac0eaed32af9b81f",
+   "source_rows": 344
+  },
+  {
+   "date": "2024-02-21",
+   "observed_sell_filled_contracts": "11282",
+   "sha256": "4869544e229b61d46463d7da042612e33a6551431a33d8e10bb90b186cd48c28",
+   "source_rows": 228
+  },
+  {
+   "date": "2024-02-22",
+   "observed_sell_filled_contracts": "4041",
+   "sha256": "f2ba94b7aa82f80b481eb4be9dea5ac6f006afb323d9000f88d8ea196abfdb68",
+   "source_rows": 134
+  },
+  {
+   "date": "2024-02-23",
+   "observed_sell_filled_contracts": "6107",
+   "sha256": "2bf57e63227d7c1c7645dd8a885d5080309b0811f8bdf2fe5317b3dbf2c5b7fb",
+   "source_rows": 110
+  },
+  {
+   "date": "2024-02-24",
+   "observed_sell_filled_contracts": "9",
+   "sha256": "6d30fbb4d0bb9a68c70a781fdfacf9db99828d48f889e98b9540aa83bbe3b796",
+   "source_rows": 30
+  },
+  {
+   "date": "2024-02-25",
+   "observed_sell_filled_contracts": "526",
+   "sha256": "31ff54ee42f3451b949897664a4f0d384067f6880500454f17f1b0e7b32ad2ed",
+   "source_rows": 68
+  },
+  {
+   "date": "2024-02-26",
+   "observed_sell_filled_contracts": "6614",
+   "sha256": "f7193cd7e35b9618da2d22e76fc20743e7cc3ea224e0df38d9a92da2c25e48d9",
+   "source_rows": 402
+  },
+  {
+   "date": "2024-02-27",
+   "observed_sell_filled_contracts": "17758",
+   "sha256": "c4014de7c0a01fdf320a524bc99f8e9d217116b5c9de08beb1b7a804bfd04c97",
+   "source_rows": 570
+  },
+  {
+   "date": "2024-02-28",
+   "observed_sell_filled_contracts": "56995",
+   "sha256": "ff2a4054298af29c2d50a8c07f28348639f1c7a3c16eaa596f9ea52e23221a52",
+   "source_rows": 1304
+  },
+  {
+   "date": "2024-02-29",
+   "observed_sell_filled_contracts": "29401",
+   "sha256": "35f3ef2fb0a12be1cfa6c797e67088d2ebe64e703ac5a8bec9dfbde5609151a6",
+   "source_rows": 654
+  },
+  {
+   "date": "2024-03-01",
+   "observed_sell_filled_contracts": "4977",
+   "sha256": "173abac276bb19b0d69564d5f078a27003c099faa7c55bd7b3582bb5c27ec9c1",
+   "source_rows": 272
+  },
+  {
+   "date": "2024-03-02",
+   "observed_sell_filled_contracts": "4732",
+   "sha256": "fe25b29d83fe19e6ab6c6e4a40e0942fded701505d2e4d4ebfacfe63d82e0c25",
+   "source_rows": 124
+  },
+  {
+   "date": "2024-03-03",
+   "observed_sell_filled_contracts": "7958",
+   "sha256": "33b078c1c6164d088d9d714de59de0312c143414deb577522cd03ab495963721",
+   "source_rows": 178
+  },
+  {
+   "date": "2024-03-04",
+   "observed_sell_filled_contracts": "27706",
+   "sha256": "94d8ce9c4d1a18defbf67318dbfb359306e4995c215fdc6ab11622e4b5fa571d",
+   "source_rows": 866
+  },
+  {
+   "date": "2024-03-05",
+   "observed_sell_filled_contracts": "158819",
+   "sha256": "c54a7d609c443c71a59ecc46a46d44f00ee84057e03dae4d6af4a14b85557790",
+   "source_rows": 1344
+  },
+  {
+   "date": "2024-03-06",
+   "observed_sell_filled_contracts": "45074",
+   "sha256": "ccf26109d43f869b8c890281fcab01196c2863fe1bc09ce141ec37ab2f0d6241",
+   "source_rows": 628
+  },
+  {
+   "date": "2024-03-07",
+   "observed_sell_filled_contracts": "6352",
+   "sha256": "eef1106d7947d6d7918269bc83d6d5f4a51df43f39403d0eda04a03b94f938de",
+   "source_rows": 218
+  },
+  {
+   "date": "2024-03-08",
+   "observed_sell_filled_contracts": "53887",
+   "sha256": "b6a3b50d0b85ff67ea871ccf1b8792fc732e00b2c1826d559c4d90375382cd36",
+   "source_rows": 516
+  },
+  {
+   "date": "2024-03-09",
+   "observed_sell_filled_contracts": "15113",
+   "sha256": "14fa1d03ffc7936f5840d5e87f4c126830b44059379ac6b205c7a72fbecf3cbb",
+   "source_rows": 62
+  },
+  {
+   "date": "2024-03-10",
+   "observed_sell_filled_contracts": "23210",
+   "sha256": "36e51fe3b8269638ec47351c69dcbf28c896648e7859dcb23a697751e7390645",
+   "source_rows": 254
+  },
+  {
+   "date": "2024-03-11",
+   "observed_sell_filled_contracts": "40290",
+   "sha256": "31af452f45ae78358c7acf2dc646031e6d49a5356c2d0cf082c8155c376a8503",
+   "source_rows": 596
+  },
+  {
+   "date": "2024-03-12",
+   "observed_sell_filled_contracts": "45601",
+   "sha256": "2fe15c48646cb6d777a815717633bdcf74fbfb465c6d34b0c7d18d995ec7ca39",
+   "source_rows": 492
+  },
+  {
+   "date": "2024-03-13",
+   "observed_sell_filled_contracts": "31217",
+   "sha256": "ce7ba70462f1e26d93385eb7d7c6da8c8c8ac1e44839b74707c13d9cd5ed1611",
+   "source_rows": 302
+  },
+  {
+   "date": "2024-03-14",
+   "observed_sell_filled_contracts": "83424",
+   "sha256": "f2a3f1d097d78813b3ad715e1007732e09551724337ba1d178cf4c55a1fb4ca5",
+   "source_rows": 694
+  },
+  {
+   "date": "2024-03-15",
+   "observed_sell_filled_contracts": "112250",
+   "sha256": "4ec61050ef3ea78aff0dfa9e5d949ddbfd585b46e52cf1123453715292014345",
+   "source_rows": 1024
+  },
+  {
+   "date": "2024-03-16",
+   "observed_sell_filled_contracts": "67350",
+   "sha256": "707ea58d11846a970daa11e2716057ba6989f9be70b239bfd488e0cab5c3ee42",
+   "source_rows": 516
+  },
+  {
+   "date": "2024-03-17",
+   "observed_sell_filled_contracts": "11481",
+   "sha256": "1aa5969392abe790d0942ba8020f642471602d1fe0ff8ab795b9ca5c999e7080",
+   "source_rows": 314
+  },
+  {
+   "date": "2024-03-18",
+   "observed_sell_filled_contracts": "23286",
+   "sha256": "866a35edc37b1c351eb29d3b34c4f513a273d5644e9f0bc41e4e0e3b05d14f92",
+   "source_rows": 376
+  },
+  {
+   "date": "2024-03-19",
+   "observed_sell_filled_contracts": "116177",
+   "sha256": "7145ea5fa665fb4b621bc4dc87978d7f7496e2b7156d04e2195739af193d8010",
+   "source_rows": 1046
+  },
+  {
+   "date": "2024-03-20",
+   "observed_sell_filled_contracts": "43256",
+   "sha256": "da13d0d9794bd47aa8298d278cf43ce3b1cb694cb743d3c5004271076e60244f",
+   "source_rows": 794
+  },
+  {
+   "date": "2024-03-21",
+   "observed_sell_filled_contracts": "20572",
+   "sha256": "17d4e83c9af5ea9c86c15ef6c8e04e50bd3356ccaaf468dcbb805a7fc71ad74b",
+   "source_rows": 424
+  },
+  {
+   "date": "2024-03-22",
+   "observed_sell_filled_contracts": "40197",
+   "sha256": "8fda634eff16631c2a2aec2320f6ce1e135c994ac21c25ac043148d85c6b24bc",
+   "source_rows": 496
+  },
+  {
+   "date": "2024-03-23",
+   "observed_sell_filled_contracts": "9067",
+   "sha256": "b97f960f524aa333fdaabf67570d2d407853acd552caba9a679c94c17fc20cb4",
+   "source_rows": 244
+  },
+  {
+   "date": "2024-03-24",
+   "observed_sell_filled_contracts": "7331",
+   "sha256": "8267f8a7d19fd40c204c561633d920d73a1a5ce885c1154d75f51d9c9b845e03",
+   "source_rows": 218
+  },
+  {
+   "date": "2024-03-25",
+   "observed_sell_filled_contracts": "10182",
+   "sha256": "c5697dd0b9d78bf77da8db60c9e366eb9a2a8f06187ab6693da16ebedabd0288",
+   "source_rows": 442
+  },
+  {
+   "date": "2024-03-26",
+   "observed_sell_filled_contracts": "21240",
+   "sha256": "1a401834929d89958c44414fb78db4fcab8647a2190ddcf12294bebff6aaedb3",
+   "source_rows": 280
+  },
+  {
+   "date": "2024-03-27",
+   "observed_sell_filled_contracts": "28226",
+   "sha256": "09e2060c4681ab947013e5bd9d08ad722238c22702f887f02fbd2a9e93a252d4",
+   "source_rows": 374
+  },
+  {
+   "date": "2024-03-28",
+   "observed_sell_filled_contracts": "3673",
+   "sha256": "9f712eb14fce02988843c934b769b54cd26993878d43f1423fea68b2e3222931",
+   "source_rows": 180
+  },
+  {
+   "date": "2024-03-29",
+   "observed_sell_filled_contracts": "24733",
+   "sha256": "07bd4273d8a0909071678a9e11db8f5d9f36af110b17c4e2ad33cfb0e25c5bcf",
+   "source_rows": 184
+  },
+  {
+   "date": "2024-03-30",
+   "observed_sell_filled_contracts": "1601",
+   "sha256": "cb72fe60d5bd331b724da5d6edf143fb0c3e562d10a537104edfbfe3558dbbdd",
+   "source_rows": 58
+  },
+  {
+   "date": "2024-03-31",
+   "observed_sell_filled_contracts": "2271",
+   "sha256": "950068f39829a87b214e771d3f689089213854a9cde2164cbadf9011a47b4d57",
+   "source_rows": 90
+  },
+  {
+   "date": "2024-04-01",
+   "observed_sell_filled_contracts": "28116",
+   "sha256": "69472fb9149ae7d4e47c54173842a7f66c83ac7d9c39e48e36579303c8d3a004",
+   "source_rows": 352
+  },
+  {
+   "date": "2024-04-02",
+   "observed_sell_filled_contracts": "53974",
+   "sha256": "ba3593d5d0d802434a74417915631bcdeec10f443dd554a2707e0e007e91922e",
+   "source_rows": 604
+  },
+  {
+   "date": "2024-04-03",
+   "observed_sell_filled_contracts": "8367",
+   "sha256": "be421c5af302fe59eee56f10ae0fce891b18b5bfd372e5309a98f319c226ae20",
+   "source_rows": 228
+  },
+  {
+   "date": "2024-04-04",
+   "observed_sell_filled_contracts": "14561",
+   "sha256": "6a7ba85275c163c808c2f77ed5da9cc413086c18fe6447d332d28345502c0e74",
+   "source_rows": 320
+  },
+  {
+   "date": "2024-04-05",
+   "observed_sell_filled_contracts": "12443",
+   "sha256": "4f8f7f7abb2b1d0bb0e10da35530eab5a255dd0f2cd079b099b05de683ab4dbb",
+   "source_rows": 264
+  },
+  {
+   "date": "2024-04-06",
+   "observed_sell_filled_contracts": "1844",
+   "sha256": "abd47fa2a2f5de1f8fd9749c9ecec5d91d4c3df2785ef4d9f9f13a6a4170c87f",
+   "source_rows": 118
+  },
+  {
+   "date": "2024-04-07",
+   "observed_sell_filled_contracts": "4869",
+   "sha256": "06e4a2c9fbf317c1c30c63bfdbd007fbaf0b4c9a390458ffcc955b42a3784564",
+   "source_rows": 126
+  },
+  {
+   "date": "2024-04-08",
+   "observed_sell_filled_contracts": "3220",
+   "sha256": "2794e03f9ea9b821b5f9f88aa4b6704c64e46a9ed81ff7781f83a97dedccb6c6",
+   "source_rows": 288
+  },
+  {
+   "date": "2024-04-09",
+   "observed_sell_filled_contracts": "40645",
+   "sha256": "536e3fd870e60d4f6fd85aac8d497aa6350a4f3080578578191185468849c53c",
+   "source_rows": 368
+  },
+  {
+   "date": "2024-04-10",
+   "observed_sell_filled_contracts": "16984",
+   "sha256": "8d1f5a99ccba58a72f1fe86e03dcf0d9a56ef3f45737a2649ce16906d392e9be",
+   "source_rows": 330
+  },
+  {
+   "date": "2024-04-11",
+   "observed_sell_filled_contracts": "4648",
+   "sha256": "602145b9f9f6edfdbed4c469471106d3fd07f85b26cf549f5e8c7cfabcf69677",
+   "source_rows": 156
+  },
+  {
+   "date": "2024-04-12",
+   "observed_sell_filled_contracts": "63031",
+   "sha256": "0c30ed48d9548c313c9de699361f039eaf083bcbc2b4e7c2f525af8bf65b4c2c",
+   "source_rows": 528
+  },
+  {
+   "date": "2024-04-13",
+   "observed_sell_filled_contracts": "66802",
+   "sha256": "dd0c642485bf4d9e49c37e06d0b6c24c804a280845b2c8ac44b656686a21e868",
+   "source_rows": 846
+  },
+  {
+   "date": "2024-04-14",
+   "observed_sell_filled_contracts": "27091",
+   "sha256": "e46d59f6d4905c921163f7cd1a6f010353cd6ecfb1db2d5ecf3719d83211cc68",
+   "source_rows": 482
+  },
+  {
+   "date": "2024-04-15",
+   "observed_sell_filled_contracts": "37577",
+   "sha256": "db0f2fdde75b17ca6a3e7b80e93d43e3363a593d1a1566536b617a31b4d6257e",
+   "source_rows": 510
+  },
+  {
+   "date": "2024-04-16",
+   "observed_sell_filled_contracts": "26119",
+   "sha256": "e87c07d8597f72d94400db004b0edfee9e11da61be49d8b2158e69aecf7a7fd8",
+   "source_rows": 438
+  },
+  {
+   "date": "2024-04-17",
+   "observed_sell_filled_contracts": "27167",
+   "sha256": "3b08a4b322a7ad1b6a29254f244d54d2f0903b46c1f1ddee2734e9b8dae7df2f",
+   "source_rows": 600
+  },
+  {
+   "date": "2024-04-18",
+   "observed_sell_filled_contracts": "15154",
+   "sha256": "a6370f4f610a3979fc309fbc79fdc123c77a6102d47d143a61ab55ebec69a9d9",
+   "source_rows": 324
+  },
+  {
+   "date": "2024-04-19",
+   "observed_sell_filled_contracts": "20196",
+   "sha256": "cbc0641942c5b7c7587192828ef9b8991d1792ad741b8c817f6423bb18170600",
+   "source_rows": 668
+  },
+  {
+   "date": "2024-04-20",
+   "observed_sell_filled_contracts": "1400",
+   "sha256": "b7b55d665ad00df37b3b07787b9e61f56ef47252a5a719059a15c9fe98549765",
+   "source_rows": 168
+  },
+  {
+   "date": "2024-04-21",
+   "observed_sell_filled_contracts": "3887",
+   "sha256": "2f616c3ccde7606ab347c6b4dfce69d8a53c7186938d8b624eeecfbf0f6f3708",
+   "source_rows": 144
+  },
+  {
+   "date": "2024-04-22",
+   "observed_sell_filled_contracts": "2622",
+   "sha256": "7547ff3dede02cca98fc9acea4980db9b211db9e3d975d3e76046c68f0d1d614",
+   "source_rows": 224
+  },
+  {
+   "date": "2024-04-23",
+   "observed_sell_filled_contracts": "4503",
+   "sha256": "b77008902f841627003c71e992adddee25acb68e0e29b51d911127adf2e1199a",
+   "source_rows": 126
+  },
+  {
+   "date": "2024-04-24",
+   "observed_sell_filled_contracts": "20216",
+   "sha256": "4913b4c244530f07ada682a2eb761915c3c4f1b24d73013fe8c0a078e1ed78a5",
+   "source_rows": 310
+  },
+  {
+   "date": "2024-04-25",
+   "observed_sell_filled_contracts": "10151",
+   "sha256": "2889a1aebb7151f63fa566ef2102a8fc827454e2f28a6ddbbacc05eace85450e",
+   "source_rows": 272
+  },
+  {
+   "date": "2024-04-26",
+   "observed_sell_filled_contracts": "6486",
+   "sha256": "c62f7a168193a5e224c0c8dabda874cf441190b155d17e9f63e8dec56cf8c513",
+   "source_rows": 168
+  },
+  {
+   "date": "2024-04-27",
+   "observed_sell_filled_contracts": "6423",
+   "sha256": "19aed6afb276f688c4b14996243f9177fa1a98e4657f8fad861f42cd17ad2b89",
+   "source_rows": 142
+  },
+  {
+   "date": "2024-04-28",
+   "observed_sell_filled_contracts": "1765",
+   "sha256": "02d6c098520db49fb94aef3bc7472afb7ce2817e789dd0de0627ee754ea57a8c",
+   "source_rows": 102
+  },
+  {
+   "date": "2024-04-29",
+   "observed_sell_filled_contracts": "5815",
+   "sha256": "b651f5c8c2cbcd1ff458ca0acd8404f30097c326946906584516675586c6edb6",
+   "source_rows": 240
+  },
+  {
+   "date": "2024-04-30",
+   "observed_sell_filled_contracts": "57590",
+   "sha256": "70533f79f1ebed8aeef91b89c69204bb87a24ae0006b878abf13dac79e96d3d2",
+   "source_rows": 584
+  },
+  {
+   "date": "2024-05-01",
+   "observed_sell_filled_contracts": "73746",
+   "sha256": "697bc399708eb9a37e20c51fec41110047b5978a4f63b5a6cc569ca213335a9c",
+   "source_rows": 822
+  },
+  {
+   "date": "2024-05-02",
+   "observed_sell_filled_contracts": "7931",
+   "sha256": "ffe0dd012fdfc085e6e8041879d7b4fc71576600fefd4ec85f6d0a2a39096464",
+   "source_rows": 196
+  },
+  {
+   "date": "2024-05-03",
+   "observed_sell_filled_contracts": "2120",
+   "sha256": "53e08ea14e95f5ea89e22a075a04139102dda66b3efdc300b06b7b10803346c4",
+   "source_rows": 348
+  },
+  {
+   "date": "2024-05-04",
+   "observed_sell_filled_contracts": "3000",
+   "sha256": "9d36dd34a74a8b884f25a2b45b6e5a8e28cf929572aefd0a037ad4120c3527c6",
+   "source_rows": 196
+  },
+  {
+   "date": "2024-05-05",
+   "observed_sell_filled_contracts": "2847",
+   "sha256": "69b2e2aa4bcf590fd1fbe339910d789dced0e6ab69d47b639d11f11146febf49",
+   "source_rows": 132
+  },
+  {
+   "date": "2024-05-06",
+   "observed_sell_filled_contracts": "14687",
+   "sha256": "3f8c4cb15cd55e6fcf5a6910d165e5d935d63b5d4d8c2b26bc307290b3ac9d18",
+   "source_rows": 298
+  },
+  {
+   "date": "2024-05-07",
+   "observed_sell_filled_contracts": "12964",
+   "sha256": "dc24ec013ef912733f7e0441671f6e27d19bb514134a44acce84676fdd942bed",
+   "source_rows": 204
+  },
+  {
+   "date": "2024-05-08",
+   "observed_sell_filled_contracts": "25234",
+   "sha256": "78559c39daf16f86383f19a45af82793e4d4ab5d14b66c5095d8997e4e0a3668",
+   "source_rows": 254
+  },
+  {
+   "date": "2024-05-09",
+   "observed_sell_filled_contracts": "5922",
+   "sha256": "9f02ab1f744ca3fc0d3ecec5241f2bceb20d6cfdea69a344208e952def3161f8",
+   "source_rows": 194
+  },
+  {
+   "date": "2024-05-10",
+   "observed_sell_filled_contracts": "17496",
+   "sha256": "318c22dd2dc3f9f493d0834dd086ede9005ebfbc57c3c286ec09bad968506ce6",
+   "source_rows": 300
+  },
+  {
+   "date": "2024-05-11",
+   "observed_sell_filled_contracts": "1039",
+   "sha256": "26d536c7bd70b21e50bf1ced927a6f0093e73dd822d82680e4a6bf3a577d665e",
+   "source_rows": 50
+  },
+  {
+   "date": "2024-05-12",
+   "observed_sell_filled_contracts": "1738",
+   "sha256": "d28f943ee8fd733a157c4b230bd54f0da96a0b8aa1886247aa232461e8e27bda",
+   "source_rows": 66
+  },
+  {
+   "date": "2024-05-13",
+   "observed_sell_filled_contracts": "3192",
+   "sha256": "5a1a9b0eb52c535c88424bbf0e0406b054a1747f22a00f6f2f4ea80128c99496",
+   "source_rows": 174
+  },
+  {
+   "date": "2024-05-14",
+   "observed_sell_filled_contracts": "4185",
+   "sha256": "50d81d4ebfd51ece7bf74706f773ea1d515cbc7cf0e68387a8a22f0e96dc8b0d",
+   "source_rows": 194
+  },
+  {
+   "date": "2024-05-15",
+   "observed_sell_filled_contracts": "4665",
+   "sha256": "88c3c21e41700cb772744895b60a708f6cff902b1953955e9a854d23ff0f2be7",
+   "source_rows": 286
+  },
+  {
+   "date": "2024-05-16",
+   "observed_sell_filled_contracts": "15007",
+   "sha256": "c395e4d194fe5338ea433814c9bdd5065c3112d5a1a28b4f5179a82676b830d0",
+   "source_rows": 196
+  },
+  {
+   "date": "2024-05-17",
+   "observed_sell_filled_contracts": "4932",
+   "sha256": "1db399fcdee138b73427e5cb14c6c2d5d3d28b3c584041b7719b9295ffe0199c",
+   "source_rows": 200
+  },
+  {
+   "date": "2024-05-18",
+   "observed_sell_filled_contracts": "3201",
+   "sha256": "63e6ed4838d5f413ca074e54ddce773a8401fa2d021d624ff60d5c2ccaee1cd2",
+   "source_rows": 48
+  },
+  {
+   "date": "2024-05-19",
+   "observed_sell_filled_contracts": "15695",
+   "sha256": "d9a1ae82d70bb5d4da600bf0f61c853ddeac15e03c015eb2328d9550fcd555f4",
+   "source_rows": 142
+  },
+  {
+   "date": "2024-05-20",
+   "observed_sell_filled_contracts": "3665",
+   "sha256": "3ba7ca24e3cd89091ce4bc425f121d9c2368af71dbce9c821802bdea9122302d",
+   "source_rows": 428
+  },
+  {
+   "date": "2024-05-21",
+   "observed_sell_filled_contracts": "19824",
+   "sha256": "7202260d0ec7d4576ad153745c08d1e0c87b2e0023f3a405cba9a89503a4a933",
+   "source_rows": 204
+  },
+  {
+   "date": "2024-05-22",
+   "observed_sell_filled_contracts": "18730",
+   "sha256": "42a7b3ef227aa72b0ba8daaeec2fefbf26b5d73ea2c10343361c5ce1e96b033f",
+   "source_rows": 170
+  },
+  {
+   "date": "2024-05-23",
+   "observed_sell_filled_contracts": "18961",
+   "sha256": "71f9709f192d0a74dae46f58038836304e3d390612683dd02d6750f4c25bf80c",
+   "source_rows": 286
+  },
+  {
+   "date": "2024-05-24",
+   "observed_sell_filled_contracts": "3848",
+   "sha256": "62e08d10996b9e5b7d0e43128e6529c3b1e2522963465b2bfb04917a0af56078",
+   "source_rows": 176
+  },
+  {
+   "date": "2024-05-25",
+   "observed_sell_filled_contracts": "205",
+   "sha256": "3869a0661f81e9bdfa3cecc5c74a7bbe7de62d3218274a0a02f6f072f58f9b20",
+   "source_rows": 44
+  },
+  {
+   "date": "2024-05-26",
+   "observed_sell_filled_contracts": "2120",
+   "sha256": "3fa4e126d2378fdc933a5d6cb8fa650a32ab4f2f2dc842e7570fe900074a2899",
+   "source_rows": 54
+  },
+  {
+   "date": "2024-05-27",
+   "observed_sell_filled_contracts": "3839",
+   "sha256": "c421fe9ef7f42cdfbdbe94ad76fb06843b38ea69fd06538357d64c28753de80f",
+   "source_rows": 172
+  },
+  {
+   "date": "2024-05-28",
+   "observed_sell_filled_contracts": "21605",
+   "sha256": "2b818ced2c384e834c5f8b66b3c6d350e279955d23506c18fd1869efac355d37",
+   "source_rows": 252
+  },
+  {
+   "date": "2024-05-29",
+   "observed_sell_filled_contracts": "8628",
+   "sha256": "ef88a4d4f27add9e4b6fb29c466ae33a46f4a53c29268dd00017a887fc388c1b",
+   "source_rows": 104
+  },
+  {
+   "date": "2024-05-30",
+   "observed_sell_filled_contracts": "1303",
+   "sha256": "f998e758575265c816d63c8ac9ff66649990bc2bd826cb403741ef1de832f598",
+   "source_rows": 144
+  },
+  {
+   "date": "2024-05-31",
+   "observed_sell_filled_contracts": "25642",
+   "sha256": "97c907b443314ad704acab6f4559c76f16f1e04b312c4d5d560362a842b15cfa",
+   "source_rows": 158
+  },
+  {
+   "date": "2024-06-01",
+   "missing": true
+  },
+  {
+   "date": "2024-06-02",
+   "observed_sell_filled_contracts": "6231",
+   "sha256": "4136c4751760d429abee57f16300f30387d3ee893ec2038e3422283e6d465ef9",
+   "source_rows": 92
+  },
+  {
+   "date": "2024-06-03",
+   "observed_sell_filled_contracts": "3515",
+   "sha256": "39f319f85d46bbe1a75b69ee0aaef973bc6a9e50829597abf004266e80956f97",
+   "source_rows": 182
+  },
+  {
+   "date": "2024-06-04",
+   "observed_sell_filled_contracts": "2054",
+   "sha256": "c8d1a2c60a11df2666771f1a8dc12e5ac1189713917a0129e7d4daf4ee6ae7d3",
+   "source_rows": 170
+  },
+  {
+   "date": "2024-06-05",
+   "observed_sell_filled_contracts": "1966",
+   "sha256": "ee33ad4d845462c9e300c09fc2078781e63e6a91cda7a42d2d7c79796dc70526",
+   "source_rows": 140
+  },
+  {
+   "date": "2024-06-06",
+   "observed_sell_filled_contracts": "16864",
+   "sha256": "6e8defc31ad90ba8bc6747bf51e8fbfdf628426ca3085beed539a7671935ce0a",
+   "source_rows": 112
+  },
+  {
+   "date": "2024-06-07",
+   "observed_sell_filled_contracts": "51213",
+   "sha256": "aa7a8acc65f6d25eedf8c02d9cbecdaf07998a978a45d3df064d507ce5c157ec",
+   "source_rows": 322
+  },
+  {
+   "date": "2024-06-08",
+   "observed_sell_filled_contracts": "204",
+   "sha256": "26584d894877e7fbd2f12b6428cc58f8be81e28fe8dec42d716d92829e5d0d31",
+   "source_rows": 4
+  },
+  {
+   "date": "2024-06-09",
+   "observed_sell_filled_contracts": "265",
+   "sha256": "f8373ec7a7af0c8c5385c0a9e3d6373e034d90f130fbc26e223bc608135a9ee0",
+   "source_rows": 38
+  },
+  {
+   "date": "2024-06-10",
+   "observed_sell_filled_contracts": "1447",
+   "sha256": "19aa8e3d14ed4f34233e6aea53be2e27374786894303b26c0f2113ed452ff085",
+   "source_rows": 58
+  },
+  {
+   "date": "2024-06-11",
+   "missing": true
+  },
+  {
+   "date": "2024-06-12",
+   "missing": true
+  },
+  {
+   "date": "2024-06-13",
+   "observed_sell_filled_contracts": "16252",
+   "sha256": "cea7ddc19bbd858580045b4d3c7e0548f0b74791b4a896d58cc5d60f311b7e08",
+   "source_rows": 202
+  },
+  {
+   "date": "2024-06-14",
+   "observed_sell_filled_contracts": "35089",
+   "sha256": "3dee87326b50511265f38ce5544a4668565a509ae75b4bb89b3753bc6984a5aa",
+   "source_rows": 244
+  },
+  {
+   "date": "2024-06-15",
+   "observed_sell_filled_contracts": "89",
+   "sha256": "963c50755d89200b5d8b5ec61e636143ee716ea6fed02b9ed34d2fdc158130e3",
+   "source_rows": 24
+  },
+  {
+   "date": "2024-06-16",
+   "observed_sell_filled_contracts": "3580",
+   "sha256": "1bd7d8a9b4d274c5ebf9de0ef243bbf2f4a1ca1c2d45b0d93e7c46176cbe81f4",
+   "source_rows": 24
+  },
+  {
+   "date": "2024-06-17",
+   "observed_sell_filled_contracts": "7108",
+   "sha256": "950804041bc480d1266977e0c0a696bd9b7b48406ffca2ff0beab43264a582bc",
+   "source_rows": 180
+  },
+  {
+   "date": "2024-06-18",
+   "observed_sell_filled_contracts": "9910",
+   "sha256": "20957ee74ad71083766bda7dbbaecf9b49f42f7dc352de8de53c68ab40238568",
+   "source_rows": 274
+  },
+  {
+   "date": "2024-06-19",
+   "observed_sell_filled_contracts": "1163",
+   "sha256": "36eb8168a37544a0ace75c3b7584d0935d2ac0eab5dd1668dc3ebd828172d4c8",
+   "source_rows": 66
+  },
+  {
+   "date": "2024-06-20",
+   "observed_sell_filled_contracts": "4530",
+   "sha256": "a9fa1001579f5945aa0b7d5efb643886f65294b8ac53c4a24d9fa6d1e4b9192e",
+   "source_rows": 178
+  },
+  {
+   "date": "2024-06-21",
+   "observed_sell_filled_contracts": "8747",
+   "sha256": "d4de92f0b8f248a595f2cc15a85959564823ea56b462d94deeb76c13070920d0",
+   "source_rows": 208
+  },
+  {
+   "date": "2024-06-22",
+   "observed_sell_filled_contracts": "0",
+   "sha256": "1be4e16b972bc021ae1c7ab5b0d2c5dad5e626240663900ef8a2c3d56ab4cde9",
+   "source_rows": 4
+  },
+  {
+   "date": "2024-06-23",
+   "observed_sell_filled_contracts": "16846",
+   "sha256": "a7f0b8026d9e4382b044b49519d84edccc34dc7945fd513b18ddba3daa451f44",
+   "source_rows": 102
+  },
+  {
+   "date": "2024-06-24",
+   "observed_sell_filled_contracts": "85775",
+   "sha256": "72d8736edc274707498318e9db9d97e1410f21f955bf7dc27f67e2159af7070b",
+   "source_rows": 728
+  },
+  {
+   "date": "2024-06-25",
+   "observed_sell_filled_contracts": "3510",
+   "sha256": "e1194d7701042d345cb855c106b896cfbe6b6221259e71df4db4327c50d073e1",
+   "source_rows": 176
+  },
+  {
+   "date": "2024-06-26",
+   "observed_sell_filled_contracts": "4627",
+   "sha256": "3003b002ceba8c007378b883e941cca3cf4782cf29720a2457f5bf2ce33bea06",
+   "source_rows": 124
+  },
+  {
+   "date": "2024-06-27",
+   "observed_sell_filled_contracts": "1610",
+   "sha256": "878dd478f9e581396abd81c371bbf290d6ba2b2559bbc6de3c5aede9959e544c",
+   "source_rows": 78
+  },
+  {
+   "date": "2024-06-28",
+   "observed_sell_filled_contracts": "15633",
+   "sha256": "e32f50cdee5908d515d108a7e36f9d22ea845e3fcda57139e07740f4de6b6865",
+   "source_rows": 146
+  },
+  {
+   "date": "2024-06-29",
+   "observed_sell_filled_contracts": "57",
+   "sha256": "62629313a8f8e9cd32ee8e01ca851798e0c9ef5ebb3d88e3f09f12eb4e9e54a0",
+   "source_rows": 24
+  },
+  {
+   "date": "2024-06-30",
+   "observed_sell_filled_contracts": "3288",
+   "sha256": "be5769fe11dad9714333c9a0a081936d14bcdadb23a43874d4331ed8d406be63",
+   "source_rows": 102
+  },
+  {
+   "date": "2024-07-01",
+   "observed_sell_filled_contracts": "10166",
+   "sha256": "a840e88236b6566a6f601945d64fb59ed176292e7aea5355a8452db08e8a79f6",
+   "source_rows": 98
+  },
+  {
+   "date": "2024-07-02",
+   "observed_sell_filled_contracts": "14048",
+   "sha256": "d8d5585553acea8f453bb95a4dd7f1f22ba46139dad338f65b0bdc797902a874",
+   "source_rows": 110
+  },
+  {
+   "date": "2024-07-03",
+   "observed_sell_filled_contracts": "45004",
+   "sha256": "a760c9f6c2d9a39662df963c620a44f7478df0a8947d42faf4a96170d4239da2",
+   "source_rows": 276
+  },
+  {
+   "date": "2024-07-04",
+   "observed_sell_filled_contracts": "82713",
+   "sha256": "16c32930aaab1625943d815df01ee14b9ef67ca31711033cd6808a39bea57955",
+   "source_rows": 528
+  },
+  {
+   "date": "2024-07-05",
+   "observed_sell_filled_contracts": "42813",
+   "sha256": "44b6ac3c739a5cb498275298a006e4bd107bfca333542b3b60baf4df88c7d3bc",
+   "source_rows": 566
+  },
+  {
+   "date": "2024-07-06",
+   "observed_sell_filled_contracts": "626",
+   "sha256": "e51b1d2d5c781a4832376cd1bf190bb2fd9884b14f2a4a67dc81fc489391ea74",
+   "source_rows": 110
+  },
+  {
+   "date": "2024-07-07",
+   "observed_sell_filled_contracts": "28827",
+   "sha256": "50dae11b3470f6c192ec6fd03b30314e4cb67c32f5a24d5bc84d82a45fa49ff8",
+   "source_rows": 222
+  },
+  {
+   "date": "2024-07-08",
+   "observed_sell_filled_contracts": "38806",
+   "sha256": "c334fb01b8c00b20aa61e1ac392dd7ca11b2ded9959441b9a05ea4b910d14b49",
+   "source_rows": 426
+  },
+  {
+   "date": "2024-07-09",
+   "observed_sell_filled_contracts": "1896",
+   "sha256": "4fceff275109363a2f06f66f0c28f935e02d31e87c48527d5a42657bedc4a962",
+   "source_rows": 134
+  },
+  {
+   "date": "2024-07-10",
+   "observed_sell_filled_contracts": "2388",
+   "sha256": "3f3c8d641283231bc3bf8bf9c0d74395f523215e58c18ed9027b404d7477661f",
+   "source_rows": 142
+  },
+  {
+   "date": "2024-07-11",
+   "observed_sell_filled_contracts": "7912",
+   "sha256": "1cc2b37044895a30a15824c0f8666804f975edd7729d61082f06076f98b1ad0b",
+   "source_rows": 200
+  },
+  {
+   "date": "2024-07-12",
+   "observed_sell_filled_contracts": "6989",
+   "sha256": "30146c6d6f87028e3892b558fc91ff3fe25b73502969be7bece21753935176d7",
+   "source_rows": 170
+  },
+  {
+   "date": "2024-07-13",
+   "observed_sell_filled_contracts": "356",
+   "sha256": "8189a86116209429b2ecac88fbf99f5788efad89bc8c671396c7178f2cdc46ab",
+   "source_rows": 74
+  },
+  {
+   "date": "2024-07-14",
+   "observed_sell_filled_contracts": "6628",
+   "sha256": "6cdbb80341acfb420a3108ec26bdacef0ec4b5327f43da1e5540b017b9d0055b",
+   "source_rows": 152
+  },
+  {
+   "date": "2024-07-15",
+   "observed_sell_filled_contracts": "5162",
+   "sha256": "3cbab29373843433b1d6684d8259a6db212bd6dc99ffe152df0ec1de850194ef",
+   "source_rows": 262
+  },
+  {
+   "date": "2024-07-16",
+   "observed_sell_filled_contracts": "8615",
+   "sha256": "f82014eb5233dfcf11ed908902af6af363988dd3dd88896a3f0f2961d2b4bf97",
+   "source_rows": 332
+  },
+  {
+   "date": "2024-07-17",
+   "observed_sell_filled_contracts": "5012",
+   "sha256": "1240fa8956f489fdfae7bec9e93b1394832d878d2c75dba31cbd0a20a123d35a",
+   "source_rows": 236
+  },
+  {
+   "date": "2024-07-18",
+   "observed_sell_filled_contracts": "8711",
+   "sha256": "20aa15cf18026797b9291274a0e71da97beb89235281e5f59022d48e4f0216ca",
+   "source_rows": 168
+  },
+  {
+   "date": "2024-07-19",
+   "observed_sell_filled_contracts": "1350",
+   "sha256": "ddc6f904237053c63a9806f2e31affce0a8561d2987597caa7db6f23b1f04313",
+   "source_rows": 218
+  },
+  {
+   "date": "2024-07-20",
+   "observed_sell_filled_contracts": "2348",
+   "sha256": "a8c0aae58128b4f36ce1b36e55c69a9813f1821fbe582e4d1b75736deb1e9163",
+   "source_rows": 82
+  },
+  {
+   "date": "2024-07-21",
+   "observed_sell_filled_contracts": "3830",
+   "sha256": "fcb5da95f8a57627b974c107139d365db24aa48dd468d19eef76b5f112463593",
+   "source_rows": 232
+  },
+  {
+   "date": "2024-07-22",
+   "observed_sell_filled_contracts": "8556",
+   "sha256": "8c98a7c5a7697de1b263c25da04ccce4e939c2d7ddb8e883cdd8cc808817e2e6",
+   "source_rows": 158
+  },
+  {
+   "date": "2024-07-23",
+   "observed_sell_filled_contracts": "23171",
+   "sha256": "6643971720dd1b8fd0cdb07396dbdc978b9db67f1b8f56b7bdc2bd49eb0badbc",
+   "source_rows": 216
+  },
+  {
+   "date": "2024-07-24",
+   "observed_sell_filled_contracts": "13474",
+   "sha256": "500d2bd6aa838a1633058653a2964290c99327881e4768ec04302fb71d8f4742",
+   "source_rows": 130
+  },
+  {
+   "date": "2024-07-25",
+   "observed_sell_filled_contracts": "43754",
+   "sha256": "0a43be79094d16628bc9666f72ccbf1b04a91dd7366f3a2dd7f716e284c64b6d",
+   "source_rows": 258
+  },
+  {
+   "date": "2024-07-26",
+   "observed_sell_filled_contracts": "2686",
+   "sha256": "fd016b405f6d00983649d87969212b22bbbcb55280ff9fdcc7daa9e7f6d2c274",
+   "source_rows": 144
+  },
+  {
+   "date": "2024-07-27",
+   "observed_sell_filled_contracts": "26473",
+   "sha256": "abd84241df06762ee1095ae03d542726b238dd74b9eb5c578d141efcd340eaac",
+   "source_rows": 256
+  },
+  {
+   "date": "2024-07-28",
+   "observed_sell_filled_contracts": "2263",
+   "sha256": "78da8d173760d263272120594e3bb6d0df495df4b97a105560f8e638fa16f369",
+   "source_rows": 62
+  },
+  {
+   "date": "2024-07-29",
+   "observed_sell_filled_contracts": "59003",
+   "sha256": "4083cdce189ea3c2a0415db1cacd2769f31007210c0c79f8345a543e491de88f",
+   "source_rows": 290
+  },
+  {
+   "date": "2024-07-30",
+   "observed_sell_filled_contracts": "19696",
+   "sha256": "481dd0ee399682d4f6bf5e417304b06e4ffcb3b12e96c55547913aaca3af1fc7",
+   "source_rows": 184
+  },
+  {
+   "date": "2024-07-31",
+   "observed_sell_filled_contracts": "43694",
+   "sha256": "345357cdc5c6377cba5fbf443d1799dfc44f771fc7004fad4241a34e38392f14",
+   "source_rows": 224
+  },
+  {
+   "date": "2024-08-01",
+   "observed_sell_filled_contracts": "65977",
+   "sha256": "e8c6f4a523282c61e02be1957c4b114af7cab21dd397e97e9ef7e50f21e880d7",
+   "source_rows": 474
+  },
+  {
+   "date": "2024-08-02",
+   "observed_sell_filled_contracts": "68339",
+   "sha256": "b7008539cce8a102fabc8a0bc1f1824e55da26157a2df32293c53ac03e82b6a2",
+   "source_rows": 500
+  },
+  {
+   "date": "2024-08-03",
+   "observed_sell_filled_contracts": "39244",
+   "sha256": "d1fc3d294c20c651ba2c9bb5c4b970a316de0486f4fa15d7a777a3a940348e39",
+   "source_rows": 302
+  },
+  {
+   "date": "2024-08-04",
+   "observed_sell_filled_contracts": "82626",
+   "sha256": "aed77117ecd82921ac5d7e09f130165650c6bb52f3fc81ef9eb6eb05805f5738",
+   "source_rows": 558
+  },
+  {
+   "date": "2024-08-05",
+   "observed_sell_filled_contracts": "322865",
+   "sha256": "7e41a434fa11bdeab7376d1dee6ed0780e145d2363c20d7292d671f375ca5f85",
+   "source_rows": 1904
+  },
+  {
+   "date": "2024-08-06",
+   "observed_sell_filled_contracts": "34964",
+   "sha256": "158b664dee7b4e79eb1ab7d172437ab0d5bd793c9afcaf482d0603ee253d5634",
+   "source_rows": 358
+  },
+  {
+   "date": "2024-08-07",
+   "observed_sell_filled_contracts": "22890",
+   "sha256": "dec5a33ab5c107ca10da4d23226057b2ee870f295f49b3ed110f7af82c6c6f10",
+   "source_rows": 366
+  },
+  {
+   "date": "2024-08-08",
+   "observed_sell_filled_contracts": "10697",
+   "sha256": "687dbfdac79c6732c5a52d36d5f05ab272101906b81eba4e2dd201c3af47a454",
+   "source_rows": 402
+  },
+  {
+   "date": "2024-08-09",
+   "observed_sell_filled_contracts": "7650",
+   "sha256": "5f6417761ba1a7d26c134e21a23cdf363dc803052bb8a395765633a8c2d004d3",
+   "source_rows": 208
+  },
+  {
+   "date": "2024-08-10",
+   "observed_sell_filled_contracts": "86",
+   "sha256": "caacaaba9fb982f039ca5047c07da4af500c4571711f4c85c786d3f429d333b6",
+   "source_rows": 58
+  },
+  {
+   "date": "2024-08-11",
+   "observed_sell_filled_contracts": "14409",
+   "sha256": "1368bee22d11ca84ea39d56fa6f03bc448fb9df6267747f7e1acad78ec3804c4",
+   "source_rows": 272
+  },
+  {
+   "date": "2024-08-12",
+   "observed_sell_filled_contracts": "13681",
+   "sha256": "8af84b60edc51c9b804f9bc5f55c3d5db439d092230a7fb1419fe7b2c107dbfb",
+   "source_rows": 322
+  },
+  {
+   "date": "2024-08-13",
+   "observed_sell_filled_contracts": "3004",
+   "sha256": "f7f585eac24b994c1d01bd78e256ce4e9f3503b97e8069b75ed62042d278da4a",
+   "source_rows": 186
+  },
+  {
+   "date": "2024-08-14",
+   "observed_sell_filled_contracts": "15684",
+   "sha256": "0fc6ef406e47c530c9000c8ed167d0b66676d5b4d239e49e9b7dd8b6a90938e0",
+   "source_rows": 232
+  },
+  {
+   "date": "2024-08-15",
+   "observed_sell_filled_contracts": "64894",
+   "sha256": "4472824b25668881aa0ce2d1b6d5dc2d40970e2a62fba8f908a5175413f1ebed",
+   "source_rows": 360
+  },
+  {
+   "date": "2024-08-16",
+   "observed_sell_filled_contracts": "15720",
+   "sha256": "cb7ef7f6c977c0d9814569f17adc492cc6e9c2e7c1d7c2c9da67b1cae2c172bd",
+   "source_rows": 200
+  },
+  {
+   "date": "2024-08-17",
+   "observed_sell_filled_contracts": "729",
+   "sha256": "73e2c6aa9d53431a9d86f555fbf3120af1ff05e0249014cc79eaf08855beea3a",
+   "source_rows": 30
+  },
+  {
+   "date": "2024-08-18",
+   "observed_sell_filled_contracts": "28433",
+   "sha256": "0b13817e8882d9bf560c04c76bfc2161fc8c4629378a0647a79820b760831b0d",
+   "source_rows": 144
+  },
+  {
+   "date": "2024-08-19",
+   "observed_sell_filled_contracts": "4279",
+   "sha256": "a513599d01816a39df74c2fb6b236a542010694cd9d0635f65fad5ec67f101e0",
+   "source_rows": 126
+  },
+  {
+   "date": "2024-08-20",
+   "observed_sell_filled_contracts": "39653",
+   "sha256": "5abcf2be6b9324bb90e23173c1087eb29b6eae80258506ca786f2a1696952b1b",
+   "source_rows": 196
+  },
+  {
+   "date": "2024-08-21",
+   "observed_sell_filled_contracts": "7035",
+   "sha256": "12098fad6535635705543f56319ea8b24f9ca1e9865227c0ec6bde5e9ee39e1e",
+   "source_rows": 188
+  },
+  {
+   "date": "2024-08-22",
+   "observed_sell_filled_contracts": "12196",
+   "sha256": "673bda081838596a2bdb79e943126904f0ab8054796534ef227b83cf47f094eb",
+   "source_rows": 144
+  },
+  {
+   "date": "2024-08-23",
+   "observed_sell_filled_contracts": "7848",
+   "sha256": "04e38a4c7f9823fdb709f951af3263f2090a304ab7da3120b5cee9e799edd0cf",
+   "source_rows": 308
+  },
+  {
+   "date": "2024-08-24",
+   "observed_sell_filled_contracts": "13695",
+   "sha256": "7f999b1f512954e869e37f3bb61575f1710428a80b71995b2310da273a26f45d",
+   "source_rows": 84
+  },
+  {
+   "date": "2024-08-25",
+   "observed_sell_filled_contracts": "137",
+   "sha256": "ed6960979c965c62af2291231971e84558df5a67f76153215df57d653c8fc750",
+   "source_rows": 78
+  },
+  {
+   "date": "2024-08-26",
+   "observed_sell_filled_contracts": "23704",
+   "sha256": "4420e7ea5d131fd2b7f7b6f96cbd4985bae9d3cffd236be244039104852700eb",
+   "source_rows": 132
+  },
+  {
+   "date": "2024-08-27",
+   "observed_sell_filled_contracts": "65739",
+   "sha256": "375e8d7baa292441d96a9a57e42227223cc3d17c9e2b945eae9a04426c5d0192",
+   "source_rows": 356
+  },
+  {
+   "date": "2024-08-28",
+   "observed_sell_filled_contracts": "10220",
+   "sha256": "7ca1437d360de352ae88d14f0f1b668309dc6a19f2b48005994dad33e10a9753",
+   "source_rows": 292
+  },
+  {
+   "date": "2024-08-29",
+   "observed_sell_filled_contracts": "11567",
+   "sha256": "96a9b827abb291b0a5b66eb227fca6a492eabbc5faac6d0d621a5761c010424c",
+   "source_rows": 178
+  },
+  {
+   "date": "2024-08-30",
+   "observed_sell_filled_contracts": "6177",
+   "sha256": "f9456cd41bd76fa689019d267b4614e9f46bc3a13107b3273ee57838ba266fcd",
+   "source_rows": 172
+  },
+  {
+   "date": "2024-08-31",
+   "observed_sell_filled_contracts": "642",
+   "sha256": "9628303f62c9886d73c5a155c31c367a484a116d96813abd5df8325809dd2724",
+   "source_rows": 20
+  },
+  {
+   "date": "2024-09-01",
+   "observed_sell_filled_contracts": "20385",
+   "sha256": "99ef86171635bd79948beb5ba4535ab5292317e53e1ce211d3b4fe5d9406eba0",
+   "source_rows": 232
+  },
+  {
+   "date": "2024-09-02",
+   "observed_sell_filled_contracts": "1931",
+   "sha256": "14f9c80896957486d3e6458d29a5476e7d4d893e24a637ce4592c76adbf6c742",
+   "source_rows": 112
+  },
+  {
+   "date": "2024-09-03",
+   "observed_sell_filled_contracts": "4537",
+   "sha256": "bab190240213a24877ca176c1a0b0a47dfda09bb8dc9f87be3cb2bc9bbcab0fa",
+   "source_rows": 168
+  },
+  {
+   "date": "2024-09-04",
+   "observed_sell_filled_contracts": "10745",
+   "sha256": "776f9e205760ce6b5d737c00187bc57b53636c300fb5ae9c23068770571b36c0",
+   "source_rows": 280
+  },
+  {
+   "date": "2024-09-05",
+   "observed_sell_filled_contracts": "10528",
+   "sha256": "e5f952a09352f0aad678dcae7f869161216965fd48f171f9b7fd29927b037245",
+   "source_rows": 206
+  },
+  {
+   "date": "2024-09-06",
+   "observed_sell_filled_contracts": "51478",
+   "sha256": "67dc528facc7179cbd338335b76f4572f26279491369e82ed672dc9cfe6de01b",
+   "source_rows": 514
+  },
+  {
+   "date": "2024-09-07",
+   "observed_sell_filled_contracts": "1745",
+   "sha256": "27feea39b65c6dec7b06363d89ffc0edd357f78b027a98004a5c82ba7536a471",
+   "source_rows": 70
+  },
+  {
+   "date": "2024-09-08",
+   "observed_sell_filled_contracts": "1513",
+   "sha256": "79344b152d9104831350b58e3050fc08f91214168effb7822982fa4f8b661801",
+   "source_rows": 96
+  },
+  {
+   "date": "2024-09-09",
+   "observed_sell_filled_contracts": "1013",
+   "sha256": "d66003ff26638f96e15a79bf4ca0d99eed52bfdf634bdf12e9b81f028c87c98b",
+   "source_rows": 218
+  },
+  {
+   "date": "2024-09-10",
+   "observed_sell_filled_contracts": "3562",
+   "sha256": "c84b11ba4a24455f2b2320907539253f569f047b7d8e8defe3c72362748b819c",
+   "source_rows": 134
+  },
+  {
+   "date": "2024-09-11",
+   "observed_sell_filled_contracts": "3875",
+   "sha256": "2375c4ea4b97586b1e6111e467deaf03f00d67e95eb9919ed5befbc1e10a6fa0",
+   "source_rows": 246
+  },
+  {
+   "date": "2024-09-12",
+   "observed_sell_filled_contracts": "3904",
+   "sha256": "dca9ec18c75d483546d2f741ce9c72e51e127eef5f02594dc0094fee579a8d42",
+   "source_rows": 150
+  },
+  {
+   "date": "2024-09-13",
+   "observed_sell_filled_contracts": "701",
+   "sha256": "a1aff7c0bbee2157cee9ad03131a95dc6793ed3e77ce0fd1a99a820c5024fd30",
+   "source_rows": 166
+  },
+  {
+   "date": "2024-09-14",
+   "observed_sell_filled_contracts": "1204",
+   "sha256": "6541b11d6c555219a014e84c65553a6feba393d5056d2d3789932d48a9008fff",
+   "source_rows": 42
+  },
+  {
+   "date": "2024-09-15",
+   "observed_sell_filled_contracts": "6351",
+   "sha256": "367e27b79ee78986a1ca22e708964367ba96f7116fa8f34182f1ad842cda5bbf",
+   "source_rows": 112
+  },
+  {
+   "date": "2024-09-16",
+   "observed_sell_filled_contracts": "16667",
+   "sha256": "b7d25c8ed4709348d23aceb3fe81b90ccfffa866ecbbc2ec182a7c376ea42e0b",
+   "source_rows": 214
+  },
+  {
+   "date": "2024-09-17",
+   "observed_sell_filled_contracts": "2418",
+   "sha256": "acf110d1809ca67843c4f5da74e885aff30c8799de2093405fc716c8b3a52c34",
+   "source_rows": 242
+  },
+  {
+   "date": "2024-09-18",
+   "observed_sell_filled_contracts": "5868",
+   "sha256": "859984c112cbed31c5fc7a8e8c0fc7fd7ec86c67798ec1bf5c098c4e72eee3d4",
+   "source_rows": 222
+  },
+  {
+   "date": "2024-09-19",
+   "observed_sell_filled_contracts": "867",
+   "sha256": "6c36b698f3d44d2e9bfad11bc237b2decfc341d0d46bb92e07f2fa646bce45f7",
+   "source_rows": 192
+  },
+  {
+   "date": "2024-09-20",
+   "observed_sell_filled_contracts": "3994",
+   "sha256": "8cf2b9b6bde6630f43f20e5540b8f995182ebfb64c4c9c33fa94b096d549cde7",
+   "source_rows": 156
+  },
+  {
+   "date": "2024-09-21",
+   "observed_sell_filled_contracts": "31",
+   "sha256": "fdbf1fba44e5f7f78411d7e4d2a2af4b822d56845fb3c01160b5f59624c03e3a",
+   "source_rows": 22
+  },
+  {
+   "date": "2024-09-22",
+   "observed_sell_filled_contracts": "4148",
+   "sha256": "91a22fe54367aaaa8953a000064a45a3bc5c64df5d2712e0702243f8ac65693c",
+   "source_rows": 118
+  },
+  {
+   "date": "2024-09-23",
+   "observed_sell_filled_contracts": "2270",
+   "sha256": "16950f72384f74c50fd57287e2d4150d3ef2f8857ff4f5e9fe934b915e0b1715",
+   "source_rows": 150
+  },
+  {
+   "date": "2024-09-24",
+   "observed_sell_filled_contracts": "1401",
+   "sha256": "b8a1b638a893fad59164b1502781ff477d873c733944012abf2d4f7917d8c48f",
+   "source_rows": 180
+  },
+  {
+   "date": "2024-09-25",
+   "observed_sell_filled_contracts": "1417",
+   "sha256": "a6f630ce3931bfe54c2d0fd7cfd9c5172b621a7ba4c1b69556bbf3c239dac412",
+   "source_rows": 88
+  },
+  {
+   "date": "2024-09-26",
+   "observed_sell_filled_contracts": "8695",
+   "sha256": "0ccd5b693a7009607e8f04ade824caffa6cd5bea555d0c1f0eff1fe2534a5f69",
+   "source_rows": 218
+  },
+  {
+   "date": "2024-09-27",
+   "observed_sell_filled_contracts": "1895",
+   "sha256": "21f032840c0266d05342c53f4790d7d641fd7b9d6df60ca8ac26284b0d6f3eec",
+   "source_rows": 126
+  },
+  {
+   "date": "2024-09-28",
+   "observed_sell_filled_contracts": "140",
+   "sha256": "b0e51f0a45c960a37cd04bc933e0e45bc7afeec3b113d36a660b1e0534aae9a8",
+   "source_rows": 40
+  },
+  {
+   "date": "2024-09-29",
+   "observed_sell_filled_contracts": "119",
+   "sha256": "bf14720cb58f087ad3e71bf4d67dda573e6639384d312a381942d0b184724cb9",
+   "source_rows": 28
+  },
+  {
+   "date": "2024-09-30",
+   "observed_sell_filled_contracts": "17763",
+   "sha256": "9ad256fc865f589f24829c0e3e8b47e6aef902e36ad2fbf76d0a90e3d3d453bf",
+   "source_rows": 292
+  },
+  {
+   "date": "2024-10-01",
+   "observed_sell_filled_contracts": "87102",
+   "sha256": "ab6e904591423a8fb2449cb5d9d8ac56363d508487898f29c95d8fe1fb7cd1b0",
+   "source_rows": 430
+  },
+  {
+   "date": "2024-10-02",
+   "observed_sell_filled_contracts": "7788",
+   "sha256": "7bc3dfd536b23bf104a2400bea90b0bdfc112e3f448d796f5c54cbf6ad867766",
+   "source_rows": 228
+  },
+  {
+   "date": "2024-10-03",
+   "observed_sell_filled_contracts": "4156",
+   "sha256": "58c37e86a6962020dfe94bfce1b141c91869a59f66230e95bd41920d70d440ed",
+   "source_rows": 170
+  },
+  {
+   "date": "2024-10-04",
+   "observed_sell_filled_contracts": "6798",
+   "sha256": "a14b9ed59fbe7d2ff6c967ea9896f9e9309dc9e10e78070f123634373a1fbd4f",
+   "source_rows": 130
+  },
+  {
+   "date": "2024-10-05",
+   "observed_sell_filled_contracts": "142",
+   "sha256": "1b7bdbefad41aae7fa1bb8b2e5436e1852ad03020aa1950cee25e01b707603c8",
+   "source_rows": 32
+  },
+  {
+   "date": "2024-10-06",
+   "observed_sell_filled_contracts": "190",
+   "sha256": "d3b801d05c46e2793d22924eee354d8aba96aaebe4e7add91ddec16c32a2ed40",
+   "source_rows": 60
+  },
+  {
+   "date": "2024-10-07",
+   "observed_sell_filled_contracts": "11999",
+   "sha256": "30f95ee10f22a17a42c985f410b4c059f3f599ab0265b49e344aa1bd616863f8",
+   "source_rows": 234
+  },
+  {
+   "date": "2024-10-08",
+   "observed_sell_filled_contracts": "6130",
+   "sha256": "1fdc66d057341661c0ab966b83a234b9bf7f45a9e59745d40dc39b9ce3e156a7",
+   "source_rows": 132
+  },
+  {
+   "date": "2024-10-09",
+   "observed_sell_filled_contracts": "15356",
+   "sha256": "b64341b1639cf23c97a138e68bfbaf2b1c8a99ac2197acf542c4e25c6a6720bc",
+   "source_rows": 214
+  },
+  {
+   "date": "2024-10-10",
+   "observed_sell_filled_contracts": "37037",
+   "sha256": "4f108499ce3d92e0c92a2eddb01e28ff42fa62a0766d387a507e2242415dc5d7",
+   "source_rows": 278
+  },
+  {
+   "date": "2024-10-11",
+   "observed_sell_filled_contracts": "677",
+   "sha256": "18c8a6a0f65cbd81aba38b4575bb3f0c65918194dceb98544412f78da2ba80a3",
+   "source_rows": 146
+  },
+  {
+   "date": "2024-10-12",
+   "observed_sell_filled_contracts": "96",
+   "sha256": "fc9ac1ce2513c8dd96953dc2072733da14ee66d004ef01113ccff59e719c5cbc",
+   "source_rows": 36
+  },
+  {
+   "date": "2024-10-13",
+   "observed_sell_filled_contracts": "5091",
+   "sha256": "7ace958f2f179a6d918ee75406e68800f425aed2d0db2460e49225c7d5aca684",
+   "source_rows": 96
+  },
+  {
+   "date": "2024-10-14",
+   "observed_sell_filled_contracts": "315",
+   "sha256": "ac313ff6899b255b157cb77d7e20e23713efa1ffda9c3e936079e947076c2cc9",
+   "source_rows": 100
+  }
+ ],
+ "field": "observed_sell_filled_contracts",
+ "instrument": "BTCUSD_PERP",
+ "label_availability": "Usable two days after the sealed day is closed; missing/unpublished days never imputed.",
+ "snapshot_definition": "Sum accumulated filled contracts of distinct SELL snapshot records. This is observed snapshot activity, not total exchange liquidations or necessarily distinct orders.",
+ "source": "https://data.binance.vision/data/futures/cm/daily/liquidationSnapshot/BTCUSD_PERP",
+ "status": "COMPLETE_WITH_EXPLICIT_MASKS"
+}
