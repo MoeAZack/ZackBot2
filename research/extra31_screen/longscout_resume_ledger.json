@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 330,
+ "registered_trials": 331,
  "completed_trials": 327,
  "historical_screen_passes": 12,
  "versions": {
@@ -938,6 +938,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "130": {
+   "status": "PREREGISTERED",
+   "source_freeze": "c96616b9ad1d4a9781c44bc8483b864864a97399",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 331,
+     "key": "l130_liquid_market_membership_expansion_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
