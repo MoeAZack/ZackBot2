@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 328,
+ "registered_trials": 329,
  "completed_trials": 325,
  "historical_screen_passes": 12,
  "versions": {
@@ -901,6 +901,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "128": {
+   "status": "PREREGISTERED",
+   "source_freeze": "20579032160939f23eae798147fb506b3ab3c305",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 329,
+     "key": "l128_btc_trade_only_downside_extreme_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
