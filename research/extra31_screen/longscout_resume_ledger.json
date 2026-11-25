@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 404,
+ "registered_trials": 405,
  "completed_trials": 399,
  "historical_screen_passes": 13,
  "versions": {
@@ -2644,6 +2644,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "205": {
+   "status": "PREREGISTERED",
+   "source_freeze": "b23d916cfcd53e334fe60c2e9fea1e2392c77bcd",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 405,
+     "key": "l205_treasury_bill_primary_auction_demand_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
