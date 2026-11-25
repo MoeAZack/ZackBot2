@@ -403,15 +403,15 @@
    "trials_after": 360,
    "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7161228013",
    "head": "a838ae5c6062567a86cd32c09542d5b3f33545fa"
+  },
+  "164": {
+   "passes": 0,
+   "trials_after": 361,
+   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7161391273",
+   "head": "ae7f5dda19d3995bc8823bd260cb1c9a2e5127fb"
   }
  },
- "running": {
-  "version": 163,
-  "source": "474d5b8b6c3c6f90cdd2c383418fbc8ebd0ddacf",
-  "registration": "7ff0da70144d8e9a9bf8b1b955c055fa51eb9818",
-  "output": "C:\\Dev\\ZackBot_research_cache\\longscout_codex_v163_20261124",
-  "start_cairo": "2026-11-25T13:37:00.065541+02:00"
- },
+ "running": {},
  "queued": {
   "94": {
    "source_freeze": "91a6775d1eb0558b5de44086e2b9189d7aed4579",
