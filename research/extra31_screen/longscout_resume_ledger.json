@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 379,
+ "registered_trials": 380,
  "completed_trials": 374,
  "historical_screen_passes": 13,
  "versions": {
@@ -2061,6 +2061,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "179": {
+   "status": "PREREGISTERED",
+   "source_freeze": "f59a19eb279c42c40b2926e505461d4c822bb2ca",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 380,
+     "key": "l179_aave_stablecoin_debt_expansion_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
