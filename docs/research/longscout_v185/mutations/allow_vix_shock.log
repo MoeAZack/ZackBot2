@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________________ test_vix_must_stay_stable __________________________
+
+    def test_vix_must_stay_stable():
+        quotes = sample()
+        quotes.iloc[-1, 1] = 23.
+>       assert not M.volatility_uncertainty_settles(quotes).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2026-01-06    False\n2026-01-07    False\n2026-01-08    False\n2026-01-09    False\n2026-01-10    False\n2026-01-13    Fals...  False\n2026-02-12    False\n2026-02-13    False\n2026-02-14    False\n2026-02-17    False\n2026-02-18     True\ndtype: bool.any
+E        +      where 2026-01-06    False\n2026-01-07    False\n2026-01-08    False\n2026-01-09    False\n2026-01-10    False\n2026-01-13    Fals...  False\n2026-02-12    False\n2026-02-13    False\n2026-02-14    False\n2026-02-17    False\n2026-02-18     True\ndtype: bool = <function volatility_uncertainty_settles at 0x0000024FFE832C00>(             VVIX   VIX\n2026-01-05  100.0  20.0\n2026-01-06  100.0  20.0\n2026-01-07  100.0  20.0\n2026-01-08  100.0  20....2026-02-11  100.0  20.0\n2026-02-12  100.0  20.0\n2026-02-13  100.0  20.0\n2026-02-16  114.0  20.0\n2026-02-17  103.0  23.0)
+E        +        where <function volatility_uncertainty_settles at 0x0000024FFE832C00> = M.volatility_uncertainty_settles
+
+tests\test_longscout_v185.py:26: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v185.py::test_vix_must_stay_stable - assert not n...
+1 failed in 1.20s

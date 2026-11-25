@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________________ test_delay_and_prefix ____________________________
+
+    def test_delay_and_prefix():
+        quotes = sample()
+        result = M.volatility_uncertainty_settles(quotes)
+>       assert result[result].index.to_list() == [quotes.index[-1] + pd.Timedelta(days=1)]
+E       AssertionError: assert [Timestamp('2...17 00:00:00')] == [Timestamp('2...18 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2026-02-17 00:00:00') != Timestamp('2026-02-18 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v185.py:38: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v185.py::test_delay_and_prefix - AssertionError: ...
+1 failed in 1.16s

@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_rejects_stale_session __________________________
+
+    def test_rejects_stale_session():
+        quotes = sample()
+        quotes.index = quotes.index[:-1].append(quotes.index[-1:] + pd.Timedelta(days=9))
+>       assert not M.volatility_uncertainty_settles(quotes).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2026-01-06    False\n2026-01-07    False\n2026-01-08    False\n2026-01-09    False\n2026-01-10    False\n2026-01-13    Fals...  False\n2026-02-12    False\n2026-02-13    False\n2026-02-14    False\n2026-02-17    False\n2026-02-27     True\ndtype: bool.any
+E        +      where 2026-01-06    False\n2026-01-07    False\n2026-01-08    False\n2026-01-09    False\n2026-01-10    False\n2026-01-13    Fals...  False\n2026-02-12    False\n2026-02-13    False\n2026-02-14    False\n2026-02-17    False\n2026-02-27     True\ndtype: bool = <function volatility_uncertainty_settles at 0x0000021F78692C00>(             VVIX   VIX\n2026-01-05  100.0  20.0\n2026-01-06  100.0  20.0\n2026-01-07  100.0  20.0\n2026-01-08  100.0  20....2026-02-11  100.0  20.0\n2026-02-12  100.0  20.0\n2026-02-13  100.0  20.0\n2026-02-16  114.0  20.0\n2026-02-26  103.0  20.0)
+E        +        where <function volatility_uncertainty_settles at 0x0000021F78692C00> = M.volatility_uncertainty_settles
+
+tests\test_longscout_v185.py:32: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v185.py::test_rejects_stale_session - assert not ...
+1 failed in 1.68s

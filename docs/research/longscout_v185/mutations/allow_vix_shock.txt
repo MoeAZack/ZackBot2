@@ -1,0 +1,6 @@
+BEFORE
+ & vix_change.le(.04)
+AFTER
+
+DETECTED BY
+test_vix_must_stay_stable
