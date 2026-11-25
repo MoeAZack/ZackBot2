@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 364,
+ "registered_trials": 365,
  "completed_trials": 360,
  "historical_screen_passes": 13,
  "versions": {
@@ -1712,6 +1712,18 @@
     }
    ],
    "reason": "Source-manifest sample label was changed by the Windows text encoding pipeline. The frozen loader stopped during BTC input initialization, before signal generation or economic outcomes."
+  },
+  "164": {
+   "status": "PREREGISTERED",
+   "source_freeze": "0f672f77ef2396814b1fc147eaf1109b52c4bfdc",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 365,
+     "key": "l164_btc_public_lightning_capacity_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
+    }
+   ]
   }
  },
  "owner_stop": {
