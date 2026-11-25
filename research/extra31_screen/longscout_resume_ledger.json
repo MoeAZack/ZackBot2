@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 386,
+ "registered_trials": 387,
  "completed_trials": 381,
  "historical_screen_passes": 13,
  "versions": {
@@ -2220,6 +2220,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "186": {
+   "status": "PREREGISTERED",
+   "source_freeze": "af71dcac99b1d8e84c9fb608560c743c7f67d8e4",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 387,
+     "key": "l186_same_usdc_lending_rate_gap_relief_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
