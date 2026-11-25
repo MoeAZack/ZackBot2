@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_signal_is_delayed_and_single ______________________
+
+    def test_signal_is_delayed_and_single():
+        days, addresses, tx, complete = sample()
+        signal = M.addresses_without_volume(addresses, tx, complete)
+>       assert signal[signal].index.tolist() == [days[72]]
+E       AssertionError: assert [Timestamp('2...11 00:00:00')] == [Timestamp('2...13 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2024-03-11 00:00:00') != Timestamp('2024-03-13 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v162.py:32: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v162.py::test_signal_is_delayed_and_single - Asse...
+1 failed in 1.34s

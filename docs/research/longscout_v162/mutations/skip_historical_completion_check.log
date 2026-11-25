@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_late_baseline_date_blocks_the_signal __________________
+
+    def test_late_baseline_date_blocks_the_signal():
+        days, addresses, tx, complete = sample()
+        complete.iloc[10] = (days[73] + pd.Timedelta(seconds=1)).value // 10**9
+>       assert not M.addresses_without_volume(addresses, tx, complete).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n              ... ... False\n2024-03-19    False\n2024-03-20    False\n2024-03-21    False\n2024-03-22    False\nFreq: D, Length: 82, dtype: bool.any
+E        +      where 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n              ... ... False\n2024-03-19    False\n2024-03-20    False\n2024-03-21    False\n2024-03-22    False\nFreq: D, Length: 82, dtype: bool = <function addresses_without_volume at 0x00000224E8456B60>(2024-01-01    100.0\n2024-01-02    100.0\n2024-01-03    100.0\n2024-01-04    100.0\n2024-01-05    100.0\n              ... ...0.0\n2024-03-19    130.0\n2024-03-20    130.0\n2024-03-21    130.0\n2024-03-22    130.0\nFreq: D, Length: 82, dtype: float64, 2024-01-01    150.0\n2024-01-02    150.0\n2024-01-03    150.0\n2024-01-04    150.0\n2024-01-05    150.0\n              ... ...0.0\n2024-03-19    150.0\n2024-03-20    150.0\n2024-03-21    150.0\n2024-03-22    150.0\nFreq: D, Length: 82, dtype: float64, 2024-01-01    1704171600\n2024-01-02    1704258000\n2024-01-03    1704344400\n2024-01-04    1704430800\n2024-01-05    1704...1710910800\n2024-03-20    1710997200\n2024-03-21    1711083600\n2024-03-22    1711170000\nFreq: D, Length: 82, dtype: int64)
+E        +        where <function addresses_without_volume at 0x00000224E8456B60> = M.addresses_without_volume
+
+tests\test_longscout_v162.py:46: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v162.py::test_late_baseline_date_blocks_the_signal
+1 failed in 1.34s

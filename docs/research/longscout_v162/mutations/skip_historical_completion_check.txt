@@ -1,0 +1,6 @@
+BEFORE
+onset & available.le(decision)
+AFTER
+onset
+DETECTED BY
+test_late_baseline_date_blocks_the_signal
