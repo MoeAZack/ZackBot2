@@ -1,0 +1,14 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_btc_gate_and_rank_hysteresis ______________________
+
+    def test_btc_gate_and_rank_hysteresis():
+        bars = panel()
+        signals = evaluate(bars)
+>       assert signals['le'].iloc[205] and not signals['le'].iloc[206]
+E       assert (np.False_)
+
+tests\test_longscout_v108.py:44: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v108.py::test_btc_gate_and_rank_hysteresis - asse...
+1 failed in 4.87s

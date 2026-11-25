@@ -1,0 +1,20 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_btc_gate_and_rank_hysteresis ______________________
+
+    def test_btc_gate_and_rank_hysteresis():
+        bars = panel()
+        signals = evaluate(bars)
+        assert signals['le'].iloc[205] and not signals['le'].iloc[206]
+        assert not signals['lx'].iloc[206] and signals['lx'].iloc[207]
+        assert M._RANK['C0'].iloc[205] == 1
+        bars['BTCUSDT']['c'] = 100
+>       assert not evaluate(bars)['le'].any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0      False\n1      False\n2      False\n3      False\n4      False\n       ...  \n215    False\n216    False\n217    False\n218    False\n219    False\nLength: 220, dtype: bool.any
+
+tests\test_longscout_v108.py:48: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v108.py::test_btc_gate_and_rank_hysteresis - asse...
+1 failed in 4.20s

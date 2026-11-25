@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_liquidity_and_peer_count_fail_closed __________________
+
+    def test_liquidity_and_peer_count_fail_closed():
+        bars = panel()
+        bars['C0'].loc[175:190, 'qv'] = 2e6
+        assert not evaluate(bars)['le'].iloc[205]
+>       assert pd.isna(M._RANK['C0'].iloc[205])
+E       assert False
+E        +  where False = <function isna at 0x00000287446BFBA0>(np.float64(1.0))
+E        +    where <function isna at 0x00000287446BFBA0> = pd.isna
+
+tests\test_longscout_v108.py:56: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v108.py::test_liquidity_and_peer_count_fail_closed
+1 failed in 5.66s

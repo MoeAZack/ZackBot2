@@ -1,0 +1,6 @@
+BEFORE
+rank(axis=1, method=
+AFTER
+rank(axis=1, ascending=False, method=
+DETECTED BY
+test_btc_gate_and_rank_hysteresis

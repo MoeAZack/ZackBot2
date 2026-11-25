@@ -1,0 +1,6 @@
+BEFORE
+volumes.shift().rolling(30
+AFTER
+volumes.rolling(30
+DETECTED BY
+test_liquidity_and_peer_count_fail_closed
