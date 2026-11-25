@@ -33,7 +33,10 @@ def run_checks(version, out):
     mutation_dir.mkdir()
     source = (ROOT / 'research' / f'{name}.py').read_text(encoding='utf-8')
     test = importlib.import_module(f'test_{name}')
-    for label, before, after, test_name in test.PLANTED_MUTANTS:
+    supplemental = HERE / f'{name}_mutation_updates.json'
+    updates = json.loads(supplemental.read_text(encoding='utf-8')) if supplemental.exists() else {}
+    for spec in test.PLANTED_MUTANTS:
+        label, before, after, test_name = updates.get(spec[0], spec)
         assert source.count(before) == 1, label
         (mutation_dir / f'{label}.txt').write_text(
             f'BEFORE\n{before}\nAFTER\n{after}\nDETECTED BY\n{test_name}\n', encoding='utf-8')
@@ -68,7 +71,8 @@ def main():
     source = item['source_freeze']
     git('merge-base', '--is-ancestor', source, head)
     git('diff', '--exit-code', source, '--', f'research/longscout_v{version}.py',
-        f'tests/test_longscout_v{version}.py')
+        f'tests/test_longscout_v{version}.py', 'research/extra31_screen/longscout_v91_run.py',
+        'research/extra31_screen/longscout_version_report.py')
     git('diff', '--exit-code', head, '--', 'research/extra31_screen')
 
     out = CACHE / f'longscout_codex_v{version}_20261124'

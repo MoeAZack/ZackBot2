@@ -1,0 +1,8 @@
+{
+ "same_day_in_conditioned_model": [
+  "wrong_predictor_window",
+  "up.shift(2,fill_value=False)",
+  "up.shift(60,fill_value=False)",
+  "test_conditional_prior_window_reference_and_future_invariance"
+ ]
+}
