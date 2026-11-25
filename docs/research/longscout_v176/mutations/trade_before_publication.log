@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________________ test_uses_later_release_date _________________________
+
+    def test_uses_later_release_date():
+        quotes, available = sample()
+        events = M.cover_shorts(quotes, available)
+>       assert events[events].index.tolist() == [available[-1]]
+E       AssertionError: assert [Timestamp('2...30 00:00:00')] == [Timestamp('2...20 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2025-09-30 00:00:00') != Timestamp('2025-11-20 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v176.py:40: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v176.py::test_uses_later_release_date - Assertion...
+1 failed in 1.48s

@@ -1,0 +1,6 @@
+BEFORE
+ & assets.diff().abs().le(.03)
+AFTER
+
+DETECTED BY
+test_asset_managers_must_hold_steady

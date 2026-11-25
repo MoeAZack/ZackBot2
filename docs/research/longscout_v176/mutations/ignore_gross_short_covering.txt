@@ -1,0 +1,6 @@
+BEFORE
+ & short.diff().lt(0)
+AFTER
+
+DETECTED BY
+test_gross_shorts_must_fall

@@ -2,7 +2,7 @@
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
  "registered_trials": 377,
- "completed_trials": 371,
+ "completed_trials": 372,
  "historical_screen_passes": 13,
  "versions": {
   "91": {
@@ -1995,14 +1995,24 @@
    ]
   },
   "176": {
-   "status": "PREREGISTERED",
+   "status": "COMPLETE_REJECTED",
    "source_freeze": "96d21f042b4d4d308b10f079c3cc030bb256fe38",
-   "batch_passes": null,
+   "batch_passes": 0,
    "candidates": [
     {
      "trial": 377,
      "key": "l176_cme_positioning_long_after_short_covering_1d",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "FAIL",
+     "meanR15_fee_plus_slip": 0.02233203818867538,
+     "failed_gates": [
+      "trades",
+      "late",
+      "ex_best_coin",
+      "order0_30_per_half",
+      "fresh134",
+      "extra31"
+     ],
+     "forward_worthy": false
     }
    ]
   }

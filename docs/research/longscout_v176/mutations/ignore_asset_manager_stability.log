@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_asset_managers_must_hold_steady _____________________
+
+    def test_asset_managers_must_hold_steady():
+        quotes, available = sample()
+        quotes.iloc[-1, 1] += 100
+>       assert not M.cover_shorts(quotes, available).any()
+E       AssertionError: assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2025-10-02    False\n2025-11-20     True\ndtype: bool.any
+E        +      where 2025-10-02    False\n2025-11-20     True\ndtype: bool = <function cover_shorts at 0x00000262974F6A20>(            open_interest_all  ...  lev_money_positions_short\n2025-09-23               1000  ...                        360\n2025-09-30               1000  ...                        300\n\n[2 rows x 5 columns], DatetimeIndex(['2025-10-02', '2025-11-20'], dtype='datetime64[us]', freq=None))
+E        +        where <function cover_shorts at 0x00000262974F6A20> = M.cover_shorts
+
+tests\test_longscout_v176.py:34: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v176.py::test_asset_managers_must_hold_steady - A...
+1 failed in 1.70s
