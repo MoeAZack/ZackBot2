@@ -1,0 +1,6 @@
+BEFORE
+ & high.le(total)
+AFTER
+
+DETECTED BY
+test_high_priority_size_cannot_exceed_total

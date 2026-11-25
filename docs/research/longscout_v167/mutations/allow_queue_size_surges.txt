@@ -1,0 +1,6 @@
+BEFORE
+ & (total / previous_total).between(.80, 1.20)
+AFTER
+
+DETECTED BY
+test_queue_size_can_not_explain_shift

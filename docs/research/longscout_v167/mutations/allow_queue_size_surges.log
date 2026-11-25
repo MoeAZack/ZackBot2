@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_queue_size_can_not_explain_shift ____________________
+
+    def test_queue_size_can_not_explain_shift():
+        total, high = sample()
+        total.iloc[50:] = 160.
+        high.iloc[50:] = 65.
+>       assert not M.priority_shock(total, high).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...51     True\n52    False\n53    False\n54    False\n55    False\n56    False\n57    False\n58    False\n59    False\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...51     True\n52    False\n53    False\n54    False\n55    False\n56    False\n57    False\n58    False\n59    False\ndtype: bool = <function priority_shock at 0x000001F6A8A76A20>(0     100.0\n1     100.0\n2     100.0\n3     100.0\n4     100.0\n5     100.0\n6     100.0\n7     100.0\n8     100.0\n9     100....   160.0\n52    160.0\n53    160.0\n54    160.0\n55    160.0\n56    160.0\n57    160.0\n58    160.0\n59    160.0\ndtype: float64, 0     20.0\n1     20.0\n2     20.0\n3     20.0\n4     20.0\n5     20.0\n6     20.0\n7     20.0\n8     20.0\n9     20.0\n10    20... 65.0\n51    65.0\n52    65.0\n53    65.0\n54    65.0\n55    65.0\n56    65.0\n57    65.0\n58    65.0\n59    65.0\ndtype: float64)
+E        +        where <function priority_shock at 0x000001F6A8A76A20> = M.priority_shock
+
+tests\test_longscout_v167.py:33: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v167.py::test_queue_size_can_not_explain_shift - ...
+1 failed in 2.29s

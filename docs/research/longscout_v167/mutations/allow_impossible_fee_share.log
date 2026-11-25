@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_high_priority_size_cannot_exceed_total _________________
+
+    def test_high_priority_size_cannot_exceed_total():
+        total, high = sample()
+        high.iloc[50:] = 110.
+>       assert not M.priority_shock(total, high).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...51     True\n52    False\n53    False\n54    False\n55    False\n56    False\n57    False\n58    False\n59    False\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...51     True\n52    False\n53    False\n54    False\n55    False\n56    False\n57    False\n58    False\n59    False\ndtype: bool = <function priority_shock at 0x000001EE762A94E0>(0     100.0\n1     100.0\n2     100.0\n3     100.0\n4     100.0\n5     100.0\n6     100.0\n7     100.0\n8     100.0\n9     100....   100.0\n52    100.0\n53    100.0\n54    100.0\n55    100.0\n56    100.0\n57    100.0\n58    100.0\n59    100.0\ndtype: float64, 0      20.0\n1      20.0\n2      20.0\n3      20.0\n4      20.0\n5      20.0\n6      20.0\n7      20.0\n8      20.0\n9      20....   110.0\n52    110.0\n53    110.0\n54    110.0\n55    110.0\n56    110.0\n57    110.0\n58    110.0\n59    110.0\ndtype: float64)
+E        +        where <function priority_shock at 0x000001EE762A94E0> = M.priority_shock
+
+tests\test_longscout_v167.py:39: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v167.py::test_high_priority_size_cannot_exceed_total
+1 failed in 6.98s

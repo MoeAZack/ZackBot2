@@ -1,0 +1,6 @@
+BEFORE
+.shift(1, fill_value=False)
+AFTER
+.shift(0, fill_value=False)
+DETECTED BY
+test_signal_is_delayed_and_one_shot
