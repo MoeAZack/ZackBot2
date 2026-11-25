@@ -1,0 +1,6 @@
+BEFORE
+(6,13,20,27,34,41,48,55)
+AFTER
+(5,12,19,26,33,40,47,54)
+DETECTED BY
+test_weekday_independent_prior_index_and_real_signal

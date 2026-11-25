@@ -1,0 +1,21 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________ test_daily_vwap_arithmetic_edges_invalid_gaps_and_regime ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B1B2745E80>
+
+    def test_daily_vwap_arithmetic_edges_invalid_gaps_and_regime(monkeypatch):
+        d=fixture();d.loc[5,'qv']=d.loc[5,'v']*d.loc[5,'c']/0.96
+        d.loc[8,'qv']=d.loc[8,'v']*d.loc[8,'c']/1.04
+        D=M.native_days(d);st=M.vwap_statistics(D)
+>       assert st.vwap.iloc[5]==pytest.approx(d.qv.iloc[5]/d.v.iloc[5])
+E       assert np.float64(0....2119800249751) == 104.6888042561876 ± 1.0e-04
+E         
+E         comparison failed
+E         Obtained: 0.009552119800249751
+E         Expected: 104.6888042561876 ± 1.0e-04
+
+tests\test_longscout_v106.py:61: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v106.py::test_daily_vwap_arithmetic_edges_invalid_gaps_and_regime
+1 failed in 1.61s

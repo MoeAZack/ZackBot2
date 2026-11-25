@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________ test_weekday_independent_prior_index_and_real_signal _____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001D7D0B89D00>
+
+    def test_weekday_independent_prior_index_and_real_signal(monkeypatch):
+        d=fixture();D=M.native_days(d);st=M.weekday_statistics(D);j=57
+        count,mean=reference(D,j)
+        assert count==8 and mean==pytest.approx(.01)
+>       assert st['count'].iloc[j]==8 and st.positive.iloc[j]==count and st['mean'].iloc[j]==pytest.approx(mean)
+E       assert (np.int64(8) == 8 and np.int64(0) == 8)
+
+tests\test_longscout_v106.py:39: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v106.py::test_weekday_independent_prior_index_and_real_signal
+1 failed in 1.42s

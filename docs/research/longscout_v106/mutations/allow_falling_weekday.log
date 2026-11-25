@@ -1,0 +1,32 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________ test_weekday_independent_prior_index_and_real_signal _____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001F49CB71F10>
+
+    def test_weekday_independent_prior_index_and_real_signal(monkeypatch):
+        d=fixture();D=M.native_days(d);st=M.weekday_statistics(D);j=57
+        count,mean=reference(D,j)
+        assert count==8 and mean==pytest.approx(.01)
+        assert st['count'].iloc[j]==8 and st.positive.iloc[j]==count and st['mean'].iloc[j]==pytest.approx(mean)
+        assert not M.weekday_flags(D).iloc[:j].any() and M.weekday_flags(D).iloc[j]
+        # Oldest used return and the target weekday are explicit and prior-only.
+        assert all(D.index[j+1].weekday()==D.index[j-6-7*k].weekday() for k in range(8))
+        monkeypatch.setattr(M.L1,'regime_daily',lambda c:pd.Series(0.,index=c.index))
+        signal=M.sig_weekday(d,{}, {})['le'];assert signal.iloc[j]
+        assert d.t.iloc[j]+pd.Timedelta(days=1)==D.index[j+1]
+        altered=d.copy();altered.loc[j+1:,'c']*=2
+        pd.testing.assert_series_equal(signal.iloc[:j+1],M.sig_weekday(altered,{}, {})['le'].iloc[:j+1])
+        for cut in (57,58,59,65):
+            out=M.sig_weekday(d.iloc[:cut],{}, {})
+            np.testing.assert_array_equal(out['le'],signal.iloc[:cut])
+        monkeypatch.setattr(M.L1,'regime_daily',lambda c:pd.Series(-1.,index=c.index))
+>       assert not M.sig_weekday(d,{}, {})['le'].any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n67    False\n68    False\n69    False\n70    False\n71     True\nLength: 72, dtype: bool.any
+
+tests\test_longscout_v106.py:52: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v106.py::test_weekday_independent_prior_index_and_real_signal
+1 failed in 1.97s

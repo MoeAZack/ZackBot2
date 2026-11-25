@@ -1,0 +1,6 @@
+BEFORE
+D.qv / D.v
+AFTER
+D.v / D.qv
+DETECTED BY
+test_daily_vwap_arithmetic_edges_invalid_gaps_and_regime

@@ -2,8 +2,8 @@
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
  "registered_trials": 307,
- "completed_trials": 303,
- "historical_screen_passes": 11,
+ "completed_trials": 305,
+ "historical_screen_passes": 12,
  "versions": {
   "91": {
    "status": "COMPLETE",
@@ -407,19 +407,33 @@
    ]
   },
   "106": {
-   "status": "PREREGISTERED",
+   "status": "SCREEN_PASS_PENDING_INDEPENDENT_REVIEW",
    "source_freeze": "11b2f763b8b970bcf704fd56adb3752725a8367a",
-   "batch_passes": null,
+   "batch_passes": 1,
    "candidates": [
     {
      "trial": 306,
      "key": "l106_learned_weekday_1d",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "WIDE165_PASS",
+     "meanR15_fee_plus_slip": 0.07116104835983758,
+     "failed_gates": [],
+     "forward_worthy": false
     },
     {
      "trial": 307,
      "key": "r106_daily_vwap_displacement_1d",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "FAIL",
+     "meanR15_fee_plus_slip": -0.034838621775762184,
+     "failed_gates": [
+      "meanR15",
+      "early",
+      "late",
+      "ex_best_coin",
+      "meanR23",
+      "fresh134",
+      "extra31"
+     ],
+     "forward_worthy": false
     }
    ]
   }

@@ -1,0 +1,6 @@
+BEFORE
+np.isin(regime,(0.,1.))
+AFTER
+np.isfinite(regime)
+DETECTED BY
+test_weekday_independent_prior_index_and_real_signal
