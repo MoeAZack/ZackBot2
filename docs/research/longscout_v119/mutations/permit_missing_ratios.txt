@@ -1,0 +1,6 @@
+BEFORE
+concentration.shift().rolling(45, min_periods=45)
+AFTER
+concentration.shift().rolling(45, min_periods=40)
+DETECTED BY
+test_causal_history_and_missing_ratios

@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________ test_position_share_and_number_of_accounts_are_distinct ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001C0CF965880>
+
+    def test_position_share_and_number_of_accounts_are_distinct(monkeypatch):
+        m, ratio = fixture(monkeypatch)
+        assert M.market_conditions(m, ratio).short.iloc[49]
+        ratio.iloc[49] = 1.8
+        no_divergence = M.market_conditions(m, ratio)
+>       assert not no_divergence.short.iloc[49]
+E       assert not np.True_
+
+tests\test_longscout_v119.py:38: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v119.py::test_position_share_and_number_of_accounts_are_distinct
+1 failed in 1.56s

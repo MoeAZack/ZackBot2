@@ -1,0 +1,6 @@
+BEFORE
+ - np.log(rates[ACCOUNT])
+AFTER
+
+DETECTED BY
+test_position_share_and_number_of_accounts_are_distinct
