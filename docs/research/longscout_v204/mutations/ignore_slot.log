@@ -1,0 +1,15 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________________ test_excludes_other_hours __________________________
+
+    def test_excludes_other_hours():
+        buy, sell = flags(hour='08:00')
+>       assert not (buy | sell).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = (2025-01-09 08:00:00    False\n2025-01-09 12:00:00     True\ndtype: bool | 2025-01-09 08:00:00    False\n2025-01-09 12:00:00    False\ndtype: bool).any
+
+tests\test_longscout_v204.py:47: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v204.py::test_excludes_other_hours - assert not n...
+1 failed in 1.63s

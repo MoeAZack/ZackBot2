@@ -1,0 +1,6 @@
+BEFORE
+ & slot & contiguous
+AFTER
+ & contiguous
+DETECTED BY
+test_excludes_other_hours

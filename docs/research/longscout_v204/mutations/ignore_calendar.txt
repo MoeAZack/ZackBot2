@@ -1,0 +1,6 @@
+BEFORE
+full_closure & slot
+AFTER
+slot
+DETECTED BY
+test_excludes_open_or_early_close

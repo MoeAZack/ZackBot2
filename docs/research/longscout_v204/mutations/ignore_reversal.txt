@@ -1,0 +1,6 @@
+BEFORE
+ & retrace.between(.20, .80)
+AFTER
+
+DETECTED BY
+test_rejects_continuation

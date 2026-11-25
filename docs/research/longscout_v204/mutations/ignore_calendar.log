@@ -1,0 +1,16 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_excludes_open_or_early_close ______________________
+
+    def test_excludes_open_or_early_close():
+        for day in ('2025-01-08', '2024-11-29', '2025-01-11'):
+            buy, sell = flags(day=day)
+>           assert not (buy | sell).any()
+E           assert not np.True_
+E            +  where np.True_ = any()
+E            +    where any = (2025-01-08 12:00:00    False\n2025-01-08 16:00:00     True\ndtype: bool | 2025-01-08 12:00:00    False\n2025-01-08 16:00:00    False\ndtype: bool).any
+
+tests\test_longscout_v204.py:37: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v204.py::test_excludes_open_or_early_close - asse...
+1 failed in 1.60s

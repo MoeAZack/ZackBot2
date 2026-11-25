@@ -1,0 +1,15 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________________ test_rejects_continuation __________________________
+
+    def test_rejects_continuation():
+        buy, sell = flags(close=(97., 96.))
+>       assert not (buy | sell).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = (2025-01-09 12:00:00    False\n2025-01-09 16:00:00     True\ndtype: bool | 2025-01-09 12:00:00    False\n2025-01-09 16:00:00    False\ndtype: bool).any
+
+tests\test_longscout_v204.py:42: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v204.py::test_rejects_continuation - assert not n...
+1 failed in 1.79s
