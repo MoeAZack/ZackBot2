@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_missing_leg_masks_both_adjacent_moves __________________
+
+    def test_missing_leg_masks_both_adjacent_moves():
+        coin, usd = sample()
+        usd.iloc[69] = float('nan')
+>       assert not M.collateral_shock(coin, usd).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n70     True\n71    False\n72    False\n73    False\n74    False\nLength: 75, dtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n70     True\n71    False\n72    False\n73    False\n74    False\nLength: 75, dtype: bool = <function collateral_shock at 0x0000016BAE236A20>(0     100.0\n1     100.0\n2     100.0\n3     100.0\n4     100.0\n      ...  \n70    110.0\n71    110.0\n72    110.0\n73    110.0\n74    110.0\nLength: 75, dtype: float64, 0     1000.0\n1     1000.0\n2     1000.0\n3     1000.0\n4     1000.0\n       ...  \n70    1000.0\n71    1000.0\n72    1000.0\n73    1000.0\n74    1000.0\nLength: 75, dtype: float64)
+E        +        where <function collateral_shock at 0x0000016BAE236A20> = M.collateral_shock
+
+tests\test_longscout_v155.py:42: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v155.py::test_missing_leg_masks_both_adjacent_moves
+1 failed in 2.01s

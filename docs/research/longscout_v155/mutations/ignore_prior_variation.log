@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_shock_must_exceed_its_recent_noise ___________________
+
+    def test_shock_must_exceed_its_recent_noise():
+        coin, usd = sample()
+        coin.iloc[:70] = np.tile([100., 103.], 35)
+        coin.iloc[70:] = 114.
+>       assert not M.collateral_shock(coin, usd).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n70     True\n71    False\n72    False\n73    False\n74    False\nLength: 75, dtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n70     True\n71    False\n72    False\n73    False\n74    False\nLength: 75, dtype: bool = <function collateral_shock at 0x00000216166C6A20>(0     100.0\n1     103.0\n2     100.0\n3     103.0\n4     100.0\n      ...  \n70    114.0\n71    114.0\n72    114.0\n73    114.0\n74    114.0\nLength: 75, dtype: float64, 0     1000.0\n1     1000.0\n2     1000.0\n3     1000.0\n4     1000.0\n       ...  \n70    1000.0\n71    1000.0\n72    1000.0\n73    1000.0\n74    1000.0\nLength: 75, dtype: float64)
+E        +        where <function collateral_shock at 0x00000216166C6A20> = M.collateral_shock
+
+tests\test_longscout_v155.py:36: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v155.py::test_shock_must_exceed_its_recent_noise
+1 failed in 1.84s

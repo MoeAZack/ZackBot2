@@ -1,0 +1,6 @@
+BEFORE
+ - np.log(usd_notional.where(safe))
+AFTER
+
+DETECTED BY
+test_matched_growth_is_not_a_share_shock

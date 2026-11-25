@@ -2,7 +2,7 @@
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
  "registered_trials": 356,
- "completed_trials": 352,
+ "completed_trials": 353,
  "historical_screen_passes": 13,
  "versions": {
   "91": {
@@ -1514,14 +1514,24 @@
    ]
   },
   "155": {
-   "status": "PREREGISTERED",
+   "status": "COMPLETE_REJECTED",
    "source_freeze": "4ebb97ef5dec21db52ceb05d0049940ef2406caa",
-   "batch_passes": null,
+   "batch_passes": 0,
    "candidates": [
     {
      "trial": 356,
      "key": "r155_btc_collateral_oi_shock_1d",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "FAIL",
+     "meanR15_fee_plus_slip": 0.08702599625052627,
+     "failed_gates": [
+      "trades",
+      "early",
+      "ex_best_coin",
+      "order0_30_per_half",
+      "fresh134",
+      "extra31"
+     ],
+     "forward_worthy": false
     }
    ]
   }

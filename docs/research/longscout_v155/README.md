@@ -1,0 +1,25 @@
+# LONGSCOUT V155: 0/1 frozen screen passes
+
+25 Nov 2026 13:13 Cairo. Source freeze `4ebb97ef5dec21db52ceb05d0049940ef2406caa`; immutable cases preregistered before outcomes. See the case manifest for remote/local publication timing. Ledger: 353 completed trials / 13 historical screen passes; 356 registered.
+
+| Candidate | Median closes | MeanR15 | fresh134 | extra31 | Median closedDD | Result |
+|---|---:|---:|---:|---:|---|---|
+|r155_btc_collateral_oi_shock_1d|3|+0.087026|none|none|0.153R Standard|FAIL|
+
+Uses relative outstanding exposure for two margin forms of the same BTC perpetual. V135 compares settled payments, V144 compares quantities across different underlying assets, and V146 compares a single contract with its trading turnover.
+
+r155_btc_collateral_oi_shock_1d: failures trades, early, ex_best_coin, order0_30_per_half, fresh134, extra31; BTC rising/sideways/falling R15 -0.023703/+0.332849/none; long/short none/+0.185186; fallback-rule path trades (40 repeated orders) 2, order0 0.
+
+r155_btc_collateral_oi_shock_1d: pooled R23 +0.079303; fresh134 rising/sideways/falling R15 none/none/none; fresh134 R23 none; fresh134 top-three/net undefined; forward bar FAIL (wide_screen, rising, sideways, stress, top3).
+
+Require WIDE165_PASS, positive fresh134 R15 in rising and sideways BTC regimes, fresh134 median R23 >= 0, Standard/Elevated pooled median closed DD, and fresh134 median top-three winning trades / net profit < 50%. Use path trades and all 40 orders, with missing denominators failing the bar.
+
+Entry feature: matched BTC COIN-M and USD-M open interest at 23:55 UTC from the public archive, pinned manifest `c04a5e6b7419f1ebd2021b148c5d5c4c7ea83212c44350506252502451e268c3`. Missing bars are masked.
+
+Research-only/defaultOFF. 165 coins,40orders,unchanged seven rule-v1 gates and BOTH subset gates. Primary15bp fees PLUS2bp slip/side; stress23bp fees PLUS2bp slip. Native funding fixed .00005/4h of held notional, both sides pay; not realized historical funding. Frozen testnet snapshot is not a historical rules series; ICPUSDT/TLMUSDT lack snapshot rules and use fallback. Shared calendar already consumed, not untouched holdout. No tuning, coin dropping or subgroup rescue.
+
+DD uses closed equity with initialzero, notMTM. Standard<=15R, Elevated<=30R, High<=60R, Extreme>60R. Exact tests in tests.log; source/case SHA and both path/worst tapes preserved. Saved-tape seven-gate/subset reconstruction matches; not independent market-price replay or profitability acceptance.
+
+The frozen economic rules are rejected. Search proceeds to the next preregistered version.
+
+ROADMAP FIT: new long/range economics under the continuing research-only LONGSCOUT contract. DEFERRED: accounts/runtime/scheduler/LEADFWD/PAPER/mainnet/merge/mark-ready.

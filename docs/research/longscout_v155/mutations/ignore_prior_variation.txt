@@ -1,0 +1,6 @@
+BEFORE
+ & move.ge(4. * median)
+AFTER
+
+DETECTED BY
+test_shock_must_exceed_its_recent_noise

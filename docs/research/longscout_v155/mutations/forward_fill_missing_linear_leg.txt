@@ -1,0 +1,7 @@
+BEFORE
+    safe = 
+AFTER
+    usd_notional = usd_notional.ffill()
+    safe = 
+DETECTED BY
+test_missing_leg_masks_both_adjacent_moves
