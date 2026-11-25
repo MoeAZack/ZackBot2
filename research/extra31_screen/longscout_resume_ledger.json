@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 372,
+ "registered_trials": 373,
  "completed_trials": 367,
  "historical_screen_passes": 13,
  "versions": {
@@ -1895,6 +1895,18 @@
       "fresh134"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "172": {
+   "status": "PREREGISTERED",
+   "source_freeze": "3532725812c37c5636180bbd85039e858c75c7b9",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 373,
+     "key": "l172_btc_mining_pool_share_diffusion_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
