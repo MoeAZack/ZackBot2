@@ -1,0 +1,6 @@
+BEFORE
+ & capacity.pct_change(14, fill_method=None).ge(.02)
+AFTER
+
+DETECTED BY
+test_capacity_must_increase_in_aggregate

@@ -1,0 +1,6 @@
+BEFORE
+rolling(15, min_periods=15).sum().eq(15)
+AFTER
+rolling(15, min_periods=15).sum().ge(14)
+DETECTED BY
+test_missing_date_breaks_complete_window

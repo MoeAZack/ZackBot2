@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_capacity_must_increase_in_aggregate ___________________
+
+    def test_capacity_must_increase_in_aggregate():
+        count, capacity = sample()
+        capacity.iloc[25:] = 100.
+>       assert not M.channels_deepen(count, capacity).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...24    False\n25    False\n26    False\n27     True\n28    False\n29    False\n30    False\n31    False\n32    False\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...24    False\n25    False\n26    False\n27     True\n28    False\n29    False\n30    False\n31    False\n32    False\ndtype: bool = <function channels_deepen at 0x00000245B1036AC0>(0     1000.0\n1     1000.0\n2     1000.0\n3     1000.0\n4     1000.0\n5     1000.0\n6     1000.0\n7     1000.0\n8     1000.0\n9...\n25     850.0\n26     850.0\n27     850.0\n28     850.0\n29     850.0\n30     850.0\n31     850.0\n32     850.0\ndtype: float64, 0     100.0\n1     100.0\n2     100.0\n3     100.0\n4     100.0\n5     100.0\n6     100.0\n7     100.0\n8     100.0\n9     100....   100.0\n25    100.0\n26    100.0\n27    100.0\n28    100.0\n29    100.0\n30    100.0\n31    100.0\n32    100.0\ndtype: float64)
+E        +        where <function channels_deepen at 0x00000245B1036AC0> = M.channels_deepen
+
+tests\test_longscout_v164.py:35: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v164.py::test_capacity_must_increase_in_aggregate
+1 failed in 2.28s

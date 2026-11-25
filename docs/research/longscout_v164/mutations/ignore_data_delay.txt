@@ -1,0 +1,6 @@
+BEFORE
+.shift(2, fill_value=False)
+AFTER
+.shift(0, fill_value=False)
+DETECTED BY
+test_first_qualified_observation_is_delayed

@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_missing_date_breaks_complete_window ___________________
+
+    def test_missing_date_breaks_complete_window():
+        count, capacity = sample()
+        capacity.iloc[20] = float('nan')
+>       assert not M.channels_deepen(count, capacity).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...24    False\n25    False\n26    False\n27     True\n28    False\n29    False\n30    False\n31    False\n32    False\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...24    False\n25    False\n26    False\n27     True\n28    False\n29    False\n30    False\n31    False\n32    False\ndtype: bool = <function channels_deepen at 0x000001C0E0266AC0>(0     1000.0\n1     1000.0\n2     1000.0\n3     1000.0\n4     1000.0\n5     1000.0\n6     1000.0\n7     1000.0\n8     1000.0\n9...\n25     850.0\n26     850.0\n27     850.0\n28     850.0\n29     850.0\n30     850.0\n31     850.0\n32     850.0\ndtype: float64, 0     100.0\n1     100.0\n2     100.0\n3     100.0\n4     100.0\n5     100.0\n6     100.0\n7     100.0\n8     100.0\n9     100....   100.0\n25    106.0\n26    106.0\n27    106.0\n28    106.0\n29    106.0\n30    106.0\n31    106.0\n32    106.0\ndtype: float64)
+E        +        where <function channels_deepen at 0x000001C0E0266AC0> = M.channels_deepen
+
+tests\test_longscout_v164.py:41: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v164.py::test_missing_date_breaks_complete_window
+1 failed in 2.36s

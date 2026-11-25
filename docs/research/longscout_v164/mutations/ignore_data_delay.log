@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_first_qualified_observation_is_delayed _________________
+
+    def test_first_qualified_observation_is_delayed():
+        count, capacity = sample()
+        signal = M.channels_deepen(count, capacity)
+>       assert signal[signal].index.tolist() == [27]
+E       assert [25] == [27]
+E         
+E         At index 0 diff: 25 != 27
+E         Use -v to get more diff
+
+tests\test_longscout_v164.py:28: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v164.py::test_first_qualified_observation_is_delayed
+1 failed in 1.81s
