@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 355,
+ "registered_trials": 356,
  "completed_trials": 352,
  "historical_screen_passes": 13,
  "versions": {
@@ -1510,6 +1510,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "155": {
+   "status": "PREREGISTERED",
+   "source_freeze": "4ebb97ef5dec21db52ceb05d0049940ef2406caa",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 356,
+     "key": "r155_btc_collateral_oi_shock_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
