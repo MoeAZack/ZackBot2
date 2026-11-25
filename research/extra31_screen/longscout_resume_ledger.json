@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 336,
+ "registered_trials": 337,
  "completed_trials": 333,
  "historical_screen_passes": 12,
  "versions": {
@@ -1073,6 +1073,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "136": {
+   "status": "PREREGISTERED",
+   "source_freeze": "9faed3ac92ed316b57e4b36ec78c2e511bb27bf3",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 337,
+     "key": "l136_btc_taker_flow_reversal_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
