@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 376,
+ "registered_trials": 377,
  "completed_trials": 371,
  "historical_screen_passes": 13,
  "versions": {
@@ -1991,6 +1991,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "176": {
+   "status": "PREREGISTERED",
+   "source_freeze": "96d21f042b4d4d308b10f079c3cc030bb256fe38",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 377,
+     "key": "l176_cme_positioning_long_after_short_covering_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
