@@ -1,0 +1,6 @@
+BEFORE
+extreme > last_bottom
+AFTER
+extreme >= last_bottom
+DETECTED BY
+test_equal_falling_column_low_is_rejected

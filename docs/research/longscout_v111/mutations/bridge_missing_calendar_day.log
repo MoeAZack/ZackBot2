@@ -1,0 +1,27 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_prefix_and_missing_day _________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001C587D78200>
+
+    def test_prefix_and_missing_day(monkeypatch):
+        d = fixture()
+        monkeypatch.setattr(M.L1, 'regime_daily', lambda c: pd.Series(0., index=c.index))
+        signals = M.sig_point_figure(d, {}, {})
+        assert np.flatnonzero(signals['le']).tolist() == [6]
+        for stop in range(1, len(d) + 1):
+            part = M.sig_point_figure(d.iloc[:stop], {}, {})
+            for key, values in signals.items():
+                pd.testing.assert_series_equal(part[key], values.iloc[:stop])
+        missing_day = d.copy()
+        missing_day.loc[4:, 't'] += pd.Timedelta(days=1)
+>       assert events(missing_day) == []
+E       assert [6] == []
+E         
+E         Left contains one more item: 6
+E         Use -v to get more diff
+
+tests\test_longscout_v111.py:52: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v111.py::test_prefix_and_missing_day - assert [6]...
+1 failed in 1.27s

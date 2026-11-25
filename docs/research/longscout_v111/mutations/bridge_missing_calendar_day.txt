@@ -1,0 +1,6 @@
+BEFORE
+ or date - previous_date != day
+AFTER
+
+DETECTED BY
+test_prefix_and_missing_day

@@ -1,0 +1,16 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_reversal_count_and_exact_once ______________________
+
+    def test_reversal_count_and_exact_once():
+        assert events(fixture()) == [6]
+>       assert events(fixture((0, 6, 2, 6, 4, 6, 7, 8))) == []
+E       assert [6] == []
+E         
+E         Left contains one more item: 6
+E         Use -v to get more diff
+
+tests\test_longscout_v111.py:33: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v111.py::test_reversal_count_and_exact_once - ass...
+1 failed in 1.28s

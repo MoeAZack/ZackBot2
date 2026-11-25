@@ -1,0 +1,6 @@
+BEFORE
+lower <= extreme - 3
+AFTER
+lower <= extreme - 2
+DETECTED BY
+test_reversal_count_and_exact_once

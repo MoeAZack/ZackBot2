@@ -1,0 +1,15 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_equal_falling_column_low_is_rejected __________________
+
+    def test_equal_falling_column_low_is_rejected():
+>       assert events(fixture((0, 6, 2, 6, 2, 6, 7, 8))) == []
+E       assert [6] == []
+E         
+E         Left contains one more item: 6
+E         Use -v to get more diff
+
+tests\test_longscout_v111.py:38: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v111.py::test_equal_falling_column_low_is_rejected
+1 failed in 1.40s
