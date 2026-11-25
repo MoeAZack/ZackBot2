@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 350,
+ "registered_trials": 351,
  "completed_trials": 347,
  "historical_screen_passes": 13,
  "versions": {
@@ -1399,6 +1399,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "150": {
+   "status": "PREREGISTERED",
+   "source_freeze": "faaa4559674975b2d32d3600d69d224e1ceab89a",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 351,
+     "key": "l150_btc_gross_near_book_recovery_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
