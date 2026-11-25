@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 370,
+ "registered_trials": 371,
  "completed_trials": 365,
  "historical_screen_passes": 13,
  "versions": {
@@ -1851,6 +1851,18 @@
     }
    ],
    "reason": "Python/pandas preserved the publisher hashrate integers beyond native integer range as an object column. The frozen loader stopped in signal initialization before trades or economic results."
+  },
+  "170": {
+   "status": "PREREGISTERED",
+   "source_freeze": "abd9c46410fdd9c3b1fbd75c966b910c380c6722",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 371,
+     "key": "l170_alt_perpetual_basis_recovery_breadth_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
+    }
+   ]
   }
  },
  "owner_stop": {
