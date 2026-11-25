@@ -1,0 +1,6 @@
+BEFORE
+prior = bases.shift()
+AFTER
+prior = bases.shift(-1)
+DETECTED BY
+test_uses_adjacent_completed_close

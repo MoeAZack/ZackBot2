@@ -1,0 +1,6 @@
+BEFORE
+return complete & recoveries
+AFTER
+return recoveries
+DETECTED BY
+test_needs_paired_quotes_in_all_markets

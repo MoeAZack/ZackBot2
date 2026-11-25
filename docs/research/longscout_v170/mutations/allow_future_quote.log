@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_uses_adjacent_completed_close ______________________
+
+    def test_uses_adjacent_completed_close():
+        bases = sample()
+        events = M.simultaneous_recovery(bases)
+>       assert events.tolist() == [False, True]
+E       assert [False, False] == [False, True]
+E         
+E         At index 1 diff: False != True
+E         Use -v to get more diff
+
+tests\test_longscout_v170.py:40: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v170.py::test_uses_adjacent_completed_close - ass...
+1 failed in 1.64s

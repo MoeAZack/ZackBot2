@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_needs_paired_quotes_in_all_markets ___________________
+
+    def test_needs_paired_quotes_in_all_markets():
+        bases = sample()
+        bases.iloc[0, 4] = float('nan')
+>       assert not M.simultaneous_recovery(bases).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0    False\n1     True\ndtype: bool.any
+E        +      where 0    False\n1     True\ndtype: bool = <function simultaneous_recovery at 0x00000146C4F86AC0>(   ADAUSDT  DOGEUSDT  ETHUSDT  SOLUSDT  XRPUSDT\n0  -0.0004   -0.0004  -0.0004      0.0      NaN\n1   0.0000    0.0000  -0.0001      0.0      0.0)
+E        +        where <function simultaneous_recovery at 0x00000146C4F86AC0> = M.simultaneous_recovery
+
+tests\test_longscout_v170.py:34: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v170.py::test_needs_paired_quotes_in_all_markets
+1 failed in 1.31s

@@ -1,0 +1,6 @@
+BEFORE
+recoveries.sum(axis=1).ge(3)
+AFTER
+recoveries.sum(axis=1).ge(2)
+DETECTED BY
+test_needs_three_markets_to_recover
