@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 346,
+ "registered_trials": 347,
  "completed_trials": 343,
  "historical_screen_passes": 13,
  "versions": {
@@ -1309,6 +1309,18 @@
       "fresh134"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "146": {
+   "status": "PREREGISTERED",
+   "source_freeze": "ccf5ba13723afdeb7fb5be60db05c6c493c9af83",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 347,
+     "key": "l146_btc_oi_turnover_capacity_recovery_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
