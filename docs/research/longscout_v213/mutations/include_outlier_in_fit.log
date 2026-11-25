@@ -1,0 +1,21 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_monday_signal_uses_only_prior_fit ____________________
+
+    def test_monday_signal_uses_only_prior_fit():
+        dates = pd.date_range('2024-01-01', periods=51, freq='D')
+        base = np.sin(np.arange(len(dates))) * .002
+        returns = pd.DataFrame({'A': base.copy(), 'B': base.copy(), 'C': base.copy()}, index=dates)
+        returns.iloc[49] = [-.09, .01, .011]
+        liquid = pd.DataFrame(True, index=dates, columns=returns.columns)
+        buy, sell = M.paired_dislocations(returns, liquid)
+>       assert buy.index[buy.A].tolist() == [pd.Timestamp('2024-02-19')]
+E       AssertionError: assert [] == [Timestamp('2...19 00:00:00')]
+E         
+E         Right contains one more item: Timestamp('2024-02-19 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v213.py:45: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v213.py::test_monday_signal_uses_only_prior_fit
+1 failed in 1.20s

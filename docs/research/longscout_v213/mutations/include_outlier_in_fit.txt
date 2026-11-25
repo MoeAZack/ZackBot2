@@ -1,0 +1,6 @@
+BEFORE
+training = market[i - WINDOW:i]
+AFTER
+training = market[i - WINDOW + 1:i + 1]
+DETECTED BY
+test_monday_signal_uses_only_prior_fit

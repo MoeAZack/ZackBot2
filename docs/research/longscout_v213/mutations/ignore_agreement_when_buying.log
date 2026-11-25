@@ -1,0 +1,15 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_requires_agreeing_peer_returns _____________________
+
+    def test_requires_agreeing_peer_returns():
+        buy, sell = M.disagreement_flags(np.array([-.05]), np.array([.005]), np.array([-.005]))
+>       assert not (buy | sell).any()
+E       assert not np.True_
+E        +  where np.True_ = <built-in method any of numpy.ndarray object at 0x00000231310A7750>()
+E        +    where <built-in method any of numpy.ndarray object at 0x00000231310A7750> = (array([ True]) | array([False])).any
+
+tests\test_longscout_v213.py:35: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v213.py::test_requires_agreeing_peer_returns - as...
+1 failed in 1.16s

@@ -1,0 +1,6 @@
+BEFORE
+return agree & (deviation <= -.02)
+AFTER
+return (deviation <= -.02)
+DETECTED BY
+test_requires_agreeing_peer_returns

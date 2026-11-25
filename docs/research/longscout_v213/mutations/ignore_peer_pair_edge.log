@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_requires_mutual_peer_correlation ____________________
+
+    def test_requires_mutual_peer_correlation():
+        corr = np.array([[1., .9, .8], [.9, 1., .3], [.8, .3, 1.]])
+        first, second = M.choose_neighbors(corr)
+>       assert first.tolist() == second.tolist() == [-1, -1, -1]
+E       assert [1, 0, 0] == [-1, -1, -1]
+E         
+E         At index 0 diff: 1 != -1
+E         Use -v to get more diff
+
+tests\test_longscout_v213.py:24: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v213.py::test_requires_mutual_peer_correlation - ...
+1 failed in 1.68s
