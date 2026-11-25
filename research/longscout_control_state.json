@@ -405,7 +405,13 @@
    "head": "a838ae5c6062567a86cd32c09542d5b3f33545fa"
   }
  },
- "running": {},
+ "running": {
+  "version": 163,
+  "source": "474d5b8b6c3c6f90cdd2c383418fbc8ebd0ddacf",
+  "registration": "7ff0da70144d8e9a9bf8b1b955c055fa51eb9818",
+  "output": "C:\\Dev\\ZackBot_research_cache\\longscout_codex_v163_20261124",
+  "start_cairo": "2026-11-25T13:37:00.065541+02:00"
+ },
  "queued": {
   "94": {
    "source_freeze": "91a6775d1eb0558b5de44086e2b9189d7aed4579",
@@ -493,5 +499,14 @@
  "runtime_followup": {
   "status": "A2 first signal after 12:00 Cairo (10:00 UTC) on 25 Nov pending. Recheck read-only between versions.",
   "bridge": "https://github.com/MoeAZack/ZackBot2/issues/219#issuecomment-7156499218"
+ },
+ "incomplete_versions": {
+  "163": {
+   "trial": 364,
+   "registration": "7ff0da7",
+   "source": "474d5b8b6c3c6f90cdd2c383418fbc8ebd0ddacf",
+   "reason": "Source-manifest sample label was changed by the Windows text encoding pipeline. The frozen loader stopped during BTC input initialization, before signal generation or economic outcomes.",
+   "next": "V164 first; preserve failed trial and use a new registration for the repaired source contract."
+  }
  }
 }

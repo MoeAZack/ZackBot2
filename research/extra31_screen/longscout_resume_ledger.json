@@ -1700,16 +1700,18 @@
    ]
   },
   "163": {
-   "status": "PREREGISTERED",
+   "status": "INCOMPLETE_INPUT_CONTRACT",
    "source_freeze": "474d5b8b6c3c6f90cdd2c383418fbc8ebd0ddacf",
    "batch_passes": null,
    "candidates": [
     {
      "trial": 364,
      "key": "l163_btc_bid_resilience_during_selling_1d",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "INCOMPLETE_INPUT_CONTRACT",
+     "reason": "Source-manifest sample label was changed by the Windows text encoding pipeline. The frozen loader stopped during BTC input initialization, before signal generation or economic outcomes."
     }
-   ]
+   ],
+   "reason": "Source-manifest sample label was changed by the Windows text encoding pipeline. The frozen loader stopped during BTC input initialization, before signal generation or economic outcomes."
   }
  },
  "owner_stop": {
