@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_needs_every_paired_bar _________________________
+
+    def test_needs_every_paired_bar():
+        y, x = sample()
+        y.iloc[45] = np.nan
+>       assert not M.response_asymmetry(y, x).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n95    False\n96    False\n97    False\n98    False\n99    False\nLength: 100, dtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n95    False\n96    False\n97    False\n98    False\n99    False\nLength: 100, dtype: bool = <function response_asymmetry at 0x0000019066B4B7E0>(0     0.001500\n1    -0.001500\n2     0.001500\n3    -0.001500\n4     0.001500\n        ...   \n95   -0.001500\n96    0.004125\n97   -0.001500\n98    0.004125\n99   -0.001500\nLength: 100, dtype: float64, 0     0.25\n1    -0.25\n2     0.25\n3    -0.25\n4     0.25\n      ... \n95   -0.25\n96    0.25\n97   -0.25\n98    0.25\n99   -0.25\nLength: 100, dtype: float64)
+E        +        where <function response_asymmetry at 0x0000019066B4B7E0> = M.response_asymmetry
+
+tests\test_longscout_v171.py:40: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v171.py::test_needs_every_paired_bar - assert not...
+1 failed in 3.12s

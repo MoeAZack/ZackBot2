@@ -1,0 +1,6 @@
+BEFORE
+spread = (buying - selling).where(paired & selling.ge(0))
+AFTER
+spread = (buying - selling).where(selling.ge(0))
+DETECTED BY
+test_needs_every_paired_bar

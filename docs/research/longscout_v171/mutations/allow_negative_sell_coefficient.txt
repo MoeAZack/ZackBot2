@@ -1,0 +1,6 @@
+BEFORE
+paired & selling.ge(0)
+AFTER
+paired
+DETECTED BY
+test_rejects_negative_sell_response

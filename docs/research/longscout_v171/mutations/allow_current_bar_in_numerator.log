@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_detects_first_crossing_after_bar_used __________________
+
+    def test_detects_first_crossing_after_bar_used():
+        y, x = sample()
+        crossing = M.response_asymmetry(y, x)
+>       assert crossing[crossing].index.tolist() == [87]
+E       assert [86] == [87]
+E         
+E         At index 0 diff: 86 != 87
+E         Use -v to get more diff
+
+tests\test_longscout_v171.py:33: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v171.py::test_detects_first_crossing_after_bar_used
+1 failed in 2.20s
