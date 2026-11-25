@@ -1,0 +1,21 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________________ test_fades_only_lagging_coin _________________________
+
+    def test_fades_only_lagging_coin():
+        coin, bitcoin = sample()
+        range_mask = pd.Series(True, index=coin.index)
+        event = M.long_from_rebalancing(coin, bitcoin, range_mask)
+>       assert event.iloc[20] and not event.iloc[21] and event.iloc[22]
+E       assert (np.True_ and not np.False_ and np.False_)
+
+tests\test_longscout_v200.py:46: AssertionError
+============================== warnings summary ===============================
+tests/test_longscout_v200.py::test_fades_only_lagging_coin
+  C:\Users\princ\AppData\Local\Programs\Python\Python312\Lib\site-packages\pandas\core\arraylike.py:402: RuntimeWarning: invalid value encountered in logaddexp
+    result = getattr(ufunc, method)(*inputs, **kwargs)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v200.py::test_fades_only_lagging_coin - assert (n...
+1 failed, 1 warning in 1.96s

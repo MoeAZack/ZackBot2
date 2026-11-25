@@ -1,0 +1,6 @@
+BEFORE
+ & relative_lag
+AFTER
+
+DETECTED BY
+test_fades_only_lagging_coin

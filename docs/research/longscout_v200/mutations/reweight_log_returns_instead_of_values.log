@@ -1,0 +1,24 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_constant_mix_gross_growth_is_exact ___________________
+
+    def test_constant_mix_gross_growth_is_exact():
+        coin, bitcoin = sample()
+        excess = M.constant_mix_excess(coin, bitcoin)
+>       assert np.isclose(excess.iloc[20], 10. * np.log(1.1 * ((100. / 120. + 1.) / 2.)))
+E       AssertionError: assert np.False_
+E        +  where np.False_ = <function isclose at 0x000001B57FE7F5F0>(np.float64(0.0), (10.0 * np.float64(0.008298802814695284)))
+E        +    where <function isclose at 0x000001B57FE7F5F0> = np.isclose
+E        +    and   np.float64(0.008298802814695284) = <ufunc 'log'>((1.1 * (((100.0 / 120.0) + 1.0) / 2.0)))
+E        +      where <ufunc 'log'> = np.log
+
+tests\test_longscout_v200.py:30: AssertionError
+============================== warnings summary ===============================
+tests/test_longscout_v200.py::test_constant_mix_gross_growth_is_exact
+  C:\Users\princ\AppData\Local\Programs\Python\Python312\Lib\site-packages\pandas\core\arraylike.py:402: RuntimeWarning: invalid value encountered in logaddexp
+    result = getattr(ufunc, method)(*inputs, **kwargs)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v200.py::test_constant_mix_gross_growth_is_exact
+1 failed, 1 warning in 2.39s

@@ -1,0 +1,26 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_needs_complete_gross_return_window ___________________
+
+    def test_needs_complete_gross_return_window():
+        coin, bitcoin = sample()
+        coin.iloc[10] = np.nan
+>       assert M.constant_mix_excess(coin, bitcoin).isna().all()
+E       assert np.False_
+E        +  where np.False_ = all()
+E        +    where all = 0      True\n1      True\n2      True\n3      True\n4      True\n5      True\n6      True\n7      True\n8      True\n9      Tru...16     True\n17     True\n18     True\n19     True\n20    False\n21    False\n22    False\n23    False\n24    False\ndtype: bool.all
+E        +      where 0      True\n1      True\n2      True\n3      True\n4      True\n5      True\n6      True\n7      True\n8      True\n9      Tru...16     True\n17     True\n18     True\n19     True\n20    False\n21    False\n22    False\n23    False\n24    False\ndtype: bool = isna()
+E        +        where isna = 0          NaN\n1          NaN\n2          NaN\n3          NaN\n4          NaN\n5          NaN\n6          NaN\n7          Na...18         NaN\n19         NaN\n20    0.074689\n21    0.074689\n22    0.074689\n23    0.074689\n24    0.074689\ndtype: float64.isna
+E        +          where 0          NaN\n1          NaN\n2          NaN\n3          NaN\n4          NaN\n5          NaN\n6          NaN\n7          Na...18         NaN\n19         NaN\n20    0.074689\n21    0.074689\n22    0.074689\n23    0.074689\n24    0.074689\ndtype: float64 = <function constant_mix_excess at 0x00000275EC93B740>(0     100.0\n1     120.0\n2     100.0\n3     120.0\n4     100.0\n5     120.0\n6     100.0\n7     120.0\n8     100.0\n9     120....   100.0\n17    120.0\n18    100.0\n19    120.0\n20    100.0\n21    120.0\n22    100.0\n23    120.0\n24    100.0\ndtype: float64, 0     100.0\n1     100.0\n2     100.0\n3     100.0\n4     100.0\n5     100.0\n6     100.0\n7     100.0\n8     100.0\n9     100....   100.0\n17    100.0\n18    100.0\n19    100.0\n20    100.0\n21    100.0\n22    100.0\n23    100.0\n24    100.0\ndtype: float64)
+E        +            where <function constant_mix_excess at 0x00000275EC93B740> = M.constant_mix_excess
+
+tests\test_longscout_v200.py:39: AssertionError
+============================== warnings summary ===============================
+tests/test_longscout_v200.py::test_needs_complete_gross_return_window
+  C:\Users\princ\AppData\Local\Programs\Python\Python312\Lib\site-packages\pandas\core\arraylike.py:402: RuntimeWarning: invalid value encountered in logaddexp
+    result = getattr(ufunc, method)(*inputs, **kwargs)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v200.py::test_needs_complete_gross_return_window
+1 failed, 1 warning in 1.98s

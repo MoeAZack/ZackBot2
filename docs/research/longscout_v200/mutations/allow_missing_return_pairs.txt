@@ -1,0 +1,6 @@
+BEFORE
+rolling(20, min_periods=20)
+AFTER
+rolling(20, min_periods=18)
+DETECTED BY
+test_needs_complete_gross_return_window

@@ -1,0 +1,6 @@
+BEFORE
+np.logaddexp(target.diff(), market.diff()) - LOG_TWO
+AFTER
+.5 * (target.diff() + market.diff())
+DETECTED BY
+test_constant_mix_gross_growth_is_exact
