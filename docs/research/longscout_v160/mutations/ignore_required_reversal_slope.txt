@@ -1,0 +1,6 @@
+BEFORE
+ & slope.le(-.15)
+AFTER
+
+DETECTED BY
+test_position_must_have_learned_reversal

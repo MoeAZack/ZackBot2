@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_position_must_have_learned_reversal ___________________
+
+    def test_position_must_have_learned_reversal():
+        x = pd.DataFrame([[-.04, -.04, .04, .04]])
+        slope = pd.DataFrame([[-.4, -.01, -.4, -.01]])
+        intercept = pd.DataFrame([[0., .02, 0., -.02]])
+        buy, sell = M.range_decisions(x, slope, intercept, x.notna())
+>       assert buy.iloc[0].tolist() == [True, False, False, False]
+E       assert [True, True, False, False] == [True, False, False, False]
+E         
+E         At index 1 diff: True != False
+E         Use -v to get more diff
+
+tests\test_longscout_v160.py:50: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v160.py::test_position_must_have_learned_reversal
+1 failed in 1.68s

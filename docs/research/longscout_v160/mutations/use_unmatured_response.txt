@@ -1,0 +1,6 @@
+BEFORE
+values.shift().rolling(60, min_periods=60)
+AFTER
+values.rolling(60, min_periods=60)
+DETECTED BY
+test_same_row_label_is_not_available
