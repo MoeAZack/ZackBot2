@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 406,
+ "registered_trials": 407,
  "completed_trials": 401,
  "historical_screen_passes": 13,
  "versions": {
@@ -2693,6 +2693,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "207": {
+   "status": "PREREGISTERED",
+   "source_freeze": "aa304a7537215ec28180da8f6a2aa35cab630031",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 407,
+     "key": "r207_causal_forecast_interval_reentry_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
