@@ -2,7 +2,7 @@
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
  "registered_trials": 383,
- "completed_trials": 377,
+ "completed_trials": 378,
  "historical_screen_passes": 13,
  "versions": {
   "91": {
@@ -2136,14 +2136,25 @@
    ]
   },
   "182": {
-   "status": "PREREGISTERED",
+   "status": "COMPLETE_REJECTED",
    "source_freeze": "3f8565cd7d0a51cae8f3a04794315b68ab4b50a1",
-   "batch_passes": null,
+   "batch_passes": 0,
    "candidates": [
     {
      "trial": 383,
      "key": "l182_treasury_drawdown_reserve_increase_1d",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "FAIL",
+     "meanR15_fee_plus_slip": -0.020002278050944736,
+     "failed_gates": [
+      "trades",
+      "meanR15",
+      "early",
+      "ex_best_coin",
+      "meanR23",
+      "order0_30_per_half",
+      "extra31"
+     ],
+     "forward_worthy": false
     }
    ]
   }

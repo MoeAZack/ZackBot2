@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_fed_credit_must_be_stable ________________________
+
+    def test_fed_credit_must_be_stable():
+        values, release = sample()
+        values.iloc[-1, -1] = 6_528_000
+>       assert not M.reserves_release(values, release).any()
+E       AssertionError: assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2025-11-14    False\n2025-11-21    False\n2025-11-29     True\ndtype: bool.any
+E        +      where 2025-11-14    False\n2025-11-21    False\n2025-11-29     True\ndtype: bool = <function reserves_release at 0x0000016DBFD06A20>(            reserve_balances  treasury_general_account  reserve_bank_credit\n2025-11-12           3000000              ...                500000              6500000\n2025-11-26           3040000                    457000              6528000, DatetimeIndex(['2025-11-13', '2025-11-20', '2025-11-28'], dtype='datetime64[us]', freq=None))
+E        +        where <function reserves_release at 0x0000016DBFD06A20> = M.reserves_release
+
+tests\test_longscout_v182.py:29: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v182.py::test_fed_credit_must_be_stable - Asserti...
+1 failed in 1.53s

@@ -1,0 +1,6 @@
+BEFORE
+ & change.reserve_bank_credit.abs().le(20_000)
+AFTER
+
+DETECTED BY
+test_fed_credit_must_be_stable

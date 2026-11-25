@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_uses_release_availability ________________________
+
+    def test_uses_release_availability():
+        values, release = sample()
+        pulse = M.reserves_release(values, release)
+>       assert pulse[pulse].index.tolist() == [pd.Timestamp('2025-11-29')]
+E       AssertionError: assert [Timestamp('2...28 00:00:00')] == [Timestamp('2...29 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2025-11-28 00:00:00') != Timestamp('2025-11-29 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v182.py:41: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v182.py::test_uses_release_availability - Asserti...
+1 failed in 1.22s

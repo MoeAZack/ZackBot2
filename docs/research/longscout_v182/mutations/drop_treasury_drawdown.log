@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________________ test_needs_treasury_drawdown _________________________
+
+    def test_needs_treasury_drawdown():
+        values, release = sample()
+        values.iloc[-1, 1] = 490_000
+>       assert not M.reserves_release(values, release).any()
+E       AssertionError: assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2025-11-14    False\n2025-11-21    False\n2025-11-29     True\ndtype: bool.any
+E        +      where 2025-11-14    False\n2025-11-21    False\n2025-11-29     True\ndtype: bool = <function reserves_release at 0x000001F32CB46A20>(            reserve_balances  treasury_general_account  reserve_bank_credit\n2025-11-12           3000000              ...                500000              6500000\n2025-11-26           3040000                    490000              6495000, DatetimeIndex(['2025-11-13', '2025-11-20', '2025-11-28'], dtype='datetime64[us]', freq=None))
+E        +        where <function reserves_release at 0x000001F32CB46A20> = M.reserves_release
+
+tests\test_longscout_v182.py:35: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v182.py::test_needs_treasury_drawdown - Assertion...
+1 failed in 1.42s

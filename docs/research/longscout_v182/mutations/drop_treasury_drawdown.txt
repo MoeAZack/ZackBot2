@@ -1,0 +1,6 @@
+BEFORE
+ & change.treasury_general_account.le(-35_000)
+AFTER
+
+DETECTED BY
+test_needs_treasury_drawdown
