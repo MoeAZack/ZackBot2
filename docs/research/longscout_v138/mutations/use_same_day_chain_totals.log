@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_first_pulse_is_delayed_two_days _____________________
+
+    def test_first_pulse_is_delayed_two_days():
+        days, fees, count = synthetic()
+        result = M.demand_pulse(fees, count)
+>       assert result[result].index.tolist() == [days[35]]
+E       AssertionError: assert [Timestamp('2...03 00:00:00')] == [Timestamp('2...05 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2024-02-03 00:00:00') != Timestamp('2024-02-05 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v138.py:30: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v138.py::test_first_pulse_is_delayed_two_days - A...
+1 failed in 1.95s

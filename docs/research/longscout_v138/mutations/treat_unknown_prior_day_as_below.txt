@@ -1,0 +1,6 @@
+BEFORE
+usable.shift(fill_value=False) & ~elevated.shift(fill_value=False)
+AFTER
+~elevated.shift(fill_value=False)
+DETECTED BY
+test_missing_prior_day_blocks_transition

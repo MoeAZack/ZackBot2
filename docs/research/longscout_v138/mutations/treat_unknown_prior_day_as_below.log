@@ -1,0 +1,14 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_missing_prior_day_blocks_transition ___________________
+
+    def test_missing_prior_day_blocks_transition():
+        days, fees, count = synthetic()
+        fees.iloc[2] = float('nan')
+>       assert not M.demand_pulse(fees, count).loc[days[35]]
+E       assert not np.True_
+
+tests\test_longscout_v138.py:44: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v138.py::test_missing_prior_day_blocks_transition
+1 failed in 1.42s

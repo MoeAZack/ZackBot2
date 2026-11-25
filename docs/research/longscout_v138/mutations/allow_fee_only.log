@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_fee_without_transactions_cannot_signal _________________
+
+    def test_fee_without_transactions_cannot_signal():
+        _, fees, count = synthetic()
+        count.iloc[33:] = 50.
+>       assert not M.demand_pulse(fees, count).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n2024-01-06    Fals...024-02-05     True\n2024-02-06    False\n2024-02-07    False\n2024-02-08    False\n2024-02-09    False\nFreq: D, dtype: bool.any
+E        +      where 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n2024-01-06    Fals...024-02-05     True\n2024-02-06    False\n2024-02-07    False\n2024-02-08    False\n2024-02-09    False\nFreq: D, dtype: bool = <function demand_pulse at 0x0000017E11EF6AC0>(2024-01-01    100.0\n2024-01-02    100.0\n2024-01-03    100.0\n2024-01-04    100.0\n2024-01-05    100.0\n2024-01-06    100....-02-05    200.0\n2024-02-06    200.0\n2024-02-07    200.0\n2024-02-08    200.0\n2024-02-09    200.0\nFreq: D, dtype: float64, 2024-01-01    100.0\n2024-01-02    100.0\n2024-01-03    100.0\n2024-01-04    100.0\n2024-01-05    100.0\n2024-01-06    100....-02-05     50.0\n2024-02-06     50.0\n2024-02-07     50.0\n2024-02-08     50.0\n2024-02-09     50.0\nFreq: D, dtype: float64)
+E        +        where <function demand_pulse at 0x0000017E11EF6AC0> = M.demand_pulse
+
+tests\test_longscout_v138.py:38: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v138.py::test_fee_without_transactions_cannot_signal
+1 failed in 1.49s

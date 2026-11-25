@@ -1,0 +1,6 @@
+BEFORE
+ & count.ge(reference_count)
+AFTER
+
+DETECTED BY
+test_fee_without_transactions_cannot_signal
