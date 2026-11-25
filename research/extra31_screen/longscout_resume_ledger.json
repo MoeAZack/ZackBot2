@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 344,
+ "registered_trials": 345,
  "completed_trials": 341,
  "historical_screen_passes": 13,
  "versions": {
@@ -1261,6 +1261,18 @@
      "meanR15_fee_plus_slip": 0.0295483040363698,
      "failed_gates": [],
      "forward_worthy": false
+    }
+   ]
+  },
+  "144": {
+   "status": "PREREGISTERED",
+   "source_freeze": "8d25279329bed25a1ac27801983daeceb2b69b99",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 345,
+     "key": "l144_native_open_interest_rotation_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
