@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 332,
+ "registered_trials": 333,
  "completed_trials": 329,
  "historical_screen_passes": 12,
  "versions": {
@@ -982,6 +982,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "132": {
+   "status": "PREREGISTERED",
+   "source_freeze": "cd1da98ce0eb6b17ed8d7295fd8aae43f5ff578d",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 333,
+     "key": "l132_spot_triangle_convergence_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
