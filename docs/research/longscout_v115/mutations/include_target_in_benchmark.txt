@@ -1,0 +1,6 @@
+BEFORE
+returns.rsub(total, axis=0).div(count - 1, axis=0)
+AFTER
+returns.mul(0).add(total / count, axis=0)
+DETECTED BY
+test_peer_correlation_matches_independent_numpy

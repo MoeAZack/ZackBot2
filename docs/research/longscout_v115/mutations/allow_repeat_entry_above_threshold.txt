@@ -1,0 +1,6 @@
+BEFORE
+ & _MEDIAN.shift().lt(.50)
+AFTER
+
+DETECTED BY
+test_first_cross_and_regime_are_required

@@ -1,0 +1,6 @@
+BEFORE
+min_count=51
+AFTER
+min_count=50
+DETECTED BY
+test_benchmark_and_signal_correlation_have_separate_minima

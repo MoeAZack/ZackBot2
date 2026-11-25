@@ -1,0 +1,22 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________ test_peer_correlation_matches_independent_numpy _______________
+
+    def test_peer_correlation_matches_independent_numpy():
+        values = panel()
+        history = values.iloc[-30:].to_numpy()
+        peer_r = [np.corrcoef(history[:, i], np.delete(history, i, axis=1).mean(axis=1))[0, 1]
+                  for i in range(history.shape[1])]
+        expected = np.median(peer_r)
+        score = M.median_peer_correlation(values)
+>       assert score.iloc[-1] == pytest.approx(expected, abs=1e-12)
+E       assert np.float64(0.4681723663488744) == 0.4369442517419558 ± 1.0e-12
+E         
+E         comparison failed
+E         Obtained: 0.4681723663488744
+E         Expected: 0.4369442517419558 ± 1.0e-12
+
+tests\test_longscout_v115.py:38: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v115.py::test_peer_correlation_matches_independent_numpy
+1 failed in 1.36s

@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________ test_benchmark_and_signal_correlation_have_separate_minima __________
+
+    def test_benchmark_and_signal_correlation_have_separate_minima():
+        result = M.median_peer_correlation(panel().iloc[:, :50])
+>       assert result.isna().all()
+E       assert np.False_
+E        +  where np.False_ = all()
+E        +    where all = 2024-01-01     True\n2024-01-02     True\n2024-01-03     True\n2024-01-04     True\n2024-01-05     True\n2024-01-06     Tru...024-02-10    False\n2024-02-11    False\n2024-02-12    False\n2024-02-13    False\n2024-02-14    False\nFreq: D, dtype: bool.all
+E        +      where 2024-01-01     True\n2024-01-02     True\n2024-01-03     True\n2024-01-04     True\n2024-01-05     True\n2024-01-06     Tru...024-02-10    False\n2024-02-11    False\n2024-02-12    False\n2024-02-13    False\n2024-02-14    False\nFreq: D, dtype: bool = isna()
+E        +        where isna = 2024-01-01         NaN\n2024-01-02         NaN\n2024-01-03         NaN\n2024-01-04         NaN\n2024-01-05         NaN\n202...071\n2024-02-11    0.482022\n2024-02-12    0.402670\n2024-02-13    0.411823\n2024-02-14    0.433415\nFreq: D, dtype: float64.isna
+
+tests\test_longscout_v115.py:45: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v115.py::test_benchmark_and_signal_correlation_have_separate_minima
+1 failed in 1.14s

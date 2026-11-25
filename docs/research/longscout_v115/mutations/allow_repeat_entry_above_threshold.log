@@ -1,0 +1,24 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_first_cross_and_regime_are_required ___________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B648F00F50>
+
+    def test_first_cross_and_regime_are_required(monkeypatch):
+        t = pd.date_range('2024-01-01', periods=28, freq='D')
+        coin = pd.DataFrame(dict(t=t, c=np.exp(np.arange(len(t)) / 100), qv=2e7))
+        score = np.full(len(t), .49)
+        score[19:24] = .51
+        monkeypatch.setattr(M, '_MEDIAN', pd.Series(score, index=t))
+        monkeypatch.setattr(M, '_BTC', pd.Series(0., index=t))
+        monkeypatch.setattr(M.L1, 'regime_daily', lambda close: pd.Series(0., index=close.index))
+>       assert np.flatnonzero(M.sig_peer_correlation(coin, {}, {})['le']).tolist() == [19]
+E       assert [19, 20, 21, 22, 23] == [19]
+E         
+E         Left contains 4 more items, first extra item: 20
+E         Use -v to get more diff
+
+tests\test_longscout_v115.py:56: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v115.py::test_first_cross_and_regime_are_required
+1 failed in 1.35s
