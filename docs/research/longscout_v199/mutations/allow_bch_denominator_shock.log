@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_bch_revenue_must_hold __________________________
+
+    def test_bch_revenue_must_hold():
+        a, b, known = sample()
+        a.iloc[71] = -.06
+        b.iloc[71] = -.12
+>       assert not M.mining_spread_recovers(a, b, known).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2025-01-01    False\n2025-01-02    False\n2025-01-03    False\n2025-01-04    False\n2025-01-05    False\n              ... ... False\n2025-03-28    False\n2025-03-29    False\n2025-03-30    False\n2025-03-31    False\nFreq: D, Length: 90, dtype: bool.any
+E        +      where 2025-01-01    False\n2025-01-02    False\n2025-01-03    False\n2025-01-04    False\n2025-01-05    False\n              ... ... False\n2025-03-28    False\n2025-03-29    False\n2025-03-30    False\n2025-03-31    False\nFreq: D, Length: 90, dtype: bool = <function mining_spread_recovers at 0x000001D247603240>(2025-01-01    0.0\n2025-01-02    0.0\n2025-01-03    0.0\n2025-01-04    0.0\n2025-01-05    0.0\n             ... \n2025-03-27    0.0\n2025-03-28    0.0\n2025-03-29    0.0\n2025-03-30    0.0\n2025-03-31    0.0\nFreq: D, Length: 90, dtype: float64, 2025-01-01    0.0\n2025-01-02    0.0\n2025-01-03    0.0\n2025-01-04    0.0\n2025-01-05    0.0\n             ... \n2025-03-27    0.0\n2025-03-28    0.0\n2025-03-29    0.0\n2025-03-30    0.0\n2025-03-31    0.0\nFreq: D, Length: 90, dtype: float64, 2025-01-01    1.735787e+09\n2025-01-02    1.735873e+09\n2025-01-03    1.735960e+09\n2025-01-04    1.736046e+09\n2025-01-05...09\n2025-03-29    1.743304e+09\n2025-03-30    1.743390e+09\n2025-03-31    1.743476e+09\nFreq: D, Length: 90, dtype: float64)
+E        +        where <function mining_spread_recovers at 0x000001D247603240> = M.mining_spread_recovers
+
+tests\test_longscout_v199.py:31: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v199.py::test_bch_revenue_must_hold - assert not ...
+1 failed in 1.20s

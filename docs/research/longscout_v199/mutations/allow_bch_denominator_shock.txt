@@ -1,0 +1,6 @@
+BEFORE
+ & b.diff().abs().le(np.log(1.05))
+AFTER
+
+DETECTED BY
+test_bch_revenue_must_hold

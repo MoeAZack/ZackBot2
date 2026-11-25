@@ -1,0 +1,6 @@
+BEFORE
+ & a.diff().ge(np.log(1.05))
+AFTER
+
+DETECTED BY
+test_requires_own_revenue_improvement

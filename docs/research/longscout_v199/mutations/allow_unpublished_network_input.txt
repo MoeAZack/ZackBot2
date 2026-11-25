@@ -1,0 +1,6 @@
+BEFORE
+ & pd.to_datetime(ready, unit='s').le(decision)
+AFTER
+
+DETECTED BY
+test_guard_uses_provider_time

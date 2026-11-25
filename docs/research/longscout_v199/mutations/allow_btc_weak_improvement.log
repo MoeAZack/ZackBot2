@@ -1,0 +1,20 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_requires_own_revenue_improvement ____________________
+
+    def test_requires_own_revenue_improvement():
+        a, b, known = sample()
+        a.iloc[70:72] = [-.105, -.061]
+        a.iloc[72:] = -.061
+        b.iloc[71:] = -.043
+>       assert not M.mining_spread_recovers(a, b, known).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2025-01-01    False\n2025-01-02    False\n2025-01-03    False\n2025-01-04    False\n2025-01-05    False\n              ... ... False\n2025-03-28    False\n2025-03-29    False\n2025-03-30    False\n2025-03-31    False\nFreq: D, Length: 90, dtype: bool.any
+E        +      where 2025-01-01    False\n2025-01-02    False\n2025-01-03    False\n2025-01-04    False\n2025-01-05    False\n              ... ... False\n2025-03-28    False\n2025-03-29    False\n2025-03-30    False\n2025-03-31    False\nFreq: D, Length: 90, dtype: bool = <function mining_spread_recovers at 0x0000011FA5C93240>(2025-01-01    0.000\n2025-01-02    0.000\n2025-01-03    0.000\n2025-01-04    0.000\n2025-01-05    0.000\n              ... ...061\n2025-03-28   -0.061\n2025-03-29   -0.061\n2025-03-30   -0.061\n2025-03-31   -0.061\nFreq: D, Length: 90, dtype: float64, 2025-01-01    0.000\n2025-01-02    0.000\n2025-01-03    0.000\n2025-01-04    0.000\n2025-01-05    0.000\n              ... ...043\n2025-03-28   -0.043\n2025-03-29   -0.043\n2025-03-30   -0.043\n2025-03-31   -0.043\nFreq: D, Length: 90, dtype: float64, 2025-01-01    1.735787e+09\n2025-01-02    1.735873e+09\n2025-01-03    1.735960e+09\n2025-01-04    1.736046e+09\n2025-01-05...09\n2025-03-29    1.743304e+09\n2025-03-30    1.743390e+09\n2025-03-31    1.743476e+09\nFreq: D, Length: 90, dtype: float64)
+E        +        where <function mining_spread_recovers at 0x0000011FA5C93240> = M.mining_spread_recovers
+
+tests\test_longscout_v199.py:39: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v199.py::test_requires_own_revenue_improvement - ...
+1 failed in 2.19s
