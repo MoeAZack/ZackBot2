@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 367,
+ "registered_trials": 368,
  "completed_trials": 363,
  "historical_screen_passes": 13,
  "versions": {
@@ -1785,6 +1785,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "167": {
+   "status": "PREREGISTERED",
+   "source_freeze": "f50914997da859146d3f2c9f85ba04f73bcaf627",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 368,
+     "key": "r167_btc_mempool_priority_composition_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
