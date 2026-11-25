@@ -1,0 +1,6 @@
+BEFORE
+rows.combined_oi - futures
+AFTER
+rows.combined_oi
+DETECTED BY
+test_subtracts_futures_out_of_combined_exposure

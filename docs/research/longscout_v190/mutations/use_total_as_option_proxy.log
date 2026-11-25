@@ -1,0 +1,16 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________ test_subtracts_futures_out_of_combined_exposure _______________
+
+    def test_subtracts_futures_out_of_combined_exposure():
+        rows, published = sample()
+>       assert M.option_exposure_falls(rows, published).tolist() == [False, True]
+E       assert [False, False] == [False, True]
+E         
+E         At index 1 diff: False != True
+E         Use -v to get more diff
+
+tests\test_longscout_v190.py:33: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v190.py::test_subtracts_futures_out_of_combined_exposure
+1 failed in 2.72s

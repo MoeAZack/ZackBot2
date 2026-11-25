@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________________ test_delayed_release_is_used _________________________
+
+    def test_delayed_release_is_used():
+        rows, published = sample()
+        event = M.option_exposure_falls(rows, published)
+>       assert event[event].index.tolist() == [published[-1]]
+E       AssertionError: assert [Timestamp('2...30 00:00:00')] == [Timestamp('2...20 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2025-09-30 00:00:00') != Timestamp('2025-11-20 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v190.py:39: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v190.py::test_delayed_release_is_used - Assertion...
+1 failed in 1.23s

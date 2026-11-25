@@ -1,0 +1,6 @@
+BEFORE
+ & stable
+AFTER
+
+DETECTED BY
+test_futures_open_interest_must_stay_stable

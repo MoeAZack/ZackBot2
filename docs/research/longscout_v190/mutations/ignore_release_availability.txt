@@ -1,0 +1,6 @@
+BEFORE
+return pulse.set_axis(available)
+AFTER
+return pulse
+DETECTED BY
+test_delayed_release_is_used

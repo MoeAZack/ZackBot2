@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_futures_open_interest_must_stay_stable _________________
+
+    def test_futures_open_interest_must_stay_stable():
+        rows, published = sample()
+        rows.iloc[1] = [1140., 1220.]
+>       assert not M.option_exposure_falls(rows, published).any()
+E       AssertionError: assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2025-10-02    False\n2025-11-20     True\ndtype: bool.any
+E        +      where 2025-10-02    False\n2025-11-20     True\ndtype: bool = <function option_exposure_falls at 0x000001F5F2806AC0>(            futures_oi  combined_oi\n2025-09-23      1000.0       1150.0\n2025-09-30      1140.0       1220.0, DatetimeIndex(['2025-10-02', '2025-11-20'], dtype='datetime64[us]', freq=None))
+E        +        where <function option_exposure_falls at 0x000001F5F2806AC0> = M.option_exposure_falls
+
+tests\test_longscout_v190.py:28: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v190.py::test_futures_open_interest_must_stay_stable
+1 failed in 1.41s
