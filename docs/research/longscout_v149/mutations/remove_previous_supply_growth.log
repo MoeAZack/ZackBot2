@@ -1,0 +1,16 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_prior_interval_must_be_positive _____________________
+
+    def test_prior_interval_must_be_positive():
+        days, supply, issuance, completed = fixture()
+        supply.iloc[:33] = 1000. - 2 * np.arange(33)
+        supply.iloc[33:53] = 936. + .5 * np.arange(1, 21)
+        supply.iloc[53:] = 946. - 3 * np.arange(1, 48)
+>       assert not M.supply_contraction(supply, issuance, completed).loc[days[58]]
+E       assert not np.True_
+
+tests\test_longscout_v149.py:49: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v149.py::test_prior_interval_must_be_positive - a...
+1 failed in 1.78s

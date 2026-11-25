@@ -1,0 +1,6 @@
+BEFORE
+ & change.shift(21).gt(0)
+AFTER
+
+DETECTED BY
+test_prior_interval_must_be_positive

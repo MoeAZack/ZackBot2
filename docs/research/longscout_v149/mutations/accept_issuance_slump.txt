@@ -1,0 +1,6 @@
+BEFORE
+ & stable_issuance
+AFTER
+
+DETECTED BY
+test_issuance_cannot_be_falling_materially
