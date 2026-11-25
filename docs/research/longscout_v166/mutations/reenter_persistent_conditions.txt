@@ -1,0 +1,6 @@
+BEFORE
+ & ~state.shift(fill_value=False)
+AFTER
+
+DETECTED BY
+test_bid_growth_signals_only_once

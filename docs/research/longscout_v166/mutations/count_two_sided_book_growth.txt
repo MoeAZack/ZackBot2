@@ -1,0 +1,6 @@
+BEFORE
+ & ask_change.le(.05)
+AFTER
+
+DETECTED BY
+test_ask_growth_blocks_the_bid_signal

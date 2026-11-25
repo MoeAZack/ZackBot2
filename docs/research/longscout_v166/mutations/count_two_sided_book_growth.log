@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_ask_growth_blocks_the_bid_signal ____________________
+
+    def test_ask_growth_blocks_the_bid_signal():
+        bid, _, imbalance = sample()
+>       assert not M.resilient_bid(bid, bid, imbalance).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0    False\n1    False\n2     True\n3    False\ndtype: bool.any
+E        +      where 0    False\n1    False\n2     True\n3    False\ndtype: bool = <function resilient_bid at 0x00000256D6DB6A20>(0    100.0\n1    100.0\n2    121.0\n3    148.0\ndtype: float64, 0    100.0\n1    100.0\n2    121.0\n3    148.0\ndtype: float64, 0    0.0\n1   -0.2\n2   -0.2\n3   -0.2\ndtype: float64)
+E        +        where <function resilient_bid at 0x00000256D6DB6A20> = M.resilient_bid
+
+tests\test_longscout_v166.py:34: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v166.py::test_ask_growth_blocks_the_bid_signal - ...
+1 failed in 1.81s

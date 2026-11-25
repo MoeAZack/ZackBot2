@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_bid_growth_signals_only_once ______________________
+
+    def test_bid_growth_signals_only_once():
+        bid, ask, imbalance = sample()
+        event = M.resilient_bid(bid, ask, imbalance)
+>       assert event[event].index.tolist() == [2]
+E       assert [2, 3] == [2]
+E         
+E         Left contains one more item: 3
+E         Use -v to get more diff
+
+tests\test_longscout_v166.py:28: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v166.py::test_bid_growth_signals_only_once - asse...
+1 failed in 1.87s

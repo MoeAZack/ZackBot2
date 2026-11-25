@@ -2,7 +2,7 @@
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
  "registered_trials": 367,
- "completed_trials": 362,
+ "completed_trials": 363,
  "historical_screen_passes": 13,
  "versions": {
   "91": {
@@ -1764,14 +1764,27 @@
    ]
   },
   "166": {
-   "status": "PREREGISTERED",
+   "status": "COMPLETE_REJECTED",
    "source_freeze": "cd505767ff1e4298bb45d7aea3efc9e6a1781350",
-   "batch_passes": null,
+   "batch_passes": 0,
    "candidates": [
     {
      "trial": 367,
      "key": "l166_btc_bid_resilience_during_selling_1d",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "FAIL",
+     "meanR15_fee_plus_slip": null,
+     "failed_gates": [
+      "trades",
+      "meanR15",
+      "early",
+      "late",
+      "ex_best_coin",
+      "meanR23",
+      "order0_30_per_half",
+      "fresh134",
+      "extra31"
+     ],
+     "forward_worthy": false
     }
    ]
   }
