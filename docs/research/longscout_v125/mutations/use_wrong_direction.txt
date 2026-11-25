@@ -1,0 +1,6 @@
+BEFORE
+previous.lt(0)
+AFTER
+previous.gt(0)
+DETECTED BY
+test_cross_requires_a_deep_prior_discount

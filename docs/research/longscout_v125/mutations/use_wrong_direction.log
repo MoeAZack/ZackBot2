@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_cross_requires_a_deep_prior_discount __________________
+
+    def test_cross_requires_a_deep_prior_discount():
+        spot, contracts, expiries, basis, price = fixture()
+        flags = M.carry_signal(spot, contracts, expiries)
+>       assert np.flatnonzero(flags).tolist() == [40]
+E       assert [] == [40]
+E         
+E         Right contains one more item: 40
+E         Use -v to get more diff
+
+tests\test_longscout_v125.py:36: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v125.py::test_cross_requires_a_deep_prior_discount
+1 failed in 1.29s

@@ -1,0 +1,20 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_cross_requires_a_deep_prior_discount __________________
+
+    def test_cross_requires_a_deep_prior_discount():
+        spot, contracts, expiries, basis, price = fixture()
+        flags = M.carry_signal(spot, contracts, expiries)
+        assert np.flatnonzero(flags).tolist() == [40]
+        basis.iloc[39] = -.02
+>       assert not M.carry_signal(spot, {'A': price('A', basis)}, {'A': expiries['A']}).any()
+E       AssertionError: assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n2024-01-06    Fals...024-02-19    False\n2024-02-20    False\n2024-02-21    False\n2024-02-22    False\n2024-02-23    False\nFreq: D, dtype: bool.any
+E        +      where 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n2024-01-06    Fals...024-02-19    False\n2024-02-20    False\n2024-02-21    False\n2024-02-22    False\n2024-02-23    False\nFreq: D, dtype: bool = <function carry_signal at 0x000002532F6E6B60>(2024-01-01    100.0\n2024-01-02    100.0\n2024-01-03    100.0\n2024-01-04    100.0\n2024-01-05    100.0\n2024-01-06    100....-02-19    100.0\n2024-02-20    100.0\n2024-02-21    100.0\n2024-02-22    100.0\n2024-02-23    100.0\nFreq: D, dtype: float64, {'A': 2024-01-01    100.316481\n2024-01-02    100.313733\n2024-01-03    100.310985\n2024-01-04    100.308237\n2024-01-05  ...02-20    100.179156\n2024-02-21    100.176411\n2024-02-22    100.173667\n2024-02-23    100.170922\nFreq: D, dtype: float64}, {'A': Timestamp('2024-04-26 08:00:00')})
+E        +        where <function carry_signal at 0x000002532F6E6B60> = M.carry_signal
+
+tests\test_longscout_v125.py:38: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v125.py::test_cross_requires_a_deep_prior_discount
+1 failed in 1.32s

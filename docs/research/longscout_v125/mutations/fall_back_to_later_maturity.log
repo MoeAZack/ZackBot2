@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_does_not_fall_back_to_later_maturity __________________
+
+    def test_does_not_fall_back_to_later_maturity():
+        spot, contracts, expiries, _, _ = fixture()
+        assert np.flatnonzero(M.carry_signal(spot, {'B': contracts['B']}, {'B': expiries['B']})).tolist() == [40]
+        contracts['A'].iloc[40] = np.nan
+>       assert not M.carry_signal(spot, contracts, expiries).any()
+E       AssertionError: assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n2024-01-06    Fals...024-02-19    False\n2024-02-20    False\n2024-02-21    False\n2024-02-22    False\n2024-02-23    False\nFreq: D, dtype: bool.any
+E        +      where 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n2024-01-06    Fals...024-02-19    False\n2024-02-20    False\n2024-02-21    False\n2024-02-22    False\n2024-02-23    False\nFreq: D, dtype: bool = <function carry_signal at 0x0000028D23DE6B60>(2024-01-01    100.0\n2024-01-02    100.0\n2024-01-03    100.0\n2024-01-04    100.0\n2024-01-05    100.0\n2024-01-06    100....-02-19    100.0\n2024-02-20    100.0\n2024-02-21    100.0\n2024-02-22    100.0\n2024-02-23    100.0\nFreq: D, dtype: float64, {'A': 2024-01-01    100.316481\n2024-01-02    100.313733\n2024-01-03    100.310985\n2024-01-04    100.308237\n2024-01-05  ...02-20    100.275264\n2024-02-21    100.272517\n2024-02-22    100.269770\n2024-02-23    100.267023\nFreq: D, dtype: float64}, {'A': Timestamp('2024-04-26 08:00:00'), 'B': Timestamp('2024-05-31 08:00:00')})
+E        +        where <function carry_signal at 0x0000028D23DE6B60> = M.carry_signal
+
+tests\test_longscout_v125.py:45: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v125.py::test_does_not_fall_back_to_later_maturity
+1 failed in 1.28s

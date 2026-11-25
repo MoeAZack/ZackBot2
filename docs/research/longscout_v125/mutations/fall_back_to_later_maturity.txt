@@ -1,0 +1,6 @@
+BEFORE
+allocated |= active
+AFTER
+allocated |= active & contracts[symbol].notna()
+DETECTED BY
+test_does_not_fall_back_to_later_maturity

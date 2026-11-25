@@ -1,0 +1,6 @@
+BEFORE
+ & (reference - previous).ge(.05)
+AFTER
+
+DETECTED BY
+test_cross_requires_a_deep_prior_discount
