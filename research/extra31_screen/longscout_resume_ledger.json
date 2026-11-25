@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 331,
+ "registered_trials": 332,
  "completed_trials": 328,
  "historical_screen_passes": 12,
  "versions": {
@@ -959,6 +959,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "131": {
+   "status": "PREREGISTERED",
+   "source_freeze": "698a558b3858d42218d86d3972141dd19cd86900",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 332,
+     "key": "l131_estimated_spread_shock_recovery_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
