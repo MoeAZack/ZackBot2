@@ -129,6 +129,13 @@
   },
   "104": {
    "state": "DRAFT_ONLY_STOPPED_BY_OWNER; not frozen, registered or economically run"
+  },
+  "109": {
+   "state": "INCOMPLETE_NOVELTY_WITHDRAWAL",
+   "trials": [
+    310
+   ],
+   "reason": "Stopped before result generation after identifying overlap with V92 early-extreme settlement and V1 washout reclaim."
   }
  },
  "integration_owner": "root; all Git/index/ledger/publication operations sequential",

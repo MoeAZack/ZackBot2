@@ -482,16 +482,18 @@
    ]
   },
   "109": {
-   "status": "PREREGISTERED",
+   "status": "INCOMPLETE_NOVELTY_WITHDRAWAL",
    "source_freeze": "d86d21d9a7d42a4483db193be55468d52602994e",
    "batch_passes": null,
    "candidates": [
     {
      "trial": 310,
      "key": "l109_ordered_intraday_extrema_reclaim_4h",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "INCOMPLETE_NOVELTY_WITHDRAWAL",
+     "reason": "Stopped before result generation after identifying overlap with V92 early-extreme settlement and V1 washout reclaim."
     }
-   ]
+   ],
+   "reason": "Stopped before result generation after identifying overlap with V92 early-extreme settlement and V1 washout reclaim."
   }
  },
  "owner_stop": {
