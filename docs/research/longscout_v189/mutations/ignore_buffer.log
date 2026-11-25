@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________________ test_uses_two_day_buffer ___________________________
+
+    def test_uses_two_day_buffer():
+        caps = sample()
+        flag = M.books_reprice(caps)
+>       assert flag[flag].index.tolist() == [67]
+E       assert [65] == [67]
+E         
+E         At index 0 diff: 65 != 67
+E         Use -v to get more diff
+
+tests\test_longscout_v189.py:38: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v189.py::test_uses_two_day_buffer - assert [65] =...
+1 failed in 1.39s

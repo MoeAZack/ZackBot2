@@ -1,0 +1,6 @@
+BEFORE
+return event.shift(2, fill_value=False)
+AFTER
+return event
+DETECTED BY
+test_uses_two_day_buffer

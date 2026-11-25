@@ -2,7 +2,7 @@
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
  "registered_trials": 390,
- "completed_trials": 384,
+ "completed_trials": 385,
  "historical_screen_passes": 13,
  "versions": {
   "91": {
@@ -2289,14 +2289,26 @@
    ]
   },
   "189": {
-   "status": "PREREGISTERED",
+   "status": "COMPLETE_REJECTED",
    "source_freeze": "7b882cc2b8c356d770fecbc71deee6a0f09287d0",
-   "batch_passes": null,
+   "batch_passes": 0,
    "candidates": [
     {
      "trial": 390,
      "key": "l189_btc_realized_cap_acceleration_1d",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "FAIL",
+     "meanR15_fee_plus_slip": -0.08345636127520334,
+     "failed_gates": [
+      "trades",
+      "meanR15",
+      "early",
+      "late",
+      "ex_best_coin",
+      "meanR23",
+      "order0_30_per_half",
+      "extra31"
+     ],
+     "forward_worthy": false
     }
    ]
   }

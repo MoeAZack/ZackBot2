@@ -1,0 +1,6 @@
+BEFORE
+ & market.abs().le(.05)
+AFTER
+
+DETECTED BY
+test_market_cap_must_be_stable

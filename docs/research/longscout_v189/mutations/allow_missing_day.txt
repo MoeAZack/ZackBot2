@@ -1,0 +1,6 @@
+BEFORE
+rolling(61, min_periods=61).sum().eq(61)
+AFTER
+rolling(61, min_periods=61).sum().ge(60)
+DETECTED BY
+test_requires_contiguous_observations

@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_requires_contiguous_observations ____________________
+
+    def test_requires_contiguous_observations():
+        caps = sample()
+        caps.iloc[10, 1] = float('nan')
+>       assert not M.books_reprice(caps).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n65    False\n66    False\n67     True\n68    False\n69    False\nLength: 70, dtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n65    False\n66    False\n67     True\n68    False\n69    False\nLength: 70, dtype: bool = <function books_reprice at 0x0000020FA4456C00>(    realized_cap_usd  market_cap_usd\n0              100.0           200.0\n1              100.0           200.0\n2      ... 101.0           200.0\n68             101.0           200.0\n69             101.0           200.0\n\n[70 rows x 2 columns])
+E        +        where <function books_reprice at 0x0000020FA4456C00> = M.books_reprice
+
+tests\test_longscout_v189.py:32: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v189.py::test_requires_contiguous_observations - ...
+1 failed in 1.42s
