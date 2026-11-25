@@ -1,0 +1,6 @@
+BEFORE
+rate * (WINDOW - 1)
+AFTER
+rate * WINDOW
+DETECTED BY
+test_reconstruct_known_projection

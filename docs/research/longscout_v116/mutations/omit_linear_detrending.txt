@@ -1,0 +1,6 @@
+BEFORE
+ - trend[:, None] * time
+AFTER
+
+DETECTED BY
+test_reconstruct_known_projection

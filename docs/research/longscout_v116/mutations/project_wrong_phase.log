@@ -1,0 +1,28 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_reconstruct_known_projection ______________________
+
+    def test_reconstruct_known_projection():
+        d = fixture()
+        share, phase, slope = M.cycle_features(d.c)
+        window = np.log(d.c.iloc[8:104].to_numpy())
+        t = np.arange(96)
+        line = np.column_stack([np.ones(len(t)), t])
+        residual = window - line @ np.linalg.lstsq(line, window, rcond=None)[0]
+        omega = 2*np.pi/24
+        wave = np.column_stack([np.cos(t*omega), np.sin(t*omega)])
+        a, b = np.linalg.lstsq(wave, residual, rcond=None)[0]
+        amp = np.hypot(a, b)
+        projected = lambda step: (a*np.cos(step*omega) + b*np.sin(step*omega))/amp
+        assert share[103] == pytest.approx(amp**2/2/np.var(residual))
+>       assert phase[103] == pytest.approx(projected(95))
+E       assert np.float64(-0...0462655978896) == -0.27228405658169164 ± 2.7e-07
+E         
+E         comparison failed
+E         Obtained: -0.5120462655978896
+E         Expected: -0.27228405658169164 ± 2.7e-07
+
+tests\test_longscout_v116.py:43: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v116.py::test_reconstruct_known_projection - asse...
+1 failed in 1.95s

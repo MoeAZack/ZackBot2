@@ -1,0 +1,6 @@
+BEFORE
+ & (slope > 0)
+AFTER
+ & (slope < 0)
+DETECTED BY
+test_two_sided_turns_and_regime

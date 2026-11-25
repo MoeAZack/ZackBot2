@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_two_sided_turns_and_regime _______________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002312DDE39E0>
+
+    def test_two_sided_turns_and_regime(monkeypatch):
+        d = fixture()
+        monkeypatch.setattr(M.L1, 'regime_daily', lambda c: pd.Series(0., index=c.index))
+        M.set_btc(d)
+        full = M.sig_cycle_fade(d, {}, {})
+>       assert full['le'].iloc[109] and full['se'].iloc[121]
+E       assert (np.False_)
+
+tests\test_longscout_v116.py:54: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v116.py::test_two_sided_turns_and_regime - assert...
+1 failed in 1.48s
