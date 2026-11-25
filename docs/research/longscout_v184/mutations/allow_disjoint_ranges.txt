@@ -1,0 +1,6 @@
+BEFORE
+intersection.gt(0) & intersection.ge(.60 * union)
+AFTER
+intersection.gt(0)
+DETECTED BY
+test_weak_overlap_does_not_form_box

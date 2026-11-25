@@ -1,0 +1,23 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_exits_at_broken_box_and_sunday _____________________
+
+    def test_exits_at_broken_box_and_sunday():
+        dates = pd.date_range('2026-01-05', periods=7)
+        box = pd.DataFrame(dict(bottom=100., top=110.), index=dates)
+        high = pd.Series([104.] * 7, index=dates)
+        low = pd.Series([99.] * 7, index=dates)
+        close = pd.Series([101.] * 7, index=dates)
+        close.iloc[1] = 99.5
+        le, se, lx, _ = M.flags_for_box(high, low, close, box, pd.Series(True, index=dates))
+        assert le.iloc[0] and not se.any() and not le.iloc[4:6].any()
+>       assert lx[lx].index.tolist() == [dates[1], dates[6]]
+E       AssertionError: assert [Timestamp('2...06 00:00:00')] == [Timestamp('2...11 00:00:00')]
+E         
+E         Right contains one more item: Timestamp('2026-01-11 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v184.py:48: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v184.py::test_exits_at_broken_box_and_sunday - As...
+1 failed in 1.18s

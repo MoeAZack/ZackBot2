@@ -1,0 +1,22 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_weak_overlap_does_not_form_box _____________________
+
+    def test_weak_overlap_does_not_form_box():
+        high, low = samples()
+        low.iloc[7:14] = 108.
+>       assert M.completed_week_box(high, low).isna().all().all()
+E       assert np.False_
+E        +  where np.False_ = all()
+E        +    where all = bottom    False\ntop       False\ndtype: bool.all
+E        +      where bottom    False\ntop       False\ndtype: bool = all()
+E        +        where all =             bottom    top\n2026-01-05    True   True\n2026-01-06    True   True\n2026-01-07    True   True\n2026-01-08    ...   False  False\n2026-01-29   False  False\n2026-01-30   False  False\n2026-01-31   False  False\n2026-02-01   False  False.all
+E        +          where             bottom    top\n2026-01-05    True   True\n2026-01-06    True   True\n2026-01-07    True   True\n2026-01-08    ...   False  False\n2026-01-29   False  False\n2026-01-30   False  False\n2026-01-31   False  False\n2026-02-01   False  False = isna()
+E        +            where isna =             bottom    top\n2026-01-05     NaN    NaN\n2026-01-06     NaN    NaN\n2026-01-07     NaN    NaN\n2026-01-08    ...   108.0  109.0\n2026-01-29   108.0  109.0\n2026-01-30   108.0  109.0\n2026-01-31   108.0  109.0\n2026-02-01   108.0  109.0.isna
+E        +              where             bottom    top\n2026-01-05     NaN    NaN\n2026-01-06     NaN    NaN\n2026-01-07     NaN    NaN\n2026-01-08    ...   108.0  109.0\n2026-01-29   108.0  109.0\n2026-01-30   108.0  109.0\n2026-01-31   108.0  109.0\n2026-02-01   108.0  109.0 = <function completed_week_box at 0x00000294B94D1D00>(2026-01-05    110.0\n2026-01-06    110.0\n2026-01-07    110.0\n2026-01-08    110.0\n2026-01-09    110.0\n2026-01-10    110....-01-28    117.0\n2026-01-29    117.0\n2026-01-30    117.0\n2026-01-31    117.0\n2026-02-01    117.0\nFreq: D, dtype: float64, 2026-01-05    100.0\n2026-01-06    100.0\n2026-01-07    100.0\n2026-01-08    100.0\n2026-01-09    100.0\n2026-01-10    100....-01-28    100.0\n2026-01-29    100.0\n2026-01-30    100.0\n2026-01-31    100.0\n2026-02-01    100.0\nFreq: D, dtype: float64)
+E        +                where <function completed_week_box at 0x00000294B94D1D00> = M.completed_week_box
+
+tests\test_longscout_v184.py:36: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v184.py::test_weak_overlap_does_not_form_box - as...
+1 failed in 1.26s

@@ -1,0 +1,6 @@
+BEFORE
+ | decision.eq(6)
+AFTER
+
+DETECTED BY
+test_exits_at_broken_box_and_sunday

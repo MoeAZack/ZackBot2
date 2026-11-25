@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_week_requires_monday_label _______________________
+
+    def test_week_requires_monday_label():
+        high, low = samples()
+        box = M.completed_week_box(high, low)
+>       assert box.top.first_valid_index() == high.index[21]
+E       AssertionError: assert Timestamp('2026-01-25 00:00:00') == Timestamp('2026-01-26 00:00:00')
+E        +  where Timestamp('2026-01-25 00:00:00') = first_valid_index()
+E        +    where first_valid_index = 2026-01-05      NaN\n2026-01-06      NaN\n2026-01-07      NaN\n2026-01-08      NaN\n2026-01-09      NaN\n2026-01-10      Na...09.0\n2026-01-29    109.0\n2026-01-30    109.0\n2026-01-31    109.0\n2026-02-01      NaN\nFreq: D, Name: top, dtype: float64.first_valid_index
+E        +      where 2026-01-05      NaN\n2026-01-06      NaN\n2026-01-07      NaN\n2026-01-08      NaN\n2026-01-09      NaN\n2026-01-10      Na...09.0\n2026-01-29    109.0\n2026-01-30    109.0\n2026-01-31    109.0\n2026-02-01      NaN\nFreq: D, Name: top, dtype: float64 =             bottom    top\n2026-01-05     NaN    NaN\n2026-01-06     NaN    NaN\n2026-01-07     NaN    NaN\n2026-01-08    ...   100.0  109.0\n2026-01-29   100.0  109.0\n2026-01-30   100.0  109.0\n2026-01-31   100.0  109.0\n2026-02-01     NaN    NaN.top
+
+tests\test_longscout_v184.py:28: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v184.py::test_week_requires_monday_label - Assert...
+1 failed in 1.36s
