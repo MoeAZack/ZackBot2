@@ -1,0 +1,6 @@
+BEFORE
+ & usdt.gt(usdt.shift(7))
+AFTER
+
+DETECTED BY
+test_both_issuers_must_expand

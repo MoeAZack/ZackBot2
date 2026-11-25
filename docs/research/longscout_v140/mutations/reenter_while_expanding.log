@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_entry_occurs_once_after_delay ______________________
+
+    def test_entry_occurs_once_after_delay():
+        days, usdc, usdt, done_a, done_b = setup_series()
+        inspected = M.joint_expansion(usdc, usdt, done_a, done_b)
+>       assert inspected[inspected].index.tolist() == [days[12]]
+E       AssertionError: assert [Timestamp('2...:00:00'), ...] == [Timestamp('2...13 00:00:00')]
+E         
+E         Left contains 6 more items, first extra item: Timestamp('2024-01-14 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v140.py:29: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v140.py::test_entry_occurs_once_after_delay - Ass...
+1 failed in 1.92s

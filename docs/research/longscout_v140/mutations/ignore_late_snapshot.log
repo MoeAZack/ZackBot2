@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_one_late_snapshot_blocks_entry _____________________
+
+    def test_one_late_snapshot_blocks_entry():
+        days, usdc, usdt, done_a, done_b = setup_series()
+        done_b.iloc[2] = (days[13] + pd.Timedelta(seconds=1)).value // 10**9
+>       assert not M.joint_expansion(usdc, usdt, done_a, done_b).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n2024-01-06    Fals...024-01-16    False\n2024-01-17    False\n2024-01-18    False\n2024-01-19    False\n2024-01-20    False\nFreq: D, dtype: bool.any
+E        +      where 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n2024-01-06    Fals...024-01-16    False\n2024-01-17    False\n2024-01-18    False\n2024-01-19    False\n2024-01-20    False\nFreq: D, dtype: bool = <function joint_expansion at 0x000002087E3C6AC0>(2024-01-01    100.0\n2024-01-02    100.0\n2024-01-03    100.0\n2024-01-04    100.0\n2024-01-05    100.0\n2024-01-06    100....-01-16    102.0\n2024-01-17    102.0\n2024-01-18    102.0\n2024-01-19    102.0\n2024-01-20    102.0\nFreq: D, dtype: float64, 2024-01-01    100.0\n2024-01-02    100.0\n2024-01-03    100.0\n2024-01-04    100.0\n2024-01-05    100.0\n2024-01-06    100....-01-16    101.0\n2024-01-17    101.0\n2024-01-18    101.0\n2024-01-19    101.0\n2024-01-20    101.0\nFreq: D, dtype: float64, 2024-01-01    1704171600\n2024-01-02    1704258000\n2024-01-03    1704344400\n2024-01-04    1704430800\n2024-01-05    1704...24-01-17    1705554000\n2024-01-18    1705640400\n2024-01-19    1705726800\n2024-01-20    1705813200\nFreq: D, dtype: int64, 2024-01-01    1704171600\n2024-01-02    1704258000\n2024-01-03    1705190401\n2024-01-04    1704430800\n2024-01-05    1704...24-01-17    1705554000\n2024-01-18    1705640400\n2024-01-19    1705726800\n2024-01-20    1705813200\nFreq: D, dtype: int64)
+E        +        where <function joint_expansion at 0x000002087E3C6AC0> = M.joint_expansion
+
+tests\test_longscout_v140.py:43: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v140.py::test_one_late_snapshot_blocks_entry - as...
+1 failed in 1.34s

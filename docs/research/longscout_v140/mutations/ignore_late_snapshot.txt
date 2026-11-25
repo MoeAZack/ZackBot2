@@ -1,0 +1,6 @@
+BEFORE
+crossing & available.le(decision)
+AFTER
+crossing
+DETECTED BY
+test_one_late_snapshot_blocks_entry

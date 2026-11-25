@@ -1,0 +1,6 @@
+BEFORE
+ & ~expanding.shift(fill_value=False)
+AFTER
+
+DETECTED BY
+test_entry_occurs_once_after_delay
