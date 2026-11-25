@@ -1,0 +1,6 @@
+BEFORE
+.dt.days.between(1, 4)
+AFTER
+.dt.days.ge(1)
+DETECTED BY
+test_rejects_old_observation

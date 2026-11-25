@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________________ test_rejects_old_observation _________________________
+
+    def test_rejects_old_observation():
+        values = sample().iloc[:2].copy()
+        values.index = pd.to_datetime(['2026-01-05', '2026-01-12'])
+>       assert not M.inversion_ends(values).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2026-01-06    False\n2026-01-13     True\ndtype: bool.any
+E        +      where 2026-01-06    False\n2026-01-13     True\ndtype: bool = <function inversion_ends at 0x0000026D76AE6AC0>(            VIX9D   VIX\n2026-01-05   24.0  20.0\n2026-01-12   17.0  19.0)
+E        +        where <function inversion_ends at 0x0000026D76AE6AC0> = M.inversion_ends
+
+tests\test_longscout_v174.py:39: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v174.py::test_rejects_old_observation - assert no...
+1 failed in 1.76s

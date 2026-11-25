@@ -1,0 +1,6 @@
+BEFORE
+ & usable.VIX.le(usable.VIX.shift())
+AFTER
+
+DETECTED BY
+test_denominator_cannot_drive_recovery

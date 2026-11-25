@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_denominator_cannot_drive_recovery ____________________
+
+    def test_denominator_cannot_drive_recovery():
+        values = sample().iloc[:2].copy()
+        values.VIX = [20., 21.]
+>       assert not M.inversion_ends(values).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2026-01-06    False\n2026-01-07     True\ndtype: bool.any
+E        +      where 2026-01-06    False\n2026-01-07     True\ndtype: bool = <function inversion_ends at 0x000001B0AC676AC0>(            VIX9D   VIX\n2026-01-05   24.0  20.0\n2026-01-06   17.0  21.0)
+E        +        where <function inversion_ends at 0x000001B0AC676AC0> = M.inversion_ends
+
+tests\test_longscout_v174.py:26: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v174.py::test_denominator_cannot_drive_recovery
+1 failed in 1.92s

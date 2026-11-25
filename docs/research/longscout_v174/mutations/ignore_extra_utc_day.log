@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________________ test_uses_one_full_extra_day _________________________
+
+    def test_uses_one_full_extra_day():
+        values = sample()
+        events = M.inversion_ends(values)
+>       assert events[events].index.tolist() == [values.index[1] + pd.Timedelta(days=1)]
+E       AssertionError: assert [Timestamp('2...06 00:00:00')] == [Timestamp('2...07 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2026-01-06 00:00:00') != Timestamp('2026-01-07 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v174.py:32: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v174.py::test_uses_one_full_extra_day - Assertion...
+1 failed in 1.95s
