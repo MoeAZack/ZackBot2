@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 398,
+ "registered_trials": 399,
  "completed_trials": 393,
  "historical_screen_passes": 13,
  "versions": {
@@ -2503,6 +2503,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "199": {
+   "status": "PREREGISTERED",
+   "source_freeze": "2e27782b592bcd6cd273e75888f39d6c4cb332a6",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 399,
+     "key": "l199_btc_bch_hash_revenue_recovery_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
