@@ -595,6 +595,12 @@
    "trials_after": 392,
    "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7163693673",
    "head": "a593e330810eca9f2601ffecdd6581df96db54a1"
+  },
+  "197": {
+   "passes": 0,
+   "trials_after": 393,
+   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7163771963",
+   "head": "3d7afaed3005e61208b71cfa512cf5ec29dd3175"
   }
  },
  "running": {},
@@ -705,6 +711,12 @@
    "trial": 370,
    "reason": "Python/pandas preserved the publisher hashrate integers beyond native integer range as an object column. The frozen loader stopped in signal initialization before trades or economic results.",
    "next": "V170 first. V172 will use explicit float precision on the same pinned input and unchanged hypothesis."
+  }
+ },
+ "unregistered_data_gates": {
+  "198": {
+   "reason": "Explore21 CSV and its separate public data API both timed out from the workstation after retry. Gross profit and loss history is not pinned. Synthetic checks passed. No trial registered or economic results computed.",
+   "next": "Advance V199 without waiting. Reopen only after the full gross-flow source is verified."
   }
  }
 }
