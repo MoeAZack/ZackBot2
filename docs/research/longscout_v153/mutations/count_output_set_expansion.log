@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_outstanding_count_must_contract _____________________
+
+    def test_outstanding_count_must_contract():
+        stock, spent = sample()
+        stock.iloc[80:] = 1010.
+>       assert not M.output_consolidation(stock, spent).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n95    False\n96    False\n97    False\n98    False\n99    False\nLength: 100, dtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n95    False\n96    False\n97    False\n98    False\n99    False\nLength: 100, dtype: bool = <function output_consolidation at 0x0000023125016A20>(0     1000.0\n1     1000.0\n2     1000.0\n3     1000.0\n4     1000.0\n       ...  \n95    1010.0\n96    1010.0\n97    1010.0\n98    1010.0\n99    1010.0\nLength: 100, dtype: float64, 0     100.0\n1     100.0\n2     100.0\n3     100.0\n4     100.0\n      ...  \n95    200.0\n96    200.0\n97    200.0\n98    200.0\n99    200.0\nLength: 100, dtype: float64)
+E        +        where <function output_consolidation at 0x0000023125016A20> = M.output_consolidation
+
+tests\test_longscout_v153.py:35: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v153.py::test_outstanding_count_must_contract - a...
+1 failed in 1.63s

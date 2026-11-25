@@ -1,0 +1,6 @@
+BEFORE
+onset.shift(7, fill_value=False)
+AFTER
+onset
+DETECTED BY
+test_delayed_transition_does_not_repeat

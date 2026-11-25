@@ -1,0 +1,6 @@
+BEFORE
+ & flow.ge(1.25 * baseline)
+AFTER
+
+DETECTED BY
+test_output_activity_must_rise

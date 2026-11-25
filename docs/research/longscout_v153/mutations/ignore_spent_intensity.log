@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_output_activity_must_rise ________________________
+
+    def test_output_activity_must_rise():
+        stock, spent = sample()
+        spent.iloc[80:] = 100.
+>       assert not M.output_consolidation(stock, spent).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n95    False\n96    False\n97    False\n98    False\n99    False\nLength: 100, dtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n95    False\n96    False\n97    False\n98    False\n99    False\nLength: 100, dtype: bool = <function output_consolidation at 0x000001B8E0366A20>(0     1000.0\n1     1000.0\n2     1000.0\n3     1000.0\n4     1000.0\n       ...  \n95     990.0\n96     990.0\n97     990.0\n98     990.0\n99     990.0\nLength: 100, dtype: float64, 0     100.0\n1     100.0\n2     100.0\n3     100.0\n4     100.0\n      ...  \n95    100.0\n96    100.0\n97    100.0\n98    100.0\n99    100.0\nLength: 100, dtype: float64)
+E        +        where <function output_consolidation at 0x000001B8E0366A20> = M.output_consolidation
+
+tests\test_longscout_v153.py:41: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v153.py::test_output_activity_must_rise - assert ...
+1 failed in 2.37s

@@ -1,0 +1,6 @@
+BEFORE
+ & shrinking
+AFTER
+
+DETECTED BY
+test_outstanding_count_must_contract

@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_delayed_transition_does_not_repeat ___________________
+
+    def test_delayed_transition_does_not_repeat():
+        stock, spent = sample()
+        signal = M.output_consolidation(stock, spent)
+>       assert signal[signal].index.tolist() == [88]
+E       assert [81] == [88]
+E         
+E         At index 0 diff: 81 != 88
+E         Use -v to get more diff
+
+tests\test_longscout_v153.py:28: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v153.py::test_delayed_transition_does_not_repeat
+1 failed in 1.79s
