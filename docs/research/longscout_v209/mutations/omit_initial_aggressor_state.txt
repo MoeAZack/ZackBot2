@@ -1,0 +1,6 @@
+BEFORE
+both_soft.shift(2, fill_value=False) & 
+AFTER
+
+DETECTED BY
+test_requires_identified_onset

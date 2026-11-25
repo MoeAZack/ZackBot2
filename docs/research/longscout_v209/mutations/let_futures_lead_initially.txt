@@ -1,0 +1,6 @@
+BEFORE
+spot.ge(.10) & perpetual.le(-.05)
+AFTER
+spot.ge(.10)
+DETECTED BY
+test_requires_spot_to_lead

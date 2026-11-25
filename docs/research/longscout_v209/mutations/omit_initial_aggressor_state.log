@@ -1,0 +1,15 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_requires_identified_onset ________________________
+
+    def test_requires_identified_onset():
+>       assert not signal(spot=(.13, .11, .03)).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0    False\n1    False\n2     True\ndtype: bool.any
+E        +      where 0    False\n1    False\n2     True\ndtype: bool = signal(spot=(0.13, 0.11, 0.03))
+
+tests\test_longscout_v209.py:35: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v209.py::test_requires_identified_onset - assert ...
+1 failed in 1.16s

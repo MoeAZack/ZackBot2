@@ -1,0 +1,6 @@
+BEFORE
+spot.ge(.02) & perpetual.ge(.05)
+AFTER
+spot.ge(.02)
+DETECTED BY
+test_requires_perpetual_confirmation

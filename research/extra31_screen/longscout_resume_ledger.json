@@ -2,7 +2,7 @@
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
  "registered_trials": 409,
- "completed_trials": 403,
+ "completed_trials": 404,
  "historical_screen_passes": 13,
  "versions": {
   "91": {
@@ -2738,14 +2738,27 @@
    ]
   },
   "209": {
-   "status": "PREREGISTERED",
+   "status": "COMPLETE_REJECTED",
    "source_freeze": "3ba055a70d37e04517008280a53dbe9512ebe9fd",
-   "batch_passes": null,
+   "batch_passes": 0,
    "candidates": [
     {
      "trial": 409,
      "key": "l209_btc_spot_flow_leads_perp_4h",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "FAIL",
+     "meanR15_fee_plus_slip": null,
+     "failed_gates": [
+      "trades",
+      "meanR15",
+      "early",
+      "late",
+      "ex_best_coin",
+      "meanR23",
+      "order0_30_per_half",
+      "fresh134",
+      "extra31"
+     ],
+     "forward_worthy": false
     }
    ]
   }
