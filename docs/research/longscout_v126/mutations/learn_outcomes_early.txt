@@ -1,0 +1,6 @@
+BEFORE
+np.r_[np.full(6, np.nan), label]
+AFTER
+np.r_[np.full(5, np.nan), label, np.nan]
+DETECTED BY
+test_first_barrier_and_maturity_match_sequential_reference

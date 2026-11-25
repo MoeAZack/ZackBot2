@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_unresolved_outcomes_cannot_make_a_win __________________
+
+    def test_unresolved_outcomes_cannot_make_a_win():
+        closes = pd.Series(np.tile([100., 98.7, 100., 100., 100.], 35))
+>       assert not M.side_odds(closes, -1).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0      False\n1      False\n2      False\n3      False\n4      False\n       ...  \n170    False\n171     True\n172    False\n173    False\n174    False\nLength: 175, dtype: bool.any
+E        +      where 0      False\n1      False\n2      False\n3      False\n4      False\n       ...  \n170    False\n171     True\n172    False\n173    False\n174    False\nLength: 175, dtype: bool = <function side_odds at 0x000001F854912B60>(0      100.0\n1       98.7\n2      100.0\n3      100.0\n4      100.0\n       ...  \n170    100.0\n171     98.7\n172    100.0\n173    100.0\n174    100.0\nLength: 175, dtype: float64, -1)
+E        +        where <function side_odds at 0x000001F854912B60> = M.side_odds
+
+tests\test_longscout_v126.py:44: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v126.py::test_unresolved_outcomes_cannot_make_a_win
+1 failed in 2.43s

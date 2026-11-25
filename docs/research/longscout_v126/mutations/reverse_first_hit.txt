@@ -1,0 +1,6 @@
+BEFORE
+first_lower - first_upper
+AFTER
+first_upper - first_lower
+DETECTED BY
+test_first_barrier_and_maturity_match_sequential_reference

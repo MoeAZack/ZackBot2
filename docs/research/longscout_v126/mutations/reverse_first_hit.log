@@ -1,0 +1,39 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________ test_first_barrier_and_maturity_match_sequential_reference __________
+
+    def test_first_barrier_and_maturity_match_sequential_reference():
+        closes = pd.Series([100., 101, 97, 104, 101, 98, 100, 100, 101, 100, 101, 100, 101])
+        expected = np.full(len(closes), np.nan)
+        for mature in range(6, len(closes)):
+            begin = mature - 6
+            base = closes.iloc[begin]
+            expected[mature] = 0
+            for later in closes.iloc[begin+1:begin+6]:
+                if later >= base * 1.02:
+                    expected[mature] = 1
+                    break
+                if later <= base * .98:
+                    expected[mature] = -1
+                    break
+        assert expected[6] == -1
+>       np.testing.assert_array_equal(M.matured_outcomes(closes), expected)
+E       AssertionError: 
+E       Arrays are not equal
+E       
+E       Mismatched elements: 6 / 13 (46.2%)
+E       First 5 mismatches are at indices:
+E        [6]: 1.0 (ACTUAL), -1.0 (DESIRED)
+E        [7]: 1.0 (ACTUAL), -1.0 (DESIRED)
+E        [8]: -1.0 (ACTUAL), 1.0 (DESIRED)
+E        [9]: 1.0 (ACTUAL), -1.0 (DESIRED)
+E        [10]: 1.0 (ACTUAL), -1.0 (DESIRED)
+E       Max absolute difference among violations: 2.
+E       Max relative difference among violations: 2.
+E        ACTUAL: array([nan, nan, nan, nan, nan, nan,  1.,  1., -1.,  1.,  1., -1.,  0.])
+E        DESIRED: array([nan, nan, nan, nan, nan, nan, -1., -1.,  1., -1., -1.,  1.,  0.])
+
+tests\test_longscout_v126.py:37: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v126.py::test_first_barrier_and_maturity_match_sequential_reference
+1 failed in 1.84s

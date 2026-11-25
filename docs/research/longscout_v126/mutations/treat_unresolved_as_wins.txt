@@ -1,0 +1,6 @@
+BEFORE
+cohort & observed.eq(-direction)
+AFTER
+cohort & observed.ne(direction)
+DETECTED BY
+test_unresolved_outcomes_cannot_make_a_win
