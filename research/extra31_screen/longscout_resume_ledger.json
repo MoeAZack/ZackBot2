@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 334,
+ "registered_trials": 335,
  "completed_trials": 331,
  "historical_screen_passes": 12,
  "versions": {
@@ -1027,6 +1027,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "134": {
+   "status": "PREREGISTERED",
+   "source_freeze": "0572898be431de530ee2262234621b282ed4e9dc",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 335,
+     "key": "l134_eth_btc_implied_risk_rotation_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
