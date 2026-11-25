@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 312,
+ "registered_trials": 313,
  "completed_trials": 309,
  "historical_screen_passes": 12,
  "versions": {
@@ -536,6 +536,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "112": {
+   "status": "PREREGISTERED",
+   "source_freeze": "58c770a17da9ecf3f585dd0a78758f588d1be193",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 313,
+     "key": "l112_turnover_clock_acceleration_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
