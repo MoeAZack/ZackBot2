@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 340,
+ "registered_trials": 341,
  "completed_trials": 337,
  "historical_screen_passes": 12,
  "versions": {
@@ -1172,6 +1172,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "140": {
+   "status": "PREREGISTERED",
+   "source_freeze": "bf490eafb65df145cf14417677d1a6a1c5716224",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 341,
+     "key": "l140_eth_stablecoin_joint_expansion_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
