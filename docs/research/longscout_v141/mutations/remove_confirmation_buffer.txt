@@ -1,0 +1,6 @@
+BEFORE
+.shift(7, fill_value=False)
+AFTER
+.shift(0, fill_value=False)
+DETECTED BY
+test_recovery_entry_has_seven_day_buffer

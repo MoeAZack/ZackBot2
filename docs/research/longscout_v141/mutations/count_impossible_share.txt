@@ -1,0 +1,6 @@
+BEFORE
+ & older.le(total)
+AFTER
+
+DETECTED BY
+test_invalid_age_value_breaks_lookback

@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_invalid_age_value_breaks_lookback ____________________
+
+    def test_invalid_age_value_breaks_lookback():
+        _, older, spent = setup_series(20.)
+        older.iloc[33] = 101.
+>       assert not M.older_spending_relief(older, spent).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n              ... ... False\n2024-03-14    False\n2024-03-15    False\n2024-03-16    False\n2024-03-17    False\nFreq: D, Length: 77, dtype: bool.any
+E        +      where 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n              ... ... False\n2024-03-14    False\n2024-03-15    False\n2024-03-16    False\n2024-03-17    False\nFreq: D, Length: 77, dtype: bool = <function older_spending_relief at 0x000002276B306AC0>(2024-01-01    10.0\n2024-01-02    10.0\n2024-01-03    10.0\n2024-01-04    10.0\n2024-01-05    10.0\n              ... \n2024...    2.0\n2024-03-14     2.0\n2024-03-15     2.0\n2024-03-16     2.0\n2024-03-17     2.0\nFreq: D, Length: 77, dtype: float64, 2024-01-01    100.0\n2024-01-02    100.0\n2024-01-03    100.0\n2024-01-04    100.0\n2024-01-05    100.0\n              ... ...0.0\n2024-03-14    100.0\n2024-03-15    100.0\n2024-03-16    100.0\n2024-03-17    100.0\nFreq: D, Length: 77, dtype: float64)
+E        +        where <function older_spending_relief at 0x000002276B306AC0> = M.older_spending_relief
+
+tests\test_longscout_v141.py:42: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v141.py::test_invalid_age_value_breaks_lookback
+1 failed in 1.92s

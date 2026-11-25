@@ -1,0 +1,6 @@
+BEFORE
+ & prior_peak.ge(1.5)
+AFTER
+
+DETECTED BY
+test_small_spike_cannot_signal
