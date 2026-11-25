@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 377,
+ "registered_trials": 378,
  "completed_trials": 372,
  "historical_screen_passes": 13,
  "versions": {
@@ -2013,6 +2013,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "177": {
+   "status": "PREREGISTERED",
+   "source_freeze": "36ad7b11cd2829b2a08b8c7acf8252c68a112b31",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 378,
+     "key": "l177_ecb_cyclicals_vs_havens_recovery_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
