@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 314,
+ "registered_trials": 315,
  "completed_trials": 311,
  "historical_screen_passes": 12,
  "versions": {
@@ -582,6 +582,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "114": {
+   "status": "PREREGISTERED",
+   "source_freeze": "7c4d10187de55f888511f1616f9a0de6922cfc93",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 315,
+     "key": "l114_positive_btc_convexity_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
