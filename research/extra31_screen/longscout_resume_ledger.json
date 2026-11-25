@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 310,
+ "registered_trials": 311,
  "completed_trials": 307,
  "historical_screen_passes": 12,
  "versions": {
@@ -494,6 +494,18 @@
     }
    ],
    "reason": "Stopped before result generation after identifying overlap with V92 early-extreme settlement and V1 washout reclaim."
+  },
+  "110": {
+   "status": "PREREGISTERED",
+   "source_freeze": "500bca7e3e52fe9eb1dcda6505eaf019f96371da",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 311,
+     "key": "r110_learned_streak_fade_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
+    }
+   ]
   }
  },
  "owner_stop": {
