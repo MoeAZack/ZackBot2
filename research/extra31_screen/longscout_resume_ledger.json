@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 399,
+ "registered_trials": 400,
  "completed_trials": 394,
  "historical_screen_passes": 13,
  "versions": {
@@ -2528,6 +2528,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "200": {
+   "status": "PREREGISTERED",
+   "source_freeze": "1fc49851ada9cda8f9d05242e07176d20cda84d3",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 400,
+     "key": "l200_coin_btc_rebalancing_premium_fade_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
