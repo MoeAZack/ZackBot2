@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 387,
+ "registered_trials": 388,
  "completed_trials": 382,
  "historical_screen_passes": 13,
  "versions": {
@@ -2239,6 +2239,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "187": {
+   "status": "PREREGISTERED",
+   "source_freeze": "4a393f2663525d5913e9b39203e625249c503f82",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 388,
+     "key": "l187_cross_exchange_btc_spot_premium_reversal_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
