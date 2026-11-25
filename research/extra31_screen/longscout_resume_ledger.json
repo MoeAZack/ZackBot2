@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 380,
+ "registered_trials": 381,
  "completed_trials": 375,
  "historical_screen_passes": 13,
  "versions": {
@@ -2086,6 +2086,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "180": {
+   "status": "PREREGISTERED",
+   "source_freeze": "d0c4b6e388270e38c8e7f51ea0bdca18f7691b57",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 381,
+     "key": "l180_btc_roll_spread_proxy_compression_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
