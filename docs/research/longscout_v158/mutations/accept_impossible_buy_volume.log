@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________ test_volume_is_normalized_within_its_own_leg _________________
+
+    def test_volume_is_normalized_within_its_own_leg():
+        total, buy = pd.Series([100., 100., 100.]), pd.Series([60., 40., 101.])
+        original = M.signed_imbalance(total, buy)
+        pd.testing.assert_series_equal(original, M.signed_imbalance(total * 100, buy * 100))
+>       assert original.iloc[0] > 0 and original.iloc[1] < 0 and pd.isna(original.iloc[2])
+E       assert (np.float64(0.19999999999999996) > 0 and np.float64(-0.19999999999999996) < 0 and False)
+E        +  where False = <function isna at 0x000001D496A93600>(np.float64(1.02))
+E        +    where <function isna at 0x000001D496A93600> = pd.isna
+
+tests\test_longscout_v158.py:40: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v158.py::test_volume_is_normalized_within_its_own_leg
+1 failed in 1.61s

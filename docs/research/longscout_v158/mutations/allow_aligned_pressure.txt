@@ -1,0 +1,6 @@
+BEFORE
+inverse.le(-.12)
+AFTER
+inverse.ge(.12)
+DETECTED BY
+test_legs_must_oppose

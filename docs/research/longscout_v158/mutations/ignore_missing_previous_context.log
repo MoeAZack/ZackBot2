@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_gap_does_not_create_clean_onset _____________________
+
+    def test_gap_does_not_create_clean_onset():
+        linear, inverse = sample()
+        inverse.iloc[0] = float('nan')
+>       assert not M.disagreement(linear, inverse).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0    False\n1    False\n2    False\n3     True\n4    False\ndtype: bool.any
+E        +      where 0    False\n1    False\n2    False\n3     True\n4    False\ndtype: bool = <function disagreement at 0x000002A1523A2A20>(0    0.0\n1    0.2\n2    0.2\n3    0.2\n4    0.2\ndtype: float64, 0    NaN\n1   -0.2\n2   -0.2\n3   -0.2\n4   -0.2\ndtype: float64)
+E        +        where <function disagreement at 0x000002A1523A2A20> = M.disagreement
+
+tests\test_longscout_v158.py:33: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v158.py::test_gap_does_not_create_clean_onset - a...
+1 failed in 1.26s

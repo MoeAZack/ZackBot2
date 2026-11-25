@@ -1,0 +1,6 @@
+BEFORE
+ & observed.shift(3, fill_value=False)
+AFTER
+
+DETECTED BY
+test_gap_does_not_create_clean_onset

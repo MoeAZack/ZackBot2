@@ -1,0 +1,6 @@
+BEFORE
+ & buy.le(total)
+AFTER
+
+DETECTED BY
+test_volume_is_normalized_within_its_own_leg

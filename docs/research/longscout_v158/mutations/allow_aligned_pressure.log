@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________________ test_legs_must_oppose ____________________________
+
+    def test_legs_must_oppose():
+        linear, inverse = sample()
+        result = M.disagreement(linear, inverse)
+>       assert result[result].index.tolist() == [3]
+E       assert [] == [3]
+E         
+E         Right contains one more item: 3
+E         Use -v to get more diff
+
+tests\test_longscout_v158.py:25: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v158.py::test_legs_must_oppose - assert [] == [3]
+1 failed in 1.34s
