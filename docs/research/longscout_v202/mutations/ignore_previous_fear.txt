@@ -1,0 +1,6 @@
+BEFORE
+index.shift().le(35) & 
+AFTER
+
+DETECTED BY
+test_requires_previous_fear

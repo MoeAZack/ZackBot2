@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________________ test_excludes_current_change _________________________
+
+    def test_excludes_current_change():
+        values, price_return = sample()
+        signal = M.fear_relief(values, price_return)
+>       assert signal[signal].index.tolist() == [72]
+E       assert [] == [72]
+E         
+E         Right contains one more item: 72
+E         Use -v to get more diff
+
+tests\test_longscout_v202.py:27: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v202.py::test_excludes_current_change - assert []...
+1 failed in 1.37s

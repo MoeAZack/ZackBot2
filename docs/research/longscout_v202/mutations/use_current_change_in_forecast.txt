@@ -1,0 +1,6 @@
+BEFORE
+hist_change = paired_change.shift(1)
+AFTER
+hist_change = paired_change
+DETECTED BY
+test_excludes_current_change

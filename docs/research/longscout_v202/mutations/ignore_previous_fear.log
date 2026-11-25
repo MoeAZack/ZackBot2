@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_requires_previous_fear _________________________
+
+    def test_requires_previous_fear():
+        values, price_return = sample(40.)
+>       assert not M.fear_relief(values, price_return).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n68    False\n69    False\n70    False\n71    False\n72     True\nLength: 73, dtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n68    False\n69    False\n70    False\n71    False\n72     True\nLength: 73, dtype: bool = <function fear_relief at 0x0000026622466A20>(0     40.0\n1     40.0\n2     40.0\n3     40.0\n4     40.0\n      ... \n68    40.0\n69    40.0\n70    49.0\n71    49.0\n72    49.0\nLength: 73, dtype: float64, 0    -0.01\n1     0.01\n2    -0.01\n3     0.01\n4    -0.01\n      ... \n68   -0.01\n69    0.01\n70   -0.01\n71    0.01\n72   -0.01\nLength: 73, dtype: float64)
+E        +        where <function fear_relief at 0x0000026622466A20> = M.fear_relief
+
+tests\test_longscout_v202.py:33: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v202.py::test_requires_previous_fear - assert not...
+1 failed in 1.28s
