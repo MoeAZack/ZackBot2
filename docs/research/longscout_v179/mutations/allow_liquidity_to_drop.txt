@@ -1,0 +1,6 @@
+BEFORE
+ & relative.DAI_available.between(.98, 1.12)
+AFTER
+
+DETECTED BY
+test_available_liquidity_must_hold

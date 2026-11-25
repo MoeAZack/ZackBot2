@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_available_liquidity_must_hold ______________________
+
+    def test_available_liquidity_must_hold():
+        balances = sample()
+        balances.loc[8:, 'DAI_available'] = 96.
+>       assert not M.debt_expands(balances).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     False\n10     True\n11    False\n12    False\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     False\n10     True\n11    False\n12    False\ndtype: bool = <function debt_expands at 0x000002431A166AC0>(    USDC_available  USDC_debt  DAI_available  DAI_debt\n0            100.0      100.0          100.0     100.0\n1       ...    104.0\n11           100.0      104.0           96.0     104.0\n12           100.0      104.0           96.0     104.0)
+E        +        where <function debt_expands at 0x000002431A166AC0> = M.debt_expands
+
+tests\test_longscout_v179.py:32: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v179.py::test_available_liquidity_must_hold - ass...
+1 failed in 1.22s

@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________________ test_two_day_buffer _____________________________
+
+    def test_two_day_buffer():
+        balances = sample()
+        events = M.debt_expands(balances)
+>       assert events[events].index.tolist() == [10]
+E       assert [8] == [10]
+E         
+E         At index 0 diff: 8 != 10
+E         Use -v to get more diff
+
+tests\test_longscout_v179.py:38: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v179.py::test_two_day_buffer - assert [8] == [10]
+1 failed in 1.66s

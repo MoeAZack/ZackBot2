@@ -1,0 +1,6 @@
+BEFORE
+ & relative.DAI_debt.ge(1.03)
+AFTER
+
+DETECTED BY
+test_each_debt_must_expand
