@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 395,
+ "registered_trials": 396,
  "completed_trials": 390,
  "historical_screen_passes": 13,
  "versions": {
@@ -2433,6 +2433,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "195": {
+   "status": "PREREGISTERED",
+   "source_freeze": "0d044a2a778a3f3db8a03e89d2894f97881a45b6",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 396,
+     "key": "l195_absolute_funding_pressure_breadth_relief_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
