@@ -1,0 +1,6 @@
+BEFORE
+len(eligible) < 48
+AFTER
+len(eligible) < 47
+DETECTED BY
+test_matched_panel_needs_48_contracts

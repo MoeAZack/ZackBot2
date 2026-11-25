@@ -1,0 +1,50 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________ test_current_close_does_not_change_factor_inference _____________
+
+    def test_current_close_does_not_change_factor_inference():
+        residuals, liquidity = paths()
+        base = M.factor_diffusion(residuals, liquidity)
+        day = base[base].index[0]
+        residuals.iloc[day, :] = np.nan
+        changed = M.factor_diffusion(residuals, liquidity)
+>       pd.testing.assert_series_equal(base.iloc[:day+1], changed.iloc[:day+1])
+
+tests\test_longscout_v154.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+left = array([False, False, False, False, False, False, False, False, False,
+       False, False, False, False, False, False,...       False, False, False, False, False, False, False, False, False,
+       False, False, False, False, False,  True])
+right = array([False, False, False, False, False, False, False, False, False,
+       False, False, False, False, False, False,...       False, False, False, False, False, False, False, False, False,
+       False, False, False, False, False, False])
+err_msg = None
+
+    def _raise(left, right, err_msg) -> NoReturn:
+        if err_msg is None:
+            if left.shape != right.shape:
+                raise_assert_detail(
+                    obj, f"{obj} shapes are different", left.shape, right.shape
+                )
+    
+            diff = 0
+            for left_arr, right_arr in zip(left, right, strict=True):
+                # count up differences
+                if not array_equivalent(left_arr, right_arr, strict_nan=strict_nan):
+                    diff += 1
+    
+            diff = diff * 100.0 / left.size
+            msg = f"{obj} values are different ({np.round(diff, 5)} %)"
+>           raise_assert_detail(obj, msg, left, right, index_values=index_values)
+E           AssertionError: Series are different
+E           
+E           Series values are different (1.96078 %)
+E           [index]: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50]
+E           [left]:  [False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, True]
+E           [right]: [False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False]
+
+C:\Users\princ\AppData\Local\Programs\Python\Python312\Lib\site-packages\pandas\_testing\asserters.py:689: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v154.py::test_current_close_does_not_change_factor_inference
+1 failed in 1.74s

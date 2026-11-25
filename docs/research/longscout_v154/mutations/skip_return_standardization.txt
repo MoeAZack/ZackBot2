@@ -1,0 +1,6 @@
+BEFORE
+centered / scale
+AFTER
+centered
+DETECTED BY
+test_one_scaled_factor_has_rank_one

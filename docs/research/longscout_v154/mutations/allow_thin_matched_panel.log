@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_matched_panel_needs_48_contracts ____________________
+
+    def test_matched_panel_needs_48_contracts():
+        residuals, liquidity = paths(47)
+>       assert not M.factor_diffusion(residuals, liquidity).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n69    False\n70    False\n71    False\n72    False\n73    False\nLength: 74, dtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n69    False\n70    False\n71    False\n72    False\n73    False\nLength: 74, dtype: bool = <function factor_diffusion at 0x0000026F64F12B60>(          0         1         2   ...        44        45        46\n0   0.000000  0.000000  0.000000  ...  0.000000  0....488250 -1.386340  0.181049\n73  0.551445  1.179289  0.888367  ... -1.216518 -0.777138 -0.674919\n\n[74 rows x 47 columns],             0           1           2   ...          44          45          46\n0   20000000.0  20000000.0  20000000.0...0.0  20000000.0\n73  20000000.0  20000000.0  20000000.0  ...  20000000.0  20000000.0  20000000.0\n\n[74 rows x 47 columns])
+E        +        where <function factor_diffusion at 0x0000026F64F12B60> = M.factor_diffusion
+
+tests\test_longscout_v154.py:47: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v154.py::test_matched_panel_needs_48_contracts - ...
+1 failed in 1.52s

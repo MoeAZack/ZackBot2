@@ -1,0 +1,20 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_one_scaled_factor_has_rank_one _____________________
+
+    def test_one_scaled_factor_has_rank_one():
+        a, b = np.sin(np.arange(20) * np.pi / 10), np.cos(np.arange(20) * np.pi / 10)
+        assert np.isclose(M.effective_rank(np.column_stack([a, a * 100, a * .01])), 1.)
+>       assert np.isclose(M.effective_rank(np.column_stack([a, b * 100])), 2.)
+E       assert np.False_
+E        +  where np.False_ = <function isclose at 0x0000023226D4E470>(1.0010214582768588, 2.0)
+E        +    where <function isclose at 0x0000023226D4E470> = np.isclose
+E        +    and   1.0010214582768588 = <function effective_rank at 0x0000023210B6B060>(array([[ 0.00000000e+00,  1.00000000e+02],\n       [ 3.09016994e-01,  9.51056516e+01],\n       [ 5.87785252e-01,  8.0901....09016994e-01,  5.87785252e+01],\n       [-5.87785252e-01,  8.09016994e+01],\n       [-3.09016994e-01,  9.51056516e+01]]))
+E        +      where <function effective_rank at 0x0000023210B6B060> = M.effective_rank
+E        +      and   array([[ 0.00000000e+00,  1.00000000e+02],\n       [ 3.09016994e-01,  9.51056516e+01],\n       [ 5.87785252e-01,  8.0901....09016994e-01,  5.87785252e+01],\n       [-5.87785252e-01,  8.09016994e+01],\n       [-3.09016994e-01,  9.51056516e+01]]) = <function column_stack at 0x0000023228EFDF70>([array([ 0.00000000e+00,  3.09016994e-01,  5.87785252e-01,  8.09016994e-01,\n        9.51056516e-01,  1.00000000e+00,  ...252e+01, -3.09016994e+01, -1.83697020e-14,\n        3.09016994e+01,  5.87785252e+01,  8.09016994e+01,  9.51056516e+01])])
+E        +        where <function column_stack at 0x0000023228EFDF70> = np.column_stack
+
+tests\test_longscout_v154.py:33: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v154.py::test_one_scaled_factor_has_rank_one - as...
+1 failed in 1.20s

@@ -1,0 +1,6 @@
+BEFORE
+history[current-40:current]
+AFTER
+history[current-39:current+1]
+DETECTED BY
+test_current_close_does_not_change_factor_inference
