@@ -1,0 +1,25 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_coin_direction_and_btc_eligibility ___________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002B393A4DC40>
+
+    def test_coin_direction_and_btc_eligibility(monkeypatch):
+        t = pd.date_range('2026-01-01', periods=7, freq='4h')
+        btc = pd.DataFrame(dict(t=t, c=[100., 101, 102, 103, 104, 105, 106]))
+        spot = pd.Series([1., 1.002, 1.001, 1., .998, .9995, 1.], index=t)
+        monkeypatch.setattr(M, 'load_spot', lambda: spot)
+        monkeypatch.setattr(M.L1, 'coin_regime', lambda d: np.zeros(len(d)))
+        M.set_btc(btc)
+        coin = btc.copy()
+        coin.loc[5, 'c'] = 99.
+>       assert np.flatnonzero(M.sig_stable_recovery(coin, {}, {})['le']).tolist() == [2]
+E       assert [2, 5] == [2]
+E         
+E         Left contains one more item: 5
+E         Use -v to get more diff
+
+tests\test_longscout_v121.py:43: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v121.py::test_coin_direction_and_btc_eligibility
+1 failed in 1.84s

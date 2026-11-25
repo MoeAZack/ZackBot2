@@ -1,0 +1,16 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_positive_and_negative_relative_moves __________________
+
+    def test_positive_and_negative_relative_moves():
+        rates = pd.Series([1., 1.002, 1.001, 1., .998, .9995, 1.])
+>       assert np.flatnonzero(M.normalization(rates)).tolist() == [2, 5]
+E       assert [2] == [2, 5]
+E         
+E         Right contains one more item: 5
+E         Use -v to get more diff
+
+tests\test_longscout_v121.py:24: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v121.py::test_positive_and_negative_relative_moves
+1 failed in 1.70s

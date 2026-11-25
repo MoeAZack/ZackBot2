@@ -1,0 +1,6 @@
+BEFORE
+(spot - 1).abs()
+AFTER
+(spot - 1)
+DETECTED BY
+test_positive_and_negative_relative_moves

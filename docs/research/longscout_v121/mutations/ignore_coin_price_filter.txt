@@ -1,0 +1,6 @@
+BEFORE
+ & d.c.diff().gt(0).to_numpy()
+AFTER
+
+DETECTED BY
+test_coin_direction_and_btc_eligibility

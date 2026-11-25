@@ -1,0 +1,6 @@
+BEFORE
+previous = distance_bp.shift()
+AFTER
+previous = distance_bp.shift(-1)
+DETECTED BY
+test_positive_and_negative_relative_moves
