@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 394,
+ "registered_trials": 395,
  "completed_trials": 389,
  "historical_screen_passes": 13,
  "versions": {
@@ -2409,6 +2409,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "194": {
+   "status": "PREREGISTERED",
+   "source_freeze": "3d8e71929fbcc844984ef5e20627ff556dbf1576",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 395,
+     "key": "l194_ethereum_wikimedia_attention_spike_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
