@@ -1,0 +1,6 @@
+BEFORE
+relative.shift().le(-.001)
+AFTER
+relative.shift(-1).le(-.001)
+DETECTED BY
+test_only_prior_discount_trades

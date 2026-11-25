@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_requires_prior_stablecoin_parity ____________________
+
+    def test_requires_prior_stablecoin_parity():
+        prices = sample()
+        prices.iloc[0, 2] = 1.004
+>       assert not M.fiat_spot_premium_reverses(prices).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0    False\n1     True\n2    False\ndtype: bool.any
+E        +      where 0    False\n1     True\n2    False\ndtype: bool = <function fiat_spot_premium_reverses at 0x0000014DB3EB6A20>(   btc_usd_coinbase  btc_usdt_binance  usdt_usd_coinbase\n0             998.0            1000.0              1.004\n1            1002.0            1000.0              1.000\n2            1002.0            1000.0              1.000)
+E        +        where <function fiat_spot_premium_reverses at 0x0000014DB3EB6A20> = M.fiat_spot_premium_reverses
+
+tests\test_longscout_v187.py:33: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v187.py::test_requires_prior_stablecoin_parity - ...
+1 failed in 1.66s

@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_only_prior_discount_trades _______________________
+
+    def test_only_prior_discount_trades():
+        prices = sample()
+        result = M.fiat_spot_premium_reverses(prices)
+>       assert result.tolist() == [False, True, False]
+E       assert [False, False, False] == [False, True, False]
+E         
+E         At index 1 diff: False != True
+E         Use -v to get more diff
+
+tests\test_longscout_v187.py:39: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v187.py::test_only_prior_discount_trades - assert...
+1 failed in 1.51s

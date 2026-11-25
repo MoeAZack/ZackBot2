@@ -1,0 +1,6 @@
+BEFORE
+ & stable.shift(fill_value=False)
+AFTER
+
+DETECTED BY
+test_requires_prior_stablecoin_parity

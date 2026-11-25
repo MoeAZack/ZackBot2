@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_converts_usdt_into_usd _________________________
+
+    def test_converts_usdt_into_usd():
+        prices = sample()
+        prices.loc[1:, 'usdt_usd_coinbase'] = 1.0019
+>       assert not M.fiat_spot_premium_reverses(prices).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0    False\n1     True\n2    False\ndtype: bool.any
+E        +      where 0    False\n1     True\n2    False\ndtype: bool = <function fiat_spot_premium_reverses at 0x00000203A4F56A20>(   btc_usd_coinbase  btc_usdt_binance  usdt_usd_coinbase\n0             998.0            1000.0             1.0000\n1            1002.0            1000.0             1.0019\n2            1002.0            1000.0             1.0019)
+E        +        where <function fiat_spot_premium_reverses at 0x00000203A4F56A20> = M.fiat_spot_premium_reverses
+
+tests\test_longscout_v187.py:27: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v187.py::test_converts_usdt_into_usd - assert not...
+1 failed in 1.54s

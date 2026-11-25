@@ -1,0 +1,6 @@
+BEFORE
+usable.btc_usdt_binance * usd_per_usdt
+AFTER
+usable.btc_usdt_binance
+DETECTED BY
+test_converts_usdt_into_usd
