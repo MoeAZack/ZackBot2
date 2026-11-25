@@ -1,0 +1,6 @@
+BEFORE
+spread.le(.75 * benchmark)
+AFTER
+spread.fillna(0.).le(.75 * benchmark)
+DETECTED BY
+test_unidentified_spread_does_not_trade

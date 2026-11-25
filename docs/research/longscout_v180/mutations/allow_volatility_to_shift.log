@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_volatility_must_be_comparable ______________________
+
+    def test_volatility_must_be_comparable():
+        values = sample()
+        values.iloc[-1, 1] = .0065
+>       assert not M.spread_compresses(values).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...alse\n24    False\n25    False\n26    False\n27    False\n28    False\n29     True\nName: negative_autocov_spread, dtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...alse\n24    False\n25    False\n26    False\n27    False\n28    False\n29     True\nName: negative_autocov_spread, dtype: bool = <function spread_compresses at 0x000001B9D0D394E0>(    negative_autocov_spread  realized_volatility\n0                    0.0010               0.0050\n1                   ...               0.0050\n28                   0.0016               0.0050\n29                   0.0007               0.0065)
+E        +        where <function spread_compresses at 0x000001B9D0D394E0> = M.spread_compresses
+
+tests\test_longscout_v180.py:33: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v180.py::test_volatility_must_be_comparable - ass...
+1 failed in 1.76s

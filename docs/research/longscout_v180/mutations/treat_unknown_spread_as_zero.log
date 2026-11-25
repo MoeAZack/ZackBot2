@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_unidentified_spread_does_not_trade ___________________
+
+    def test_unidentified_spread_does_not_trade():
+        values = sample()
+        values.iloc[-1, 0] = float('nan')
+>       assert not M.spread_compresses(values).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...21    False\n22    False\n23    False\n24    False\n25    False\n26    False\n27    False\n28    False\n29     True\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...21    False\n22    False\n23    False\n24    False\n25    False\n26    False\n27    False\n28    False\n29     True\ndtype: bool = <function spread_compresses at 0x000001983B3E94E0>(    negative_autocov_spread  realized_volatility\n0                    0.0010                0.005\n1                   ...                0.005\n28                   0.0016                0.005\n29                      NaN                0.005)
+E        +        where <function spread_compresses at 0x000001983B3E94E0> = M.spread_compresses
+
+tests\test_longscout_v180.py:27: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v180.py::test_unidentified_spread_does_not_trade
+1 failed in 1.83s

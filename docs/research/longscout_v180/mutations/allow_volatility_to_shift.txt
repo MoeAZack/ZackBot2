@@ -1,0 +1,6 @@
+BEFORE
+ & vol_change.between(.80, 1.20)
+AFTER
+
+DETECTED BY
+test_volatility_must_be_comparable

@@ -1,0 +1,6 @@
+BEFORE
+min_periods=28
+AFTER
+min_periods=27
+DETECTED BY
+test_minimum_observations_required
