@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________________ test_use_dated_buffer ____________________________
+
+    def test_use_dated_buffer():
+        values, vintages = sample()
+        event = M.credit_eases(values, vintages)
+>       assert event[event].index.tolist() == [vintages[1] + pd.Timedelta(days=1)]
+E       AssertionError: assert [Timestamp('2...16 00:00:00')] == [Timestamp('2...17 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2025-01-16 00:00:00') != Timestamp('2025-01-17 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v197.py:39: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v197.py::test_use_dated_buffer - AssertionError: ...
+1 failed in 1.43s

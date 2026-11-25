@@ -1,0 +1,16 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________________ test_credit_must_ease ____________________________
+
+    def test_credit_must_ease():
+        values, vintages = sample()
+>       assert M.credit_eases(values, vintages).tolist() == [False, True, False]
+E       assert [False, False, True] == [False, True, False]
+E         
+E         At index 1 diff: False != True
+E         Use -v to get more diff
+
+tests\test_longscout_v197.py:33: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v197.py::test_credit_must_ease - assert [False, F...
+1 failed in 1.42s

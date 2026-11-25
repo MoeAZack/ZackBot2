@@ -1,0 +1,161 @@
+{
+ "note": "Descriptive diagnostics on an already-consumed calendar, not untouched or forward evidence.",
+ "cases": {
+  "l197_chicago_fed_credit_subindex_easing_1d": {
+   "status": "FAIL",
+   "medians": {
+    "n": 2.0,
+    "meanR7": 0.01837409066699991,
+    "meanR15": 0.01257045066699991,
+    "meanR23": 0.006766810666999912,
+    "meanR15_early": 0.01257045066699991,
+    "meanR15_late": null,
+    "meanR15_ex_best": -0.3238304329975004
+   },
+   "gates": {
+    "trades": false,
+    "meanR15": true,
+    "early": true,
+    "late": false,
+    "ex_best_coin": false,
+    "meanR23": true,
+    "order0_30_per_half": false
+   },
+   "subsets": {
+    "fresh134": {
+     "median_meanR15": 0.012570450666999883,
+     "median_n": 2.0
+    },
+    "extra31": {
+     "median_meanR15": null,
+     "median_n": 0.0
+    },
+    "pass": false
+   },
+   "cost_model": {
+    "primary_fee_bp_per_side": 15,
+    "slip_bp_per_side": 2,
+    "stress_fee_bp_per_side": 23,
+    "native_funding": "0.00005 per 4h of held notional, both sides pay; fixed model, not realized historical rates",
+    "legacy_field_names": "pnl15 / meanR15 now mean 15bp fee PLUS 2bp slip; pnl23=23bp fee PLUS2bp slip",
+    "exchange_rules": "frozen testnet snapshot; unknown rules reported by engine"
+   },
+   "no_closed_trades": false,
+   "dd": {
+    "order0_R": 0.3238304329975005,
+    "order0_label": "Standard",
+    "median_R": 0.3238304329975005,
+    "median_label": "Standard",
+    "max_R": 0.7577012239374499,
+    "max_label": "Standard",
+    "per_order_R": [
+     0.3238304329975005,
+     0.3238304329975005,
+     0.7577012239374499,
+     0.3238304329975005,
+     0.7577012239374499,
+     0.7577012239374499,
+     0.3238304329975005,
+     0.7577012239374499,
+     0.7577012239374499,
+     0.7577012239374499,
+     0.3238304329975005,
+     0.3238304329975005,
+     0.3238304329975005,
+     0.3238304329975005,
+     0.7577012239374499,
+     0.3238304329975005,
+     0.3238304329975005,
+     0.3238304329975005,
+     0.3238304329975005,
+     0.7577012239374499,
+     0.7577012239374499,
+     0.7577012239374499,
+     0.3238304329975005,
+     0.7577012239374499,
+     0.3238304329975005,
+     0.3238304329975005,
+     0.3238304329975005,
+     0.7577012239374499,
+     0.3238304329975005,
+     0.3238304329975005,
+     0.3238304329975005,
+     0.3238304329975005,
+     0.7577012239374499,
+     0.3238304329975005,
+     0.3238304329975005,
+     0.7577012239374499,
+     0.3238304329975005,
+     0.3238304329975005,
+     0.3238304329975005,
+     0.7577012239374499
+    ],
+    "note": "Closed equity, initial zero included; not mark-to-market DD."
+   },
+   "btc_regimes": {
+    "rising": {
+     "median_n": 2.0,
+     "median_meanR15": 0.012570450666999883,
+     "positive_orders": 25
+    },
+    "sideways": {
+     "median_n": 0.0,
+     "median_meanR15": null,
+     "positive_orders": 0
+    },
+    "falling": {
+     "median_n": 0.0,
+     "median_meanR15": null,
+     "positive_orders": 0
+    }
+   },
+   "sides": {
+    "long": {
+     "median_n": 2.0,
+     "median_meanR15": 0.012570450666999883,
+     "positive_orders": 25
+    },
+    "short": {
+     "median_n": 0.0,
+     "median_meanR15": null,
+     "positive_orders": 0
+    }
+   },
+   "yearly": {
+    "2023": {
+     "median_n": 2.0,
+     "median_meanR15": 0.012570450666999883,
+     "positive_orders": 25
+    }
+   },
+   "missing_rule_trades": {
+    "symbols": [
+     "ICPUSDT",
+     "TLMUSDT"
+    ],
+    "path_trades_all_orders": 0,
+    "order0": 0
+   },
+   "positive_orders": 25,
+   "saved_tape_gate_reconstruction": "MATCH; not independent price replay",
+   "forward_bar": {
+    "qualified": false,
+    "gates": {
+     "wide_screen": false,
+     "rising": true,
+     "sideways": false,
+     "stress": true,
+     "drawdown": true,
+     "top3": false
+    },
+    "fresh_regime_R15": {
+     "rising": 0.012570450666999883,
+     "sideways": null,
+     "falling": null
+    },
+    "fresh_R23": 0.006766810666999884,
+    "fresh_top3_share": null
+   }
+  }
+ }
+}

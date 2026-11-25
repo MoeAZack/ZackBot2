@@ -1,0 +1,6 @@
+BEFORE
+credit.le(-.020)
+AFTER
+credit.ge(.020)
+DETECTED BY
+test_credit_must_ease

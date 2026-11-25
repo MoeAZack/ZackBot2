@@ -1,0 +1,6 @@
+BEFORE
+ & risk.abs().le(.020)
+AFTER
+
+DETECTED BY
+test_risk_stays_stable

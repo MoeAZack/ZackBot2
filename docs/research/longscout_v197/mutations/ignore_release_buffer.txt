@@ -1,0 +1,6 @@
+BEFORE
+published + pd.Timedelta(days=1)
+AFTER
+published
+DETECTED BY
+test_use_dated_buffer

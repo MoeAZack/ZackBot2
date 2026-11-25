@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________________ test_risk_stays_stable ____________________________
+
+    def test_risk_stays_stable():
+        values, vintages = sample()
+        values.iloc[1, 3] = .30
+>       assert not M.credit_eases(values, vintages).any()
+E       AssertionError: assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2025-01-10    False\n2025-01-17     True\n2025-01-24    False\ndtype: bool.any
+E        +      where 2025-01-10    False\n2025-01-17     True\n2025-01-24    False\ndtype: bool = <function credit_eases at 0x00000150D2D26AC0>(            credit_previous  risk_previous  credit_current  risk_current\n2025-01-03             0.13           0.20   ...2           0.21            0.08         0.300\n2025-01-17             0.01           0.22            0.05         0.223, DatetimeIndex(['2025-01-09', '2025-01-16', '2025-01-23'], dtype='datetime64[us]', freq=None))
+E        +        where <function credit_eases at 0x00000150D2D26AC0> = M.credit_eases
+
+tests\test_longscout_v197.py:28: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v197.py::test_risk_stays_stable - AssertionError:...
+1 failed in 1.48s
