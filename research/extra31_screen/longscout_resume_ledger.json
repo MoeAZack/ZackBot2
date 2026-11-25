@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 381,
+ "registered_trials": 382,
  "completed_trials": 376,
  "historical_screen_passes": 13,
  "versions": {
@@ -2107,6 +2107,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "181": {
+   "status": "PREREGISTERED",
+   "source_freeze": "c66be383f742ac943577f7ebd840c34312709548",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 382,
+     "key": "l181_isolated_steth_discount_relief_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
