@@ -673,15 +673,15 @@
    "trials_after": 405,
    "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7164907713",
    "head": "410e47a95b37183766c0e70141043821d1bda273"
+  },
+  "213": {
+   "passes": 0,
+   "trials_after": 406,
+   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7165166075",
+   "head": "f4f720ccb38b9d90f2f37d6e025eb68814a59838"
   }
  },
- "running": {
-  "version": 212,
-  "source": "61be0dc2b1268001f314ae8678d33130e92c7cab",
-  "registration": "d9eb7a7cb4ded7d35647c5ab5b3eb6a8ea9e1790",
-  "output": "C:\\Dev\\ZackBot_research_cache\\longscout_codex_v212_20261124",
-  "start_cairo": "2026-11-25T16:18:08.905464+02:00"
- },
+ "running": {},
  "queued": {
   "94": {
    "source_freeze": "91a6775d1eb0558b5de44086e2b9189d7aed4579",
@@ -751,7 +751,7 @@
   "state": "Restart V105 completed. Prepare and freeze the next new family before market access.",
   "branch": "codex/longscout-v105-batch-20261124"
  },
- "mode": "RESTART_AUTHORIZED",
+ "mode": "STOPPED_CLAUDE_USAGE_RESERVE",
  "owner_stop": {
   "at_cairo": "2026-11-20T18:13:21+02:00",
   "registered_trials": 303,
@@ -805,5 +805,32 @@
    "reason": "Explore21 CSV and its separate public data API both timed out from the workstation after retry. Gross profit and loss history is not pinned. Synthetic checks passed. No trial registered or economic results computed.",
    "next": "Advance V199 without waiting. Reopen only after the full gross-flow source is verified."
   }
+ },
+ "claude_stop": {
+  "at_cairo": "2026-11-25T16:24:13+02:00",
+  "reason": "Claude STOP relayed by owner with 13 percent weekly usage remaining.",
+  "automatic_restart": false,
+  "last_completed_version": 213,
+  "last_completed_trial": 412,
+  "results_head": "f4f720ccb38b9d90f2f37d6e025eb68814a59838",
+  "registered_trials": 412,
+  "completed_trials": 406,
+  "historical_screen_passes": 13,
+  "restart_completed_trials": 105,
+  "restart_screen_passes": 2,
+  "forward_qualified": 0,
+  "incomplete_trials": [
+   302,
+   303,
+   310,
+   364,
+   370,
+   411
+  ],
+  "parked_unregistered_versions": [
+   198,
+   211,
+   214
+  ]
  }
 }

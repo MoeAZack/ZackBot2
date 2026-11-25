@@ -2788,16 +2788,18 @@
    ]
   },
   "212": {
-   "status": "PREREGISTERED",
+   "status": "INCOMPLETE_INPUT_CONTRACT",
    "source_freeze": "61be0dc2b1268001f314ae8678d33130e92c7cab",
    "batch_passes": null,
    "candidates": [
     {
      "trial": 411,
      "key": "r212_mutual_peer_triangle_outlier_fade_1d",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "INCOMPLETE_INPUT_CONTRACT",
+     "reason": "The default runner did not supply research_symbol. Execution stopped before trades or an economic result. V213 uses the existing symbol-aware runner with the same frozen hypothesis."
     }
-   ]
+   ],
+   "reason": "The default runner did not supply research_symbol. Execution stopped before trades or an economic result. V213 uses the existing symbol-aware runner with the same frozen hypothesis."
   },
   "213": {
    "status": "COMPLETE_REJECTED",
