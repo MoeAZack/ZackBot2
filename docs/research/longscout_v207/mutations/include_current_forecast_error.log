@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_requires_sixty_prior_forecasts _____________________
+
+    def test_requires_sixty_prior_forecasts():
+        close = pd.Series([100., 102., 99.] * 30)
+        error, low, high = M.forecast_bounds(close)
+        assert not error.iloc[:10].notna().any()
+>       assert low.first_valid_index() == high.first_valid_index() == 70
+E       assert 69 == 70
+E        +  where 69 = first_valid_index()
+E        +    where first_valid_index = 0          NaN\n1          NaN\n2          NaN\n3          NaN\n4          NaN\n        ...   \n85    0.019803\n86    0.019803\n87    0.019803\n88    0.019803\n89    0.019803\nLength: 90, dtype: float64.first_valid_index
+
+tests\test_longscout_v207.py:28: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v207.py::test_requires_sixty_prior_forecasts - as...
+1 failed in 1.35s

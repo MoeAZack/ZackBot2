@@ -1,0 +1,15 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_no_fade_without_breach _________________________
+
+    def test_no_fade_without_breach():
+        buy, sell = flags([-.019, -.01], [98., 99.])
+>       assert not (buy | sell).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = (0    False\n1     True\ndtype: bool | 0    False\n1    False\ndtype: bool).any
+
+tests\test_longscout_v207.py:44: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v207.py::test_no_fade_without_breach - assert not...
+1 failed in 1.24s

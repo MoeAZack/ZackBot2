@@ -1,0 +1,15 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_does_not_enter_past_center _______________________
+
+    def test_does_not_enter_past_center():
+        buy, sell = flags([-.04, .01], [96., 101.])
+>       assert not (buy | sell).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = (0    False\n1     True\ndtype: bool | 0    False\n1    False\ndtype: bool).any
+
+tests\test_longscout_v207.py:49: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v207.py::test_does_not_enter_past_center - assert...
+1 failed in 1.36s

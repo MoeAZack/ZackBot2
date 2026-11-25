@@ -1,0 +1,6 @@
+BEFORE
+ & error.lt(0) & price.diff()
+AFTER
+ & price.diff()
+DETECTED BY
+test_does_not_enter_past_center

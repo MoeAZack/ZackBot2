@@ -1,0 +1,6 @@
+BEFORE
+calibration = error.shift().rolling
+AFTER
+calibration = error.rolling
+DETECTED BY
+test_requires_sixty_prior_forecasts

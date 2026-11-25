@@ -1,0 +1,6 @@
+BEFORE
+ & outside_lower
+AFTER
+
+DETECTED BY
+test_no_fade_without_breach
