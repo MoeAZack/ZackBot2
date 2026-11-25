@@ -1,0 +1,2513 @@
+{
+ "archive_receipts": {
+  "2022-06-01": {
+   "sha256": "b69f50de899715b6374fa996d5cb8f2b0c9060208b9075f516a5d9f4bd7ef251",
+   "url": "https://www.federalreserve.gov/releases/h41/20220602/"
+  },
+  "2022-06-08": {
+   "sha256": "10d5eb846b10def2aae1c1b0b8b211fade0feefe607572045430474b52f830ba",
+   "url": "https://www.federalreserve.gov/releases/h41/20220609/"
+  },
+  "2022-06-15": {
+   "sha256": "453e6f6d516d9ea5f6e124372a4da2ed5563768eb7cd5669e4ec80e4168a6699",
+   "url": "https://www.federalreserve.gov/releases/h41/20220616/"
+  },
+  "2022-06-22": {
+   "sha256": "a51de9f6005dac4f25cf1df0500ab09dbadff86a8ecb1e6028f689f1523f6d68",
+   "url": "https://www.federalreserve.gov/releases/h41/20220623/"
+  },
+  "2022-06-29": {
+   "sha256": "244d023bdc621f383c82f6dffc84469651d59731e7a870dab5b75cb498eec07f",
+   "url": "https://www.federalreserve.gov/releases/h41/20220630/"
+  },
+  "2022-07-06": {
+   "sha256": "3b459deee523360676684aec23131e42210e5c477ccd3e65a0d79b6446208996",
+   "url": "https://www.federalreserve.gov/releases/h41/20220707/"
+  },
+  "2022-07-13": {
+   "sha256": "3c6a56c90b904d929e9580c99c0e337d86d6152c70e0cccf43af0a562a12755e",
+   "url": "https://www.federalreserve.gov/releases/h41/20220714/"
+  },
+  "2022-07-20": {
+   "sha256": "3284a568c6e0aa780906de9e66e82ddffe33dbdbb9e51992a276c30ce7f4b07e",
+   "url": "https://www.federalreserve.gov/releases/h41/20220721/"
+  },
+  "2022-07-27": {
+   "sha256": "2fdf6c0e67836e6b2da21889e3ca3a1e9e1c46a5aa3d1e3e9ac5b070e4bcde7b",
+   "url": "https://www.federalreserve.gov/releases/h41/20220728/"
+  },
+  "2022-08-03": {
+   "sha256": "9b78c090e7d1db030ae9f03603352291669e77408331a250c321be105a249b1c",
+   "url": "https://www.federalreserve.gov/releases/h41/20220804/"
+  },
+  "2022-08-10": {
+   "sha256": "f9554cc081232c2262af5900c9c6a406406b668230169d82bddddc1febd7b49e",
+   "url": "https://www.federalreserve.gov/releases/h41/20220811/"
+  },
+  "2022-08-17": {
+   "sha256": "71ae404d5dba2b598e51a4dc387223b4a96c037feb864726bd9f1a18e5addbe4",
+   "url": "https://www.federalreserve.gov/releases/h41/20220818/"
+  },
+  "2022-08-24": {
+   "sha256": "10bde1021bc7a7435f24ffd72aeb3428859551503c8b01a3a956edf123e24ad7",
+   "url": "https://www.federalreserve.gov/releases/h41/20220825/"
+  },
+  "2022-08-31": {
+   "sha256": "5bdde2669a8a57c5249722ecd13101c130521454fcd07a794abdfa086049dfe7",
+   "url": "https://www.federalreserve.gov/releases/h41/20220901/"
+  },
+  "2022-09-07": {
+   "sha256": "3a1952772a940074873ba74840812211494b12bcbc9aa287bdf49a437dda3938",
+   "url": "https://www.federalreserve.gov/releases/h41/20220908/"
+  },
+  "2022-09-14": {
+   "sha256": "dfc8974daf056ca15ae08a860e5e62ef77dc2a4c69b9f8747a1a44eda5dff435",
+   "url": "https://www.federalreserve.gov/releases/h41/20220915/"
+  },
+  "2022-09-21": {
+   "sha256": "1e8af75755a123df5242de16bb6d412f13a5646d761a197663cae6286983915a",
+   "url": "https://www.federalreserve.gov/releases/h41/20220922/"
+  },
+  "2022-09-28": {
+   "sha256": "5531d6e6ba87295def0aae83acd5cd7d53fc25f753c4827e88dfd48444caa469",
+   "url": "https://www.federalreserve.gov/releases/h41/20220929/"
+  },
+  "2022-10-05": {
+   "sha256": "bd6f8f8c490f3f72ed1ba1961e231e97aa9658f32108ad224f98aa286e634ddb",
+   "url": "https://www.federalreserve.gov/releases/h41/20221006/"
+  },
+  "2022-10-12": {
+   "sha256": "5e4c1a05016560e04016e8d44b322b952025073ce51081c764dbeb08bb6230fe",
+   "url": "https://www.federalreserve.gov/releases/h41/20221013/"
+  },
+  "2022-10-19": {
+   "sha256": "365e03dad806f3204774542161d6d2ccd11dcb50745ec884cd56d9fdfd0c0bf9",
+   "url": "https://www.federalreserve.gov/releases/h41/20221020/"
+  },
+  "2022-10-26": {
+   "sha256": "c7be31fcd29d3402e007a88cda031ba33cedfc4437f55a1172077bdfeee8bed2",
+   "url": "https://www.federalreserve.gov/releases/h41/20221027/"
+  },
+  "2022-11-02": {
+   "sha256": "c570ad3a22a0d5c62f471d645117f577a15f07546408006dfd52651cc8a5f701",
+   "url": "https://www.federalreserve.gov/releases/h41/20221103/"
+  },
+  "2022-11-09": {
+   "sha256": "1fc6f52005fede5ee91898699dc23ae17647bfd500a3e824c9e228c40a5be15f",
+   "url": "https://www.federalreserve.gov/releases/h41/20221110/"
+  },
+  "2022-11-16": {
+   "sha256": "ab17a6ceb85168566e3c6d20826ff7cc06408dec1d7fda1737b9e019b3f22833",
+   "url": "https://www.federalreserve.gov/releases/h41/20221117/"
+  },
+  "2022-11-23": {
+   "sha256": "5970f9dc9f4bf0b2d81df9b432f34e47ad3da0d87d5860db9a944ca80b57221c",
+   "url": "https://www.federalreserve.gov/releases/h41/20221125/"
+  },
+  "2022-11-30": {
+   "sha256": "97c593fd553a4870d53e133c66379e2bff0431d2fa5e82057db1532b3b470264",
+   "url": "https://www.federalreserve.gov/releases/h41/20221201/"
+  },
+  "2022-12-07": {
+   "sha256": "6734a01e7d7178fcf6884d059ab582cd58fa56b040aa3b9f52b82c34c70be1a7",
+   "url": "https://www.federalreserve.gov/releases/h41/20221208/"
+  },
+  "2022-12-14": {
+   "sha256": "46fb26d639aad477d7476237f7a6422e431580264a0f2ff05ab70fbf8cbd4229",
+   "url": "https://www.federalreserve.gov/releases/h41/20221215/"
+  },
+  "2022-12-21": {
+   "sha256": "50215237a2535a2883488f1bf1f772de4331b357d13fd61c99987838c9f7aaf0",
+   "url": "https://www.federalreserve.gov/releases/h41/20221222/"
+  },
+  "2022-12-28": {
+   "sha256": "1e9f0b8e1a507353789db04d508d9efc1b0d7b4f6e883cc1de875f0a265e7445",
+   "url": "https://www.federalreserve.gov/releases/h41/20221229/"
+  },
+  "2023-01-04": {
+   "sha256": "c2b1de7c658df878344894b44b0bc7705708ad897518489c175ae9d244eb5f7f",
+   "url": "https://www.federalreserve.gov/releases/h41/20230105/"
+  },
+  "2023-01-11": {
+   "sha256": "6b01f8bcd3f5b8721f0244662ec9761105f7ae8a4dde52011c0b5a9e9e4ef65e",
+   "url": "https://www.federalreserve.gov/releases/h41/20230112/"
+  },
+  "2023-01-18": {
+   "sha256": "bd42efd58e08586aef5f71b436ab312f9f47deeee84ff1ea2b2fc549082fae3f",
+   "url": "https://www.federalreserve.gov/releases/h41/20230119/"
+  },
+  "2023-01-25": {
+   "sha256": "a6bd7479a3b2ab12cb4ecc28899b4cc4b04262d4d2e4aaf784de1b47a5a2a585",
+   "url": "https://www.federalreserve.gov/releases/h41/20230126/"
+  },
+  "2023-02-01": {
+   "sha256": "6bf0e5ac7e71b809414e2617ceadc630fc09535b335719bdd5f7b15f0fbfa0dd",
+   "url": "https://www.federalreserve.gov/releases/h41/20230202/"
+  },
+  "2023-02-08": {
+   "sha256": "911ab0b11799193022e996729027f61e3cc45be052f74d7a48ea7a99bdf001d5",
+   "url": "https://www.federalreserve.gov/releases/h41/20230209/"
+  },
+  "2023-02-15": {
+   "sha256": "e79d567d595e11779e14f1abaa2bbf6169ee000deed1d905f3d0086bcb8f0418",
+   "url": "https://www.federalreserve.gov/releases/h41/20230216/"
+  },
+  "2023-02-22": {
+   "sha256": "23913782b41258917b15bd44db4e08a4cb74d81e1ba759dd116a400ad83525d8",
+   "url": "https://www.federalreserve.gov/releases/h41/20230223/"
+  },
+  "2023-03-01": {
+   "sha256": "537d49700053ccb0a5097dd4d8e7467dc489da93e63aae7445486082c70704d2",
+   "url": "https://www.federalreserve.gov/releases/h41/20230302/"
+  },
+  "2023-03-08": {
+   "sha256": "2ac63eeab653c7ceac8ec5f117cac10e5a1e9b1f8c1b1d587c5a5d4ade03ba17",
+   "url": "https://www.federalreserve.gov/releases/h41/20230309/"
+  },
+  "2023-03-15": {
+   "sha256": "6423fdec0ef659af7f96725dea95f700800ae7e6b664263af91e8eec2276d91e",
+   "url": "https://www.federalreserve.gov/releases/h41/20230316/"
+  },
+  "2023-03-22": {
+   "sha256": "465864288b1e8777e6fc9cb282a482d3dffb317f1856ecbaf1e880651d4ff8e9",
+   "url": "https://www.federalreserve.gov/releases/h41/20230323/"
+  },
+  "2023-03-29": {
+   "sha256": "8ac5fada2780db07b92d7132b50b7bce3858e619ae8a20096c054f1c876e6b30",
+   "url": "https://www.federalreserve.gov/releases/h41/20230330/"
+  },
+  "2023-04-05": {
+   "sha256": "deb918500f0b8a379bb69bdca3a47e34b9a28db7dc47daf318c5fa158a4b4cd9",
+   "url": "https://www.federalreserve.gov/releases/h41/20230406/"
+  },
+  "2023-04-12": {
+   "sha256": "b4a15b3fae6899ab59a4f3f2f8f53e799f3a326b045dbca33ebd6ac1dd62d44c",
+   "url": "https://www.federalreserve.gov/releases/h41/20230413/"
+  },
+  "2023-04-19": {
+   "sha256": "d3776042ac03d226e5fa809e6f25e8fd616216bc14048f4d9f4f7c859049544e",
+   "url": "https://www.federalreserve.gov/releases/h41/20230420/"
+  },
+  "2023-04-26": {
+   "sha256": "d9b0367ff7957bd0624d1f24df30284b89e3013da94916887c31da9ea57d777f",
+   "url": "https://www.federalreserve.gov/releases/h41/20230427/"
+  },
+  "2023-05-03": {
+   "sha256": "879fd020a5ebd27e332b9504b24cd63f75f65386a2072bed98001f4f80ab5196",
+   "url": "https://www.federalreserve.gov/releases/h41/20230504/"
+  },
+  "2023-05-10": {
+   "sha256": "45d003e9d9fea150eb187328c14c5e04dc127de37d7c54ef2f01fb2e047f5445",
+   "url": "https://www.federalreserve.gov/releases/h41/20230511/"
+  },
+  "2023-05-17": {
+   "sha256": "87cd6ced426380cef8175cf332d2ce0b78d292a4ad0a76d636b641051b4fbb58",
+   "url": "https://www.federalreserve.gov/releases/h41/20230518/"
+  },
+  "2023-05-24": {
+   "sha256": "2b160072663c3442a4aa67ee3fb0089b5f1447ea8e79ba368af5129da056cffd",
+   "url": "https://www.federalreserve.gov/releases/h41/20230525/"
+  },
+  "2023-05-31": {
+   "sha256": "d3acabc1ebde853f644ca1816ce83762cbdee4ef347f3e1c86e6b2b9ac1c240d",
+   "url": "https://www.federalreserve.gov/releases/h41/20230601/"
+  },
+  "2023-06-07": {
+   "sha256": "c1a12becfc8cf41aa94f929c37fdf0c2dbfedb137e18bc92fb72049766de8462",
+   "url": "https://www.federalreserve.gov/releases/h41/20230608/"
+  },
+  "2023-06-14": {
+   "sha256": "6480e9482b5db06d484caf8731221f37fde907ce506d0c20a273e703d7287453",
+   "url": "https://www.federalreserve.gov/releases/h41/20230615/"
+  },
+  "2023-06-21": {
+   "sha256": "08557f59da69d59e438582fb2e27a4e0954a9004864485643702ff36999cccb4",
+   "url": "https://www.federalreserve.gov/releases/h41/20230622/"
+  },
+  "2023-06-28": {
+   "sha256": "8d1774835b9cdb89efa8563cfcbdbb0be1dbc086ebd9c60a3fc7292f3bf2bacd",
+   "url": "https://www.federalreserve.gov/releases/h41/20230629/"
+  },
+  "2023-07-05": {
+   "sha256": "cb864ecb13e26a1422e84ffe0cc43cb55904cd674c4aa8bc3cfcaac40b394fa2",
+   "url": "https://www.federalreserve.gov/releases/h41/20230706/"
+  },
+  "2023-07-12": {
+   "sha256": "dfc409182d3a192779dd46aee9dfe6f8cc3983c6db6613880c3c04f9d6b95c42",
+   "url": "https://www.federalreserve.gov/releases/h41/20230713/"
+  },
+  "2023-07-19": {
+   "sha256": "4a6560f45c3c4f95529fe79639dd52f192958ade4f26da7d7134a13615696333",
+   "url": "https://www.federalreserve.gov/releases/h41/20230720/"
+  },
+  "2023-07-26": {
+   "sha256": "5c7c0db5ea3efc07d79a3764008d7f7fbaf24e7a466791f414cc0950a49a87c3",
+   "url": "https://www.federalreserve.gov/releases/h41/20230727/"
+  },
+  "2023-08-02": {
+   "sha256": "023a72d8d0b8ae24b10d63d1903ab563e39b68bca6681c03c330099440a01797",
+   "url": "https://www.federalreserve.gov/releases/h41/20230803/"
+  },
+  "2023-08-09": {
+   "sha256": "f75e8f752bdac014be96ab9c5af51a8671782f5caea6dc85bdcea706b0b3efe2",
+   "url": "https://www.federalreserve.gov/releases/h41/20230810/"
+  },
+  "2023-08-16": {
+   "sha256": "fa1764cb0194e2556f6af3dc5c31d9808d0d166586ced44d6861f73118c49c2a",
+   "url": "https://www.federalreserve.gov/releases/h41/20230817/"
+  },
+  "2023-08-23": {
+   "sha256": "2a775b4bc71c5e7805877d7de3531e5d0ca6d9610a2a8e1bf34a3e319823808c",
+   "url": "https://www.federalreserve.gov/releases/h41/20230824/"
+  },
+  "2023-08-30": {
+   "sha256": "2d74249215500e01caadc024df39d57e2c17de2ff47b9003c75f126538a0aef4",
+   "url": "https://www.federalreserve.gov/releases/h41/20230831/"
+  },
+  "2023-09-06": {
+   "sha256": "ea896b9a92949ea82fa8ad541162869218775659b03f6e130898438ce9faf1a4",
+   "url": "https://www.federalreserve.gov/releases/h41/20230907/"
+  },
+  "2023-09-13": {
+   "sha256": "8502670c0865f94988c5a0fad38348565e052fac11101e8afc201224133eebed",
+   "url": "https://www.federalreserve.gov/releases/h41/20230914/"
+  },
+  "2023-09-20": {
+   "sha256": "7a57a4496ac3858dcfd727ce9cb50a963141f987b12b0582f9a6bce5df038aba",
+   "url": "https://www.federalreserve.gov/releases/h41/20230921/"
+  },
+  "2023-09-27": {
+   "sha256": "e7145707af7f34e96b76d906ca8cc5d378337ee5ce23280833bd83b0db98dd5c",
+   "url": "https://www.federalreserve.gov/releases/h41/20230928/"
+  },
+  "2023-10-04": {
+   "sha256": "c74ae7072efcb8d92ef74df529853a5a46060a69d56c78db5613dcd65ec93faf",
+   "url": "https://www.federalreserve.gov/releases/h41/20231005/"
+  },
+  "2023-10-11": {
+   "sha256": "ef77f7a0854f581e5f23db602167c0c4815925854199c4ee3c5f52d70b695660",
+   "url": "https://www.federalreserve.gov/releases/h41/20231012/"
+  },
+  "2023-10-18": {
+   "sha256": "9d7dc3190c136cffd8a278852c5c2c70ded3adaeaf449eccabeb8ea0c8dc542f",
+   "url": "https://www.federalreserve.gov/releases/h41/20231019/"
+  },
+  "2023-10-25": {
+   "sha256": "c2dc1009ccdb189472cb234aef842dc7db576ac395c75f8475c4c1f6ae28fd8a",
+   "url": "https://www.federalreserve.gov/releases/h41/20231026/"
+  },
+  "2023-11-01": {
+   "sha256": "b7aba9dde365ac761a19b2da9027500387c4131bd62c82fdf3a1bbf0e6308596",
+   "url": "https://www.federalreserve.gov/releases/h41/20231102/"
+  },
+  "2023-11-08": {
+   "sha256": "73cd6db3a196743997738a837f0a185bb60d045388bb10900a1e50085c8b9e74",
+   "url": "https://www.federalreserve.gov/releases/h41/20231109/"
+  },
+  "2023-11-15": {
+   "sha256": "9d9ce0de4d776c031e25678825100ca99c2c44b58d617465e46e4baacbf2ef89",
+   "url": "https://www.federalreserve.gov/releases/h41/20231116/"
+  },
+  "2023-11-22": {
+   "sha256": "de29e7ab43999661358abf58cc1a1ae6df1c0a4afd1a912c7b094bfbc479c6f9",
+   "url": "https://www.federalreserve.gov/releases/h41/20231124/"
+  },
+  "2023-11-29": {
+   "sha256": "791368bcb41dfb6b2df8cc71d11ad902a7806d1cee1ce855cb91a566f4bb905c",
+   "url": "https://www.federalreserve.gov/releases/h41/20231130/"
+  },
+  "2023-12-06": {
+   "sha256": "0ba237a9b328f9996ebd95f8abadc8a241c395a721ea0b2f8af19d554262376c",
+   "url": "https://www.federalreserve.gov/releases/h41/20231207/"
+  },
+  "2023-12-13": {
+   "sha256": "e6f37d5dd582424295c20c6fe96067a8988f1b256e3e2290f4b9b6aa80314716",
+   "url": "https://www.federalreserve.gov/releases/h41/20231214/"
+  },
+  "2023-12-20": {
+   "sha256": "99fca31e0ad11c7ead0588aef1bfc28d348a475bf5a463e569a8284a409e58df",
+   "url": "https://www.federalreserve.gov/releases/h41/20231221/"
+  },
+  "2023-12-27": {
+   "sha256": "331e4cd76aac6b9ca50b7ce39f4bbdfdbedbb947a7d22ee04c40b5c47f1a238a",
+   "url": "https://www.federalreserve.gov/releases/h41/20231228/"
+  },
+  "2024-01-03": {
+   "sha256": "2c338db3e8a0c187867235c7423e330fa93f67a815fe21edc17b2bf68297c700",
+   "url": "https://www.federalreserve.gov/releases/h41/20240104/"
+  },
+  "2024-01-10": {
+   "sha256": "c4810acd48b2a49086e2abcf6649b572386cc86e0e18461c90f588383f877a8e",
+   "url": "https://www.federalreserve.gov/releases/h41/20240111/"
+  },
+  "2024-01-17": {
+   "sha256": "75cc5d05a7f930306f75722e2ae989c056de4b6b36c5065e4713ed3bef7034be",
+   "url": "https://www.federalreserve.gov/releases/h41/20240118/"
+  },
+  "2024-01-24": {
+   "sha256": "dda47bffddc965409b5b5e94d2b85257f01f54359a642bdc5c09d0e2c2d8b8a6",
+   "url": "https://www.federalreserve.gov/releases/h41/20240125/"
+  },
+  "2024-01-31": {
+   "sha256": "3b8d984d9aff543bfa2a63dcf3eb47c0cf9675ed92bd53812739afbebc526fc7",
+   "url": "https://www.federalreserve.gov/releases/h41/20240201/"
+  },
+  "2024-02-07": {
+   "sha256": "af2116563db692f5d3d83e4f6c07c63782eba7479227cbe7655144cb6cdf47b1",
+   "url": "https://www.federalreserve.gov/releases/h41/20240208/"
+  },
+  "2024-02-14": {
+   "sha256": "03e1735808e067f895e9b5bc5717a2ef0bcd43387bf21c6cf5b99c37d26ac03d",
+   "url": "https://www.federalreserve.gov/releases/h41/20240215/"
+  },
+  "2024-02-21": {
+   "sha256": "c57acee72c1ee461e47408387b88e6b4cb9f9da91e226fca5471a53bd4d73da1",
+   "url": "https://www.federalreserve.gov/releases/h41/20240222/"
+  },
+  "2024-02-28": {
+   "sha256": "b38326bcfb6fa8c541d8ac8359854cf8f0d29502b2444dcf46b30c3cb16eb91b",
+   "url": "https://www.federalreserve.gov/releases/h41/20240229/"
+  },
+  "2024-03-06": {
+   "sha256": "9b4e266681605b44e10182a8d779cf7d1374f762a890f03860b09a79820ec4e5",
+   "url": "https://www.federalreserve.gov/releases/h41/20240307/"
+  },
+  "2024-03-13": {
+   "sha256": "b7aad9c1a90bd566852a34af704a6b6158d65c480de2f25ce5cf08481c147e0f",
+   "url": "https://www.federalreserve.gov/releases/h41/20240314/"
+  },
+  "2024-03-20": {
+   "sha256": "9f2914eea82477a2d642e80d06121c025395a74c7186e6bcf90814ebe7b6c2ff",
+   "url": "https://www.federalreserve.gov/releases/h41/20240321/"
+  },
+  "2024-03-27": {
+   "sha256": "b6ae9203480c2650a74db353951f630432ef0082bcc1703c184947ce3de38bc3",
+   "url": "https://www.federalreserve.gov/releases/h41/20240328/"
+  },
+  "2024-04-03": {
+   "sha256": "dc5be3df3837c654c23dccb1d55567fc2a6bce1ca56ef084b4167934a595c2e2",
+   "url": "https://www.federalreserve.gov/releases/h41/20240404/"
+  },
+  "2024-04-10": {
+   "sha256": "fecf9365cd5cf0fffea628787d9ccbd461808f66f1f95c7c1ddfd2892fe99ebf",
+   "url": "https://www.federalreserve.gov/releases/h41/20240411/"
+  },
+  "2024-04-17": {
+   "sha256": "be7da9b4140a20bb1fdd0794dc0d9799d4b967eed92e96a29099aa7f371c9ef0",
+   "url": "https://www.federalreserve.gov/releases/h41/20240418/"
+  },
+  "2024-04-24": {
+   "sha256": "4a8b268d37382d1f0f94edccbbc1012f393730d578c21d89b25e0cd100e3b8b2",
+   "url": "https://www.federalreserve.gov/releases/h41/20240425/"
+  },
+  "2024-05-01": {
+   "sha256": "90a87ba3fd5156417d84c7f5f7c73eff885b897bc07e51d5e748421afed79b43",
+   "url": "https://www.federalreserve.gov/releases/h41/20240502/"
+  },
+  "2024-05-08": {
+   "sha256": "753587bd8ff4c7a02f80fac627dccf15892502ef36939c0122d868137a66d75c",
+   "url": "https://www.federalreserve.gov/releases/h41/20240509/"
+  },
+  "2024-05-15": {
+   "sha256": "0f4b07321119364d890343c0141cb7ee9b7d3395b25d61af1cf5a5c0a139d55a",
+   "url": "https://www.federalreserve.gov/releases/h41/20240516/"
+  },
+  "2024-05-22": {
+   "sha256": "c46a9989783bfe1792e5fb0c7cf253012a236e70206289e446bfe4e03033c9bf",
+   "url": "https://www.federalreserve.gov/releases/h41/20240523/"
+  },
+  "2024-05-29": {
+   "sha256": "f4990a3f7bdd8ad180b14d9c973df121182afc1249fd0f878721f54739672197",
+   "url": "https://www.federalreserve.gov/releases/h41/20240530/"
+  },
+  "2024-06-05": {
+   "sha256": "2a4bd6859a249f9e437496e640a89bb877a43b1b2707ed99f12635a05137aa3f",
+   "url": "https://www.federalreserve.gov/releases/h41/20240606/"
+  },
+  "2024-06-12": {
+   "sha256": "1316e6f7b291ed5847c13d92f1612d5ca4632cb4201819a7bf3d2100ee0bbeda",
+   "url": "https://www.federalreserve.gov/releases/h41/20240613/"
+  },
+  "2024-06-19": {
+   "sha256": "8580d99425420dd69f7063ab3dac02dfc897df037c8485047509475e011dc461",
+   "url": "https://www.federalreserve.gov/releases/h41/20240620/"
+  },
+  "2024-06-26": {
+   "sha256": "d7332c4df3cf8e5a6f0206d407ce362fb82d83cf4b01ca0e31614650d66c49be",
+   "url": "https://www.federalreserve.gov/releases/h41/20240627/"
+  },
+  "2024-07-03": {
+   "sha256": "8ee97deca9b04f9b492be3fc68a0ca00a5a212c6d7d712e57d0bd49576bf0a88",
+   "url": "https://www.federalreserve.gov/releases/h41/20240705/"
+  },
+  "2024-07-10": {
+   "sha256": "9d1034fcea640e942ae8233eafa342bcd2925a56da07a274f037be82fee85b0e",
+   "url": "https://www.federalreserve.gov/releases/h41/20240711/"
+  },
+  "2024-07-17": {
+   "sha256": "b7fc94f7ab7bebe791053fb94ebf0fa95ed7c711ed277280da8bae7de668079d",
+   "url": "https://www.federalreserve.gov/releases/h41/20240718/"
+  },
+  "2024-07-24": {
+   "sha256": "e06aba575c61e6fe520c6001d5a0ef58239c9fca586e036e67dbe3ff2004c3da",
+   "url": "https://www.federalreserve.gov/releases/h41/20240725/"
+  },
+  "2024-07-31": {
+   "sha256": "39675ced3b44957a172dcdf3b03c016dfd8a80957ccd7b91fd609445fd2fdcf3",
+   "url": "https://www.federalreserve.gov/releases/h41/20240801/"
+  },
+  "2024-08-07": {
+   "sha256": "45b29ccdf79907499e3ee29d67f18d7e9114c3b1517f9d660e2661a01d87b4bc",
+   "url": "https://www.federalreserve.gov/releases/h41/20240808/"
+  },
+  "2024-08-14": {
+   "sha256": "8f60a2ac79229504236efa6f072a62295e495b22fee7e9cf40985fac295c1825",
+   "url": "https://www.federalreserve.gov/releases/h41/20240815/"
+  },
+  "2024-08-21": {
+   "sha256": "7c66f196ec2d50c6f9017ae0db01ff6ac1ca25b6b2602c06a4885a4862181b67",
+   "url": "https://www.federalreserve.gov/releases/h41/20240822/"
+  },
+  "2024-08-28": {
+   "sha256": "dccbc1a2fc9299a390c36e41d8fc0b9733f111a6cadc181ecec19f58d82d8cb3",
+   "url": "https://www.federalreserve.gov/releases/h41/20240829/"
+  },
+  "2024-09-04": {
+   "sha256": "b45558c19e6e8b077fb04219334320116b636a2ff4463320027cb4fb5b1ec936",
+   "url": "https://www.federalreserve.gov/releases/h41/20240905/"
+  },
+  "2024-09-11": {
+   "sha256": "f4bdfa9b18d26e36b13e1e83edf8aefdd532900c3a1d9882308bd40e6200fb5e",
+   "url": "https://www.federalreserve.gov/releases/h41/20240912/"
+  },
+  "2024-09-18": {
+   "sha256": "e74eb735a8df62b1dd3d82f82e0c9514a10ecfb2734d628978d11fa2e3d48c21",
+   "url": "https://www.federalreserve.gov/releases/h41/20240919/"
+  },
+  "2024-09-25": {
+   "sha256": "454211749ea6c422c9760269de8a9ee38fdb14bdbe5ac89f22cbab2441dabf85",
+   "url": "https://www.federalreserve.gov/releases/h41/20240926/"
+  },
+  "2024-10-02": {
+   "sha256": "81a64eb1e46bacf67ce026a768871eb207c1030bdac5fa59fcd8e6835b8d955b",
+   "url": "https://www.federalreserve.gov/releases/h41/20241003/"
+  },
+  "2024-10-09": {
+   "sha256": "f9e5b647957d0228cfc41780de309dc7800a29d886810a2d9b14bbc291a89edb",
+   "url": "https://www.federalreserve.gov/releases/h41/20241010/"
+  },
+  "2024-10-16": {
+   "sha256": "aae8ff9977b829159769f0ec9311e90b040939f60b1a79a382e3ecef89c1246c",
+   "url": "https://www.federalreserve.gov/releases/h41/20241017/"
+  },
+  "2024-10-23": {
+   "sha256": "bb432356887127f4ef1c6b7b3414a8c7db9ecb6d7265c315bc2c16f016322226",
+   "url": "https://www.federalreserve.gov/releases/h41/20241024/"
+  },
+  "2024-10-30": {
+   "sha256": "4e5a859c584050f01f3ba7c938c104c0494c88f91bd39310a0737fcc479c586e",
+   "url": "https://www.federalreserve.gov/releases/h41/20241031/"
+  },
+  "2024-11-06": {
+   "sha256": "c8a6fe713a3a50a43c25918ec8e8a950e81f35754f55ff45b28f7980c2f5fbb0",
+   "url": "https://www.federalreserve.gov/releases/h41/20241107/"
+  },
+  "2024-11-13": {
+   "sha256": "68cc9699924ac45dfbc12a045c3d6f6124420d3e3f55dabbefb0efa217f88255",
+   "url": "https://www.federalreserve.gov/releases/h41/20241114/"
+  },
+  "2024-11-20": {
+   "sha256": "33c399caa178a1c82f2f529fd6b6e54189c95568f1ab3d01e9c32c201017e623",
+   "url": "https://www.federalreserve.gov/releases/h41/20241121/"
+  },
+  "2024-11-27": {
+   "sha256": "e4e16bc466117c08c0b594079cec9633778f77d40a8ef1691b135b140ef7641b",
+   "url": "https://www.federalreserve.gov/releases/h41/20241129/"
+  },
+  "2024-12-04": {
+   "sha256": "36902188d761ed9c4ab0dd7b4ace781ac43cfccfd07960eb774789ebb1de26db",
+   "url": "https://www.federalreserve.gov/releases/h41/20241205/"
+  },
+  "2024-12-11": {
+   "sha256": "be9fecc4c589496bb14a6efadac22eed2e30f4a4f057caae6d4fdde566611f41",
+   "url": "https://www.federalreserve.gov/releases/h41/20241212/"
+  },
+  "2024-12-18": {
+   "sha256": "74d43c3aebfc87c34824e1f5f0b7aed522e3bbe23bd72d0e8959b53b2e564668",
+   "url": "https://www.federalreserve.gov/releases/h41/20241219/"
+  },
+  "2024-12-25": {
+   "sha256": "6ca0655aa57309e7544c77983862445f3f12942581bddf4df1ccb38881243d42",
+   "url": "https://www.federalreserve.gov/releases/h41/20241226/"
+  },
+  "2025-01-01": {
+   "sha256": "2a237d0c4989c7eb655377ee69a227b34f2018841b687a0a7651334b351b19a3",
+   "url": "https://www.federalreserve.gov/releases/h41/20250102/"
+  },
+  "2025-01-08": {
+   "sha256": "04f0ba8150808dbfb6e5970e37ea0c82d4e0557751d18e5c8106a0758fb14f06",
+   "url": "https://www.federalreserve.gov/releases/h41/20250110/"
+  },
+  "2025-01-15": {
+   "sha256": "bb0991a2a115c83825d5f57a0a567873f5a8817efde8c6fe69f899b1ddeac4b8",
+   "url": "https://www.federalreserve.gov/releases/h41/20250116/"
+  },
+  "2025-01-22": {
+   "sha256": "28e40b1a800c84eb3d2fd84cbe0a68ddef0e6834d786e816a02907dbc6d17e18",
+   "url": "https://www.federalreserve.gov/releases/h41/20250123/"
+  },
+  "2025-01-29": {
+   "sha256": "d0c08465f44089ad3c546bfc0a692c39d2a115b834b60777ca85d7b13acbe7ca",
+   "url": "https://www.federalreserve.gov/releases/h41/20250130/"
+  },
+  "2025-02-05": {
+   "sha256": "03065f4509b37f7913317de873168fcd63db26f431f1ef9f32145541ff69a1ba",
+   "url": "https://www.federalreserve.gov/releases/h41/20250206/"
+  },
+  "2025-02-12": {
+   "sha256": "55e10d76b562aeb2b7cb33b553acfb72f1108ed190ef7e8179d3a752d7fd0c2e",
+   "url": "https://www.federalreserve.gov/releases/h41/20250213/"
+  },
+  "2025-02-19": {
+   "sha256": "2da9fe20c6b131135cc9028ccfbc9005b035c61da474d8b7a32d264a04c28db6",
+   "url": "https://www.federalreserve.gov/releases/h41/20250220/"
+  },
+  "2025-02-26": {
+   "sha256": "c04e23762cf614b68b206d5080d05f35601311c8da98086abb569f1c775f1c7a",
+   "url": "https://www.federalreserve.gov/releases/h41/20250227/"
+  },
+  "2025-03-05": {
+   "sha256": "433ea295b4dae1f50db732b14137e4b6a0eaa6621bcc449e7159c84769e359fd",
+   "url": "https://www.federalreserve.gov/releases/h41/20250306/"
+  },
+  "2025-03-12": {
+   "sha256": "94bddf4a4cebd14b9fdcd6857f7879cf9263901c6538f0b3da0169290c68587c",
+   "url": "https://www.federalreserve.gov/releases/h41/20250313/"
+  },
+  "2025-03-19": {
+   "sha256": "6b529625d67779f8b0577acea6bd7c04c2f690f4ba269bdb092e4317e9c40c7d",
+   "url": "https://www.federalreserve.gov/releases/h41/20250320/"
+  },
+  "2025-03-26": {
+   "sha256": "f54df9a3f9313cc47d7b45c811d2f344e46d3c5494e53d86774cb02c05362a36",
+   "url": "https://www.federalreserve.gov/releases/h41/20250327/"
+  },
+  "2025-04-02": {
+   "sha256": "de4bc7a172e901644fea8c7705a669f2be6d3d5da0c3460ebcd3f414eb0d0418",
+   "url": "https://www.federalreserve.gov/releases/h41/20250403/"
+  },
+  "2025-04-09": {
+   "sha256": "547a440ecd765232748890573121b4bb7064101bead60b3f097e7df4d11991ca",
+   "url": "https://www.federalreserve.gov/releases/h41/20250410/"
+  },
+  "2025-04-16": {
+   "sha256": "e9a73c8cfe1a0a99d150c26f75ef4d7dfde37ffdc20690ecbe5c31ddb4adfe52",
+   "url": "https://www.federalreserve.gov/releases/h41/20250417/"
+  },
+  "2025-04-23": {
+   "sha256": "dc5679a5141892c500cc3d50ec1460894389eff4dbf015f25e3be9b7362ed292",
+   "url": "https://www.federalreserve.gov/releases/h41/20250424/"
+  },
+  "2025-04-30": {
+   "sha256": "21785be2a505409ab4482c71e8e4b0d1ec5953f0e4eedff4417ec74b6355661b",
+   "url": "https://www.federalreserve.gov/releases/h41/20250501/"
+  },
+  "2025-05-07": {
+   "sha256": "349063938d775e48a2547c3dd9df99dd165f3da7b97c0a2b5ec6c02d0438d33b",
+   "url": "https://www.federalreserve.gov/releases/h41/20250508/"
+  },
+  "2025-05-14": {
+   "sha256": "c5c241b72206bdccc8aaddc3071220c4675a62932bfc4405cf0cf8292f87a03f",
+   "url": "https://www.federalreserve.gov/releases/h41/20250515/"
+  },
+  "2025-05-21": {
+   "sha256": "75e4d13b66294a9dfc4786a59bd556574130b6ae227c5f2ae7284d7a4d2314eb",
+   "url": "https://www.federalreserve.gov/releases/h41/20250522/"
+  },
+  "2025-05-28": {
+   "sha256": "fd46799eae0c471d229c1a6a5ae3a3ff93cc3f34507cc746d4e9f8529e66bb53",
+   "url": "https://www.federalreserve.gov/releases/h41/20250529/"
+  },
+  "2025-06-04": {
+   "sha256": "987ad8e168d9229c157bfd9dbee8641c70aefdc4fd1ff17a522966f7dde2f5b1",
+   "url": "https://www.federalreserve.gov/releases/h41/20250605/"
+  },
+  "2025-06-11": {
+   "sha256": "cda116e10b097a2a874cda3e9eb0538ec55e039787a823f5eafec460e9481a4e",
+   "url": "https://www.federalreserve.gov/releases/h41/20250612/"
+  },
+  "2025-06-18": {
+   "sha256": "cd6cc66cc17214df2ba6bef7c8222528318ea158d33ddede45e5aeb46dcf7494",
+   "url": "https://www.federalreserve.gov/releases/h41/20250620/"
+  },
+  "2025-06-25": {
+   "sha256": "b2cc67a9623a9c027f68a73ab6ec90063ea90f15cb28d16e6487ef3c845e0127",
+   "url": "https://www.federalreserve.gov/releases/h41/20250626/"
+  },
+  "2025-07-02": {
+   "sha256": "21f2773b3b04c01687a31d4a1c947c567bccec613547dfea6a3de4d062785baf",
+   "url": "https://www.federalreserve.gov/releases/h41/20250703/"
+  },
+  "2025-07-09": {
+   "sha256": "6e0004db21238de39a12360b7e187dafef1a40f50fdc9a52b22df729ccce122d",
+   "url": "https://www.federalreserve.gov/releases/h41/20250710/"
+  },
+  "2025-07-16": {
+   "sha256": "f8a4c149a01a9775f763e54b3e1c2326e6c343da54a33be235309b9480ebfff0",
+   "url": "https://www.federalreserve.gov/releases/h41/20250717/"
+  },
+  "2025-07-23": {
+   "sha256": "debc7fe6422c2488b545709b2c107ad5c0a7883f659dbcfa3a53d3c56635c3d6",
+   "url": "https://www.federalreserve.gov/releases/h41/20250724/"
+  },
+  "2025-07-30": {
+   "sha256": "5185a011d8b4f2039650ea4bf1490e7f72ef1789c74a4b817e1c6d381139e32a",
+   "url": "https://www.federalreserve.gov/releases/h41/20250731/"
+  },
+  "2025-08-06": {
+   "sha256": "76f5813d3bac862ef73c3cc1dd94c812d73b2ad6bb24478b44e3d816594a0745",
+   "url": "https://www.federalreserve.gov/releases/h41/20250807/"
+  },
+  "2025-08-13": {
+   "sha256": "6acd896a4a139f8137be59c2b2afcae90868a257036f49b8e99775365b36bdbe",
+   "url": "https://www.federalreserve.gov/releases/h41/20250814/"
+  },
+  "2025-08-20": {
+   "sha256": "93862e3284cce67e3ae404ac8425857c3ffb64addd3564f3bede14d63998d7a7",
+   "url": "https://www.federalreserve.gov/releases/h41/20250821/"
+  },
+  "2025-08-27": {
+   "sha256": "2954fe4aae0f3188f59abdcd5988229b987b2ba5aa850bad2390cd5d77695a13",
+   "url": "https://www.federalreserve.gov/releases/h41/20250828/"
+  },
+  "2025-09-03": {
+   "sha256": "44a7fe0e9b83fda4d5ddca013ae5b3b8d2393a43382a154a459677d4a9dbb679",
+   "url": "https://www.federalreserve.gov/releases/h41/20250904/"
+  },
+  "2025-09-10": {
+   "sha256": "fde977e0e4042822a5ac1540de6e026563c59560f0a4735f89fb1d2666792801",
+   "url": "https://www.federalreserve.gov/releases/h41/20250911/"
+  },
+  "2025-09-17": {
+   "sha256": "205baa9c1446e63eac595376bec0bfa52c5c979d1b2cd03cbe0617ae520e5bc6",
+   "url": "https://www.federalreserve.gov/releases/h41/20250918/"
+  },
+  "2025-09-24": {
+   "sha256": "bc5521c222e75279c7a13cdd865853c009dd677a29adf4d240dc827a8955133d",
+   "url": "https://www.federalreserve.gov/releases/h41/20250925/"
+  },
+  "2025-10-01": {
+   "sha256": "bcc098333acdb7083751e8d09dee1c1398214e3ea747fa66c5c1bf24c1fa7474",
+   "url": "https://www.federalreserve.gov/releases/h41/20251002/"
+  },
+  "2025-10-08": {
+   "sha256": "29d4c8dbe67fb51e4e5188c8bedec28c6af8573af823724d54a07cbeeda8286d",
+   "url": "https://www.federalreserve.gov/releases/h41/20251009/"
+  },
+  "2025-10-15": {
+   "sha256": "89501499686c21e8e5b0ef1f6e78d47eca0b4d102f70367310e164823486be3c",
+   "url": "https://www.federalreserve.gov/releases/h41/20251016/"
+  },
+  "2025-10-22": {
+   "sha256": "c43a4146255c75b6154c0160ffc6f697b3f9b939aa864ecf32400fb9265ff1ee",
+   "url": "https://www.federalreserve.gov/releases/h41/20251023/"
+  },
+  "2025-10-29": {
+   "sha256": "2104cc4091303409ef331cdb1b8cc5a05d2674a81eec2f545f19f780b6c38f53",
+   "url": "https://www.federalreserve.gov/releases/h41/20251030/"
+  },
+  "2025-11-05": {
+   "sha256": "eca639774344f456edbb77911443bddb81085ca407555db4b63ee92558113e91",
+   "url": "https://www.federalreserve.gov/releases/h41/20251106/"
+  },
+  "2025-11-12": {
+   "sha256": "8bcdeaa59aafa14b04d81d686153aa8157ff24b0a66af49776ab798f2ae61132",
+   "url": "https://www.federalreserve.gov/releases/h41/20251113/"
+  },
+  "2025-11-19": {
+   "sha256": "41dd79780823e19cd8e630b2b55f27e7c8565528456b87feb2d20b0ccc8f5755",
+   "url": "https://www.federalreserve.gov/releases/h41/20251120/"
+  },
+  "2025-11-26": {
+   "sha256": "ecf81598340e2b0b75e960ad979eabb5e8850e49e182a19df6f920983ddc2c6b",
+   "url": "https://www.federalreserve.gov/releases/h41/20251128/"
+  },
+  "2025-12-03": {
+   "sha256": "127a79ef49b3be7281e5e88af782459d50d71f43dbd38a1de1761cdf9081116e",
+   "url": "https://www.federalreserve.gov/releases/h41/20251204/"
+  },
+  "2025-12-10": {
+   "sha256": "4ee355e48f8b5b5e12859944ba727380fd31c2d86afc256c326309f8202bc5a4",
+   "url": "https://www.federalreserve.gov/releases/h41/20251211/"
+  },
+  "2025-12-17": {
+   "sha256": "579c7c5c5c080d13ef9e3ad74d89e906c251b8dfc870ec437b2832852f1e2f58",
+   "url": "https://www.federalreserve.gov/releases/h41/20251218/"
+  },
+  "2025-12-24": {
+   "sha256": "90d3c36a3afd6e6d9f781f57b0c97c8adf1c67fb01263d1f80e0b7b0bc46d8ca",
+   "url": "https://www.federalreserve.gov/releases/h41/20251229/"
+  },
+  "2025-12-31": {
+   "sha256": "138968d21b1110333b2ed55c8f9fd42f738afdf1e8df139e0ac52d2ad313bb8f",
+   "url": "https://www.federalreserve.gov/releases/h41/20260102/"
+  },
+  "2026-01-07": {
+   "sha256": "dae2c25f06f2da1559d838d1526238ca4ed38c6d5ca4a145c7c031c8efd796f4",
+   "url": "https://www.federalreserve.gov/releases/h41/20260108/"
+  },
+  "2026-01-14": {
+   "sha256": "36ea3bb2d0b41517954887f2a4d8bbe429e118631c63c273fad1a05979ab9c4c",
+   "url": "https://www.federalreserve.gov/releases/h41/20260115/"
+  },
+  "2026-01-21": {
+   "sha256": "d2695179cb661b9905d5f7b3973489b3f3d65dd0d2d964b94f3859be5bca0e68",
+   "url": "https://www.federalreserve.gov/releases/h41/20260122/"
+  },
+  "2026-01-28": {
+   "sha256": "c5581333a2991a2d1e25f347fee0904676e8b29e111cb99f682487199d50740e",
+   "url": "https://www.federalreserve.gov/releases/h41/20260129/"
+  },
+  "2026-02-04": {
+   "sha256": "87c40b7c73926bb6de7b9bdc59594a05c30468bb96614cc178fad0266ced530d",
+   "url": "https://www.federalreserve.gov/releases/h41/20260205/"
+  },
+  "2026-02-11": {
+   "sha256": "4be63c86c45fce84f4639ea40b0ad37ebab8e45fa373de329decf02a81c6a160",
+   "url": "https://www.federalreserve.gov/releases/h41/20260212/"
+  },
+  "2026-02-18": {
+   "sha256": "5f0dd6433dbc58694dad135fb4b45de7600581c17f2a070a7eef843a5911253b",
+   "url": "https://www.federalreserve.gov/releases/h41/20260219/"
+  },
+  "2026-02-25": {
+   "sha256": "1d8641c74413fe7e841e2c8e3a000d80f5040a6f776fd6f5fcf0b2499247aaae",
+   "url": "https://www.federalreserve.gov/releases/h41/20260226/"
+  },
+  "2026-03-04": {
+   "sha256": "70a57db6491ea2f06ebb81553b0285adf9e53d5193d3d450bc7bb2264dcc7e83",
+   "url": "https://www.federalreserve.gov/releases/h41/20260305/"
+  },
+  "2026-03-11": {
+   "sha256": "850f7028a7659427174f61ffe85763b62b96d8f755b6971e4f07cb8dfccaf868",
+   "url": "https://www.federalreserve.gov/releases/h41/20260312/"
+  },
+  "2026-03-18": {
+   "sha256": "56fef9b2ebea237da77e8fa5681fd0fcfc43ebafa5d7d34a6812ef5b9835b0a6",
+   "url": "https://www.federalreserve.gov/releases/h41/20260319/"
+  },
+  "2026-03-25": {
+   "sha256": "6c57630f7dc8616c4d484891f459abf2e25ae2d8ef4167a1dd997e2794828033",
+   "url": "https://www.federalreserve.gov/releases/h41/20260326/"
+  },
+  "2026-04-01": {
+   "sha256": "3d91140bb8ca2d77f9db0d2e05880eab08d1757d86386a607b9f41e43457e165",
+   "url": "https://www.federalreserve.gov/releases/h41/20260402/"
+  },
+  "2026-04-08": {
+   "sha256": "1d98e302b9322d8975c28a7ca9e606e5d582a3bb471a459d36f3b5fd7e11efe6",
+   "url": "https://www.federalreserve.gov/releases/h41/20260409/"
+  },
+  "2026-04-15": {
+   "sha256": "46c15ab26cf03f9dda3d44eacd7b03d67cc9911869860e545c399ab09b1d64c4",
+   "url": "https://www.federalreserve.gov/releases/h41/20260416/"
+  },
+  "2026-04-22": {
+   "sha256": "6647a21e4ea89e54c416e5aaf114cf529583f9c777099db0b750400220326768",
+   "url": "https://www.federalreserve.gov/releases/h41/20260423/"
+  },
+  "2026-04-29": {
+   "sha256": "8b16cdb5b2f46a35205c208f456e4eac80158ea46f8152a550861a53ec503ce8",
+   "url": "https://www.federalreserve.gov/releases/h41/20260430/"
+  },
+  "2026-05-06": {
+   "sha256": "e9f9d978d84d075242b9232af32e2e1d5e970d12718b27c72b0e3d9fc115c00d",
+   "url": "https://www.federalreserve.gov/releases/h41/20260507/"
+  },
+  "2026-05-13": {
+   "sha256": "81d338daf82935ef5cb7673f37718e6fa268f7d00a46679cc7bf870881dbf381",
+   "url": "https://www.federalreserve.gov/releases/h41/20260514/"
+  },
+  "2026-05-20": {
+   "sha256": "9499a36b2e36d52eff71c471de6a482d9da12ac33cad186418906db5c661bb02",
+   "url": "https://www.federalreserve.gov/releases/h41/20260521/"
+  },
+  "2026-05-27": {
+   "sha256": "9e5ea186e3d4cb124ff6950424e724b01525b7a38e5af8df3ce8c8d8bdfd518d",
+   "url": "https://www.federalreserve.gov/releases/h41/20260528/"
+  },
+  "2026-06-03": {
+   "sha256": "11d12108248ad2d4f64b2b90a1d2e9fbddbc7f1bf21990ffadd86cc2aa99a621",
+   "url": "https://www.federalreserve.gov/releases/h41/20260604/"
+  },
+  "2026-06-10": {
+   "sha256": "754747034dfcd1876b1332f72d0dd86c39f6a20cb716fcc2e0910720291d6be3",
+   "url": "https://www.federalreserve.gov/releases/h41/20260611/"
+  },
+  "2026-06-17": {
+   "sha256": "ba7fecfcf04ebad176becc46c4b894cd93894a7d38856e6974678178a1cacf9a",
+   "url": "https://www.federalreserve.gov/releases/h41/20260618/"
+  },
+  "2026-06-24": {
+   "sha256": "49e9a5422079fcb009b3d34a0b20ef9157c25c0c611c1af48accb235cbc242b7",
+   "url": "https://www.federalreserve.gov/releases/h41/20260625/"
+  },
+  "2026-07-01": {
+   "sha256": "ef14fdba4b4f6d443166777fe203bcfe38ef3f7f7498d5c7cbc9ec9cfac39f91",
+   "url": "https://www.federalreserve.gov/releases/h41/20260702/"
+  },
+  "2026-07-08": {
+   "sha256": "76fd3bca5e06bff4efe18fd7d90f1df2982abf6f7f158b3d346778b12980bf87",
+   "url": "https://www.federalreserve.gov/releases/h41/20260709/"
+  },
+  "2026-07-15": {
+   "sha256": "929f8f36fb01ceb57080628747c5f607c3f1bead6d6a8272954927fc0f7e58f2",
+   "url": "https://www.federalreserve.gov/releases/h41/20260716/"
+  },
+  "2026-07-22": {
+   "sha256": "b9933a6483ee13a601a8c96b856021577eb9d6a8d84b52c28751a42225e58fec",
+   "url": "https://www.federalreserve.gov/releases/h41/20260723/"
+  },
+  "2026-07-29": {
+   "sha256": "52dac05b9964e64677f55e6892b5943b0f63ab3e7a692f6a8152cc9d06c7fc92",
+   "url": "https://www.federalreserve.gov/releases/h41/20260730/"
+  },
+  "2026-08-05": {
+   "sha256": "eb6342ac9faad251ca7f955f4ac98107027cadaf798a28618c50fc6cbd29677b",
+   "url": "https://www.federalreserve.gov/releases/h41/20260806/"
+  },
+  "2026-08-12": {
+   "sha256": "c4f09b323e80373406701c5147c1d50bff6d137b804c06ded23ea2f1baccddbd",
+   "url": "https://www.federalreserve.gov/releases/h41/20260813/"
+  },
+  "2026-08-19": {
+   "sha256": "58e554ee15df8b04bcb2ef211cde497a18368eea43ebdea9736d3db6e9f1e37c",
+   "url": "https://www.federalreserve.gov/releases/h41/20260820/"
+  },
+  "2026-08-26": {
+   "sha256": "a91b15b7f3ea5f735976ff8bd03cb7cb0c09ae25a30bf143173cc6fa70479797",
+   "url": "https://www.federalreserve.gov/releases/h41/20260827/"
+  },
+  "2026-09-02": {
+   "sha256": "9d8f504f4910df3f48fc5857f96b1c189f8d4374899d746b91dee926e4740125",
+   "url": "https://www.federalreserve.gov/releases/h41/20260903/"
+  },
+  "2026-09-09": {
+   "sha256": "db6d67c949be240d7cef405000b3abed3fe606902b45c8eef8d0a9308ff3e5d5",
+   "url": "https://www.federalreserve.gov/releases/h41/20260910/"
+  },
+  "2026-09-16": {
+   "sha256": "c75ddad013a7350934b1a04e7cd697859cede060cee3f17ba550570807fbd4ea",
+   "url": "https://www.federalreserve.gov/releases/h41/20260917/"
+  },
+  "2026-09-23": {
+   "sha256": "61119655c6ef5407584fa53466487ce07c1d33ce5e8232152f0a04c2327a4191",
+   "url": "https://www.federalreserve.gov/releases/h41/20260924/"
+  },
+  "2026-09-30": {
+   "sha256": "93ec4aa3f95a9a949cafcc05d32bdc020f51be1455c1aa433bc4859a419c69f8",
+   "url": "https://www.federalreserve.gov/releases/h41/20261001/"
+  }
+ },
+ "available": "dated official release, use after two UTC midnights",
+ "fields": [
+  "reserve_balances",
+  "treasury_general_account",
+  "reserve_bank_credit"
+ ],
+ "frequency": "1w",
+ "rows": [
+  [
+   "2022-06-01",
+   "2022-06-02",
+   3357395,
+   780575,
+   8878608
+  ],
+  [
+   "2022-06-08",
+   "2022-06-09",
+   3292602,
+   683892,
+   8882034
+  ],
+  [
+   "2022-06-15",
+   "2022-06-16",
+   3189605,
+   769937,
+   8896577
+  ],
+  [
+   "2022-06-22",
+   "2022-06-23",
+   3115589,
+   745052,
+   8898327
+  ],
+  [
+   "2022-06-29",
+   "2022-06-30",
+   3118611,
+   759845,
+   8876712
+  ],
+  [
+   "2022-07-06",
+   "2022-07-07",
+   3222930,
+   687943,
+   8856240
+  ],
+  [
+   "2022-07-13",
+   "2022-07-14",
+   3306518,
+   618740,
+   8860493
+  ],
+  [
+   "2022-07-20",
+   "2022-07-21",
+   3235172,
+   616348,
+   8863752
+  ],
+  [
+   "2022-07-27",
+   "2022-07-28",
+   3275609,
+   615515,
+   8854182
+  ],
+  [
+   "2022-08-03",
+   "2022-08-04",
+   3342517,
+   566577,
+   8838997
+  ],
+  [
+   "2022-08-10",
+   "2022-08-11",
+   3357493,
+   561140,
+   8843234
+  ],
+  [
+   "2022-08-17",
+   "2022-08-18",
+   3333695,
+   539278,
+   8814179
+  ],
+  [
+   "2022-08-24",
+   "2022-08-25",
+   3270912,
+   530196,
+   8816154
+  ],
+  [
+   "2022-08-31",
+   "2022-09-01",
+   3115846,
+   669911,
+   8789846
+  ],
+  [
+   "2022-09-07",
+   "2022-09-08",
+   3271336,
+   582921,
+   8787483
+  ],
+  [
+   "2022-09-14",
+   "2022-09-15",
+   3158694,
+   617997,
+   8797781
+  ],
+  [
+   "2022-09-21",
+   "2022-09-22",
+   3003721,
+   690286,
+   8781996
+  ],
+  [
+   "2022-09-28",
+   "2022-09-29",
+   2983206,
+   661920,
+   8760439
+  ],
+  [
+   "2022-10-05",
+   "2022-10-06",
+   3076450,
+   622131,
+   8724213
+  ],
+  [
+   "2022-10-12",
+   "2022-10-13",
+   3090307,
+   583513,
+   8724414
+  ],
+  [
+   "2022-10-19",
+   "2022-10-20",
+   3040777,
+   640613,
+   8709474
+  ],
+  [
+   "2022-10-26",
+   "2022-10-27",
+   3108146,
+   636327,
+   8687796
+  ],
+  [
+   "2022-11-02",
+   "2022-11-03",
+   3046975,
+   552089,
+   8642059
+  ],
+  [
+   "2022-11-09",
+   "2022-11-10",
+   3071230,
+   517340,
+   8643955
+  ],
+  [
+   "2022-11-16",
+   "2022-11-17",
+   3176796,
+   472185,
+   8590044
+  ],
+  [
+   "2022-11-23",
+   "2022-11-25",
+   3168849,
+   492754,
+   8585689
+  ],
+  [
+   "2022-11-30",
+   "2022-12-01",
+   3052233,
+   532791,
+   8548165
+  ],
+  [
+   "2022-12-07",
+   "2022-12-08",
+   3149088,
+   410853,
+   8546896
+  ],
+  [
+   "2022-12-14",
+   "2022-12-15",
+   3170805,
+   342104,
+   8547307
+  ],
+  [
+   "2022-12-21",
+   "2022-12-22",
+   3049325,
+   434922,
+   8528248
+  ],
+  [
+   "2022-12-28",
+   "2022-12-29",
+   2979738,
+   409809,
+   8514705
+  ],
+  [
+   "2023-01-04",
+   "2023-01-05",
+   3041928,
+   379620,
+   8471163
+  ],
+  [
+   "2023-01-11",
+   "2023-01-12",
+   3116831,
+   346426,
+   8472288
+  ],
+  [
+   "2023-01-18",
+   "2023-01-19",
+   3118236,
+   377500,
+   8452327
+  ],
+  [
+   "2023-01-25",
+   "2023-01-26",
+   3000541,
+   572622,
+   8433857
+  ],
+  [
+   "2023-02-01",
+   "2023-02-02",
+   3030286,
+   500852,
+   8396434
+  ],
+  [
+   "2023-02-08",
+   "2023-02-09",
+   3033560,
+   495838,
+   8398884
+  ],
+  [
+   "2023-02-15",
+   "2023-02-16",
+   3107419,
+   439703,
+   8348550
+  ],
+  [
+   "2023-02-22",
+   "2023-02-23",
+   2983553,
+   451307,
+   8345895
+  ],
+  [
+   "2023-03-01",
+   "2023-03-02",
+   3027967,
+   351015,
+   8303513
+  ],
+  [
+   "2023-03-08",
+   "2023-03-09",
+   3003676,
+   311731,
+   8305716
+  ],
+  [
+   "2023-03-15",
+   "2023-03-16",
+   3444208,
+   277643,
+   8603097
+  ],
+  [
+   "2023-03-22",
+   "2023-03-23",
+   3369986,
+   199856,
+   8697234
+  ],
+  [
+   "2023-03-29",
+   "2023-03-30",
+   3401800,
+   162758,
+   8669146
+  ],
+  [
+   "2023-04-05",
+   "2023-04-06",
+   3381350,
+   140688,
+   8595344
+  ],
+  [
+   "2023-04-12",
+   "2023-04-13",
+   3347553,
+   86554,
+   8578046
+  ],
+  [
+   "2023-04-19",
+   "2023-04-20",
+   3164881,
+   265095,
+   8556700
+  ],
+  [
+   "2023-04-26",
+   "2023-04-27",
+   3132099,
+   296209,
+   8525931
+  ],
+  [
+   "2023-05-03",
+   "2023-05-04",
+   3166236,
+   188309,
+   8467040
+  ],
+  [
+   "2023-05-10",
+   "2023-05-11",
+   3225311,
+   154808,
+   8466412
+  ],
+  [
+   "2023-05-17",
+   "2023-05-18",
+   3279987,
+   68332,
+   8420400
+  ],
+  [
+   "2023-05-24",
+   "2023-05-25",
+   3250771,
+   49473,
+   8400116
+  ],
+  [
+   "2023-05-31",
+   "2023-06-01",
+   3205526,
+   48512,
+   8349344
+  ],
+  [
+   "2023-06-07",
+   "2023-06-08",
+   3306154,
+   77500,
+   8352953
+  ],
+  [
+   "2023-06-14",
+   "2023-06-15",
+   3306311,
+   134857,
+   8351892
+  ],
+  [
+   "2023-06-21",
+   "2023-06-22",
+   3203951,
+   292106,
+   8325756
+  ],
+  [
+   "2023-06-28",
+   "2023-06-29",
+   3176029,
+   408561,
+   8304469
+  ],
+  [
+   "2023-07-05",
+   "2023-07-06",
+   3179646,
+   446864,
+   8261904
+  ],
+  [
+   "2023-07-12",
+   "2023-07-13",
+   3162124,
+   517418,
+   8260176
+  ],
+  [
+   "2023-07-19",
+   "2023-07-20",
+   3220590,
+   537441,
+   8237861
+  ],
+  [
+   "2023-07-26",
+   "2023-07-27",
+   3166767,
+   549897,
+   8206709
+  ],
+  [
+   "2023-08-02",
+   "2023-08-03",
+   3217397,
+   460926,
+   8169981
+  ],
+  [
+   "2023-08-09",
+   "2023-08-10",
+   3228582,
+   432262,
+   8171830
+  ],
+  [
+   "2023-08-16",
+   "2023-08-17",
+   3228952,
+   384814,
+   8109556
+  ],
+  [
+   "2023-08-23",
+   "2023-08-24",
+   3177380,
+   416031,
+   8102816
+  ],
+  [
+   "2023-08-30",
+   "2023-08-31",
+   3196542,
+   500702,
+   8084524
+  ],
+  [
+   "2023-09-06",
+   "2023-09-07",
+   3290475,
+   481552,
+   8064802
+  ],
+  [
+   "2023-09-13",
+   "2023-09-14",
+   3310525,
+   537364,
+   8062770
+  ],
+  [
+   "2023-09-20",
+   "2023-09-21",
+   3144404,
+   661717,
+   7988106
+  ],
+  [
+   "2023-09-27",
+   "2023-09-28",
+   3168502,
+   672142,
+   7966141
+  ],
+  [
+   "2023-10-04",
+   "2023-10-05",
+   3240707,
+   678959,
+   7919713
+  ],
+  [
+   "2023-10-11",
+   "2023-10-12",
+   3315650,
+   713000,
+   7916298
+  ],
+  [
+   "2023-10-18",
+   "2023-10-19",
+   3250230,
+   841103,
+   7897530
+  ],
+  [
+   "2023-10-25",
+   "2023-10-26",
+   3263971,
+   847717,
+   7872150
+  ],
+  [
+   "2023-11-01",
+   "2023-11-02",
+   3314630,
+   753008,
+   7830818
+  ],
+  [
+   "2023-11-08",
+   "2023-11-09",
+   3360426,
+   763459,
+   7824909
+  ],
+  [
+   "2023-11-15",
+   "2023-11-16",
+   3483325,
+   669976,
+   7779099
+  ],
+  [
+   "2023-11-22",
+   "2023-11-24",
+   3455063,
+   693007,
+   7774682
+  ],
+  [
+   "2023-11-29",
+   "2023-11-30",
+   3395396,
+   753570,
+   7759408
+  ],
+  [
+   "2023-12-06",
+   "2023-12-07",
+   3496754,
+   667678,
+   7700979
+  ],
+  [
+   "2023-12-13",
+   "2023-12-14",
+   3567772,
+   630618,
+   7703394
+  ],
+  [
+   "2023-12-20",
+   "2023-12-21",
+   3477288,
+   732721,
+   7687649
+  ],
+  [
+   "2023-12-27",
+   "2023-12-28",
+   3434213,
+   713064,
+   7675996
+  ],
+  [
+   "2024-01-03",
+   "2024-01-04",
+   3459408,
+   743464,
+   7644145
+  ],
+  [
+   "2024-01-10",
+   "2024-01-11",
+   3537383,
+   727856,
+   7650295
+  ],
+  [
+   "2024-01-17",
+   "2024-01-18",
+   3592326,
+   773544,
+   7637593
+  ],
+  [
+   "2024-01-24",
+   "2024-01-25",
+   3489709,
+   815159,
+   7640881
+  ],
+  [
+   "2024-01-31",
+   "2024-02-01",
+   3411717,
+   865481,
+   7593082
+  ],
+  [
+   "2024-02-07",
+   "2024-02-08",
+   3555738,
+   821575,
+   7595102
+  ],
+  [
+   "2024-02-14",
+   "2024-02-15",
+   3537469,
+   831880,
+   7597802
+  ],
+  [
+   "2024-02-21",
+   "2024-02-22",
+   3523095,
+   788759,
+   7545469
+  ],
+  [
+   "2024-02-28",
+   "2024-02-29",
+   3540982,
+   767672,
+   7531099
+  ],
+  [
+   "2024-03-06",
+   "2024-03-07",
+   3620689,
+   760550,
+   7502080
+  ],
+  [
+   "2024-03-13",
+   "2024-03-14",
+   3573153,
+   748388,
+   7505438
+  ],
+  [
+   "2024-03-20",
+   "2024-03-21",
+   3489577,
+   812605,
+   7478100
+  ],
+  [
+   "2024-03-27",
+   "2024-03-28",
+   3472403,
+   772260,
+   7448490
+  ],
+  [
+   "2024-04-03",
+   "2024-04-04",
+   3541167,
+   732828,
+   7402915
+  ],
+  [
+   "2024-04-10",
+   "2024-04-11",
+   3615691,
+   672537,
+   7402180
+  ],
+  [
+   "2024-04-17",
+   "2024-04-18",
+   3329532,
+   929932,
+   7369678
+  ],
+  [
+   "2024-04-24",
+   "2024-04-25",
+   3271706,
+   929379,
+   7366592
+  ],
+  [
+   "2024-05-01",
+   "2024-05-02",
+   3316943,
+   890442,
+   7326278
+  ],
+  [
+   "2024-05-08",
+   "2024-05-09",
+   3330687,
+   816809,
+   7317533
+  ],
+  [
+   "2024-05-15",
+   "2024-05-16",
+   3416386,
+   706108,
+   7268176
+  ],
+  [
+   "2024-05-22",
+   "2024-05-23",
+   3375014,
+   710882,
+   7263580
+  ],
+  [
+   "2024-05-29",
+   "2024-05-30",
+   3391075,
+   716020,
+   7248171
+  ],
+  [
+   "2024-06-05",
+   "2024-06-06",
+   3457738,
+   703314,
+   7219257
+  ],
+  [
+   "2024-06-12",
+   "2024-06-13",
+   3434032,
+   650212,
+   7222996
+  ],
+  [
+   "2024-06-19",
+   "2024-06-20",
+   3366166,
+   782158,
+   7216830
+  ],
+  [
+   "2024-06-26",
+   "2024-06-27",
+   3268895,
+   744206,
+   7195440
+  ],
+  [
+   "2024-07-03",
+   "2024-07-05",
+   3322165,
+   745608,
+   7180318
+  ],
+  [
+   "2024-07-10",
+   "2024-07-11",
+   3341046,
+   722328,
+   7183345
+  ],
+  [
+   "2024-07-17",
+   "2024-07-18",
+   3322446,
+   766779,
+   7167173
+  ],
+  [
+   "2024-07-24",
+   "2024-07-25",
+   3275885,
+   767419,
+   7164367
+  ],
+  [
+   "2024-07-31",
+   "2024-08-01",
+   3178700,
+   854001,
+   7136425
+  ],
+  [
+   "2024-08-07",
+   "2024-08-08",
+   3372916,
+   785233,
+   7133764
+  ],
+  [
+   "2024-08-14",
+   "2024-08-15",
+   3338916,
+   788823,
+   7136028
+  ],
+  [
+   "2024-08-21",
+   "2024-08-22",
+   3359078,
+   734727,
+   7098080
+  ],
+  [
+   "2024-08-28",
+   "2024-08-29",
+   3244959,
+   757077,
+   7081113
+  ],
+  [
+   "2024-09-04",
+   "2024-09-05",
+   3264604,
+   771047,
+   7070165
+  ],
+  [
+   "2024-09-11",
+   "2024-09-12",
+   3359741,
+   725577,
+   7073099
+  ],
+  [
+   "2024-09-18",
+   "2024-09-19",
+   3216822,
+   839398,
+   7067059
+  ],
+  [
+   "2024-09-25",
+   "2024-09-26",
+   3141565,
+   778910,
+   7038108
+  ],
+  [
+   "2024-10-02",
+   "2024-10-03",
+   3097210,
+   823412,
+   7004422
+  ],
+  [
+   "2024-10-09",
+   "2024-10-10",
+   3197045,
+   787395,
+   7005073
+  ],
+  [
+   "2024-10-16",
+   "2024-10-17",
+   3228838,
+   814751,
+   6997610
+  ],
+  [
+   "2024-10-23",
+   "2024-10-24",
+   3228462,
+   817410,
+   6988239
+  ],
+  [
+   "2024-10-30",
+   "2024-10-31",
+   3215794,
+   847137,
+   6971209
+  ],
+  [
+   "2024-11-06",
+   "2024-11-07",
+   3255532,
+   840227,
+   6953262
+  ],
+  [
+   "2024-11-13",
+   "2024-11-14",
+   3192048,
+   808857,
+   6926251
+  ],
+  [
+   "2024-11-20",
+   "2024-11-21",
+   3267319,
+   737834,
+   6882943
+  ],
+  [
+   "2024-11-27",
+   "2024-11-29",
+   3234035,
+   782704,
+   6863270
+  ],
+  [
+   "2024-12-04",
+   "2024-12-05",
+   3216149,
+   815011,
+   6854318
+  ],
+  [
+   "2024-12-11",
+   "2024-12-12",
+   3273805,
+   711354,
+   6856532
+  ],
+  [
+   "2024-12-18",
+   "2024-12-19",
+   3237459,
+   803975,
+   6848512
+  ],
+  [
+   "2024-12-25",
+   "2024-12-26",
+   3218476,
+   735039,
+   6840397
+  ],
+  [
+   "2025-01-01",
+   "2025-01-02",
+   2892359,
+   721892,
+   6806114
+  ],
+  [
+   "2025-01-08",
+   "2025-01-10",
+   3332435,
+   620531,
+   6807894
+  ],
+  [
+   "2025-01-15",
+   "2025-01-16",
+   3359041,
+   651187,
+   6788498
+  ],
+  [
+   "2025-01-22",
+   "2025-01-23",
+   3331196,
+   665485,
+   6785912
+  ],
+  [
+   "2025-01-29",
+   "2025-01-30",
+   3200654,
+   811549,
+   6771656
+  ],
+  [
+   "2025-02-05",
+   "2025-02-06",
+   3233328,
+   817953,
+   6764976
+  ],
+  [
+   "2025-02-12",
+   "2025-02-13",
+   3255407,
+   809154,
+   6767671
+  ],
+  [
+   "2025-02-19",
+   "2025-02-20",
+   3276141,
+   738938,
+   6736175
+  ],
+  [
+   "2025-02-26",
+   "2025-02-27",
+   3380755,
+   568550,
+   6719230
+  ],
+  [
+   "2025-03-05",
+   "2025-03-06",
+   3381174,
+   522818,
+   6709646
+  ],
+  [
+   "2025-03-12",
+   "2025-03-13",
+   3459687,
+   450713,
+   6712769
+  ],
+  [
+   "2025-03-19",
+   "2025-03-20",
+   3425713,
+   415799,
+   6709415
+  ],
+  [
+   "2025-03-26",
+   "2025-03-27",
+   3450550,
+   315970,
+   6693726
+  ],
+  [
+   "2025-04-02",
+   "2025-04-03",
+   3427049,
+   301624,
+   6676534
+  ],
+  [
+   "2025-04-09",
+   "2025-04-10",
+   3484345,
+   315189,
+   6680364
+  ],
+  [
+   "2025-04-16",
+   "2025-04-17",
+   3280845,
+   638783,
+   6679539
+  ],
+  [
+   "2025-04-23",
+   "2025-04-24",
+   3208915,
+   576159,
+   6679449
+  ],
+  [
+   "2025-04-30",
+   "2025-05-01",
+   3000277,
+   677657,
+   6661145
+  ],
+  [
+   "2025-05-07",
+   "2025-05-08",
+   3200619,
+   595860,
+   6663493
+  ],
+  [
+   "2025-05-14",
+   "2025-05-15",
+   3235715,
+   562433,
+   6666114
+  ],
+  [
+   "2025-05-21",
+   "2025-05-22",
+   3283765,
+   475886,
+   6641404
+  ],
+  [
+   "2025-05-28",
+   "2025-05-29",
+   3294014,
+   436627,
+   6625647
+  ],
+  [
+   "2025-06-04",
+   "2025-06-05",
+   3361938,
+   376160,
+   6624863
+  ],
+  [
+   "2025-06-11",
+   "2025-06-12",
+   3429675,
+   277025,
+   6629595
+  ],
+  [
+   "2025-06-18",
+   "2025-06-20",
+   3322991,
+   383851,
+   6633458
+  ],
+  [
+   "2025-06-25",
+   "2025-06-26",
+   3347274,
+   334579,
+   6614530
+  ],
+  [
+   "2025-07-02",
+   "2025-07-03",
+   3256502,
+   372232,
+   6611008
+  ],
+  [
+   "2025-07-09",
+   "2025-07-10",
+   3341999,
+   311048,
+   6614212
+  ],
+  [
+   "2025-07-16",
+   "2025-07-17",
+   3375036,
+   312085,
+   6611780
+  ],
+  [
+   "2025-07-23",
+   "2025-07-24",
+   3358382,
+   333538,
+   6609887
+  ],
+  [
+   "2025-07-30",
+   "2025-07-31",
+   3299696,
+   419446,
+   6594281
+  ],
+  [
+   "2025-08-06",
+   "2025-08-07",
+   3330372,
+   464315,
+   6593222
+  ],
+  [
+   "2025-08-13",
+   "2025-08-14",
+   3328346,
+   515469,
+   6595894
+  ],
+  [
+   "2025-08-20",
+   "2025-08-21",
+   3297635,
+   526063,
+   6570797
+  ],
+  [
+   "2025-08-27",
+   "2025-08-28",
+   3216851,
+   595798,
+   6555606
+  ],
+  [
+   "2025-09-03",
+   "2025-09-04",
+   3167905,
+   661939,
+   6554204
+  ],
+  [
+   "2025-09-10",
+   "2025-09-11",
+   3150913,
+   667585,
+   6558277
+  ],
+  [
+   "2025-09-17",
+   "2025-09-18",
+   3020352,
+   807142,
+   6560657
+  ],
+  [
+   "2025-09-24",
+   "2025-09-25",
+   2999692,
+   757970,
+   6560682
+  ],
+  [
+   "2025-10-01",
+   "2025-10-02",
+   2979594,
+   819378,
+   6538825
+  ],
+  [
+   "2025-10-08",
+   "2025-10-09",
+   3033855,
+   794054,
+   6543440
+  ],
+  [
+   "2025-10-15",
+   "2025-10-16",
+   2988202,
+   851952,
+   6548902
+  ],
+  [
+   "2025-10-22",
+   "2025-10-23",
+   2929637,
+   905074,
+   6542100
+  ],
+  [
+   "2025-10-29",
+   "2025-10-30",
+   2827909,
+   983859,
+   6538793
+  ],
+  [
+   "2025-11-05",
+   "2025-11-06",
+   2851923,
+   942700,
+   6525528
+  ],
+  [
+   "2025-11-12",
+   "2025-11-13",
+   2883340,
+   943145,
+   6532862
+  ],
+  [
+   "2025-11-19",
+   "2025-11-20",
+   2917531,
+   900832,
+   6508061
+  ],
+  [
+   "2025-11-26",
+   "2025-11-28",
+   2897987,
+   899678,
+   6504391
+  ],
+  [
+   "2025-12-03",
+   "2025-12-04",
+   2878164,
+   908523,
+   6487834
+  ],
+  [
+   "2025-12-10",
+   "2025-12-11",
+   2973767,
+   805827,
+   6492006
+  ],
+  [
+   "2025-12-17",
+   "2025-12-18",
+   2933652,
+   861417,
+   6509256
+  ],
+  [
+   "2025-12-24",
+   "2025-12-29",
+   2980514,
+   801537,
+   6533633
+  ],
+  [
+   "2025-12-31",
+   "2026-01-02",
+   2853441,
+   872853,
+   6592234
+  ],
+  [
+   "2026-01-07",
+   "2026-01-08",
+   3022997,
+   783571,
+   6526135
+  ],
+  [
+   "2026-01-14",
+   "2026-01-15",
+   3061760,
+   777061,
+   6534371
+  ],
+  [
+   "2026-01-21",
+   "2026-01-22",
+   2956525,
+   871169,
+   6537019
+  ],
+  [
+   "2026-01-28",
+   "2026-01-29",
+   2882940,
+   952705,
+   6539201
+  ],
+  [
+   "2026-02-04",
+   "2026-02-05",
+   2937493,
+   907737,
+   6558311
+  ],
+  [
+   "2026-02-11",
+   "2026-02-12",
+   2958493,
+   910533,
+   6574516
+  ],
+  [
+   "2026-02-18",
+   "2026-02-19",
+   2959961,
+   888854,
+   6565604
+  ],
+  [
+   "2026-02-25",
+   "2026-02-26",
+   3004429,
+   838975,
+   6565880
+  ],
+  [
+   "2026-03-04",
+   "2026-03-05",
+   3013716,
+   846979,
+   6580913
+  ],
+  [
+   "2026-03-11",
+   "2026-03-12",
+   3073151,
+   805806,
+   6599127
+  ],
+  [
+   "2026-03-18",
+   "2026-03-19",
+   2998809,
+   875833,
+   6608790
+  ],
+  [
+   "2026-03-25",
+   "2026-03-26",
+   3036073,
+   837412,
+   6609950
+  ],
+  [
+   "2026-04-01",
+   "2026-04-02",
+   3064460,
+   803553,
+   6627512
+  ],
+  [
+   "2026-04-08",
+   "2026-04-09",
+   3183533,
+   697079,
+   6646523
+  ],
+  [
+   "2026-04-15",
+   "2026-04-16",
+   2980186,
+   924435,
+   6658179
+  ],
+  [
+   "2026-04-22",
+   "2026-04-23",
+   2914576,
+   1007172,
+   6660097
+  ],
+  [
+   "2026-04-29",
+   "2026-04-30",
+   2919153,
+   988102,
+   6651591
+  ],
+  [
+   "2026-05-06",
+   "2026-05-07",
+   3051481,
+   862757,
+   6662000
+  ],
+  [
+   "2026-05-13",
+   "2026-05-14",
+   3117367,
+   807420,
+   6681090
+  ],
+  [
+   "2026-05-20",
+   "2026-05-21",
+   3106715,
+   781979,
+   6666441
+  ],
+  [
+   "2026-05-27",
+   "2026-05-28",
+   3067025,
+   842660,
+   6657093
+  ],
+  [
+   "2026-06-03",
+   "2026-06-04",
+   3045654,
+   845722,
+   6664361
+  ],
+  [
+   "2026-06-10",
+   "2026-06-11",
+   3111454,
+   801084,
+   6678252
+  ],
+  [
+   "2026-06-17",
+   "2026-06-18",
+   2936355,
+   956502,
+   6688812
+  ],
+  [
+   "2026-06-24",
+   "2026-06-25",
+   2954465,
+   901845,
+   6688795
+  ],
+  [
+   "2026-07-01",
+   "2026-07-02",
+   3077019,
+   807359,
+   6677116
+  ],
+  [
+   "2026-07-08",
+   "2026-07-09",
+   3137377,
+   749244,
+   6688711
+  ],
+  [
+   "2026-07-15",
+   "2026-07-16",
+   3100448,
+   795976,
+   6696094
+  ],
+  [
+   "2026-07-22",
+   "2026-07-23",
+   3064896,
+   835417,
+   6700462
+  ],
+  [
+   "2026-07-29",
+   "2026-07-30",
+   2944541,
+   970442,
+   6691432
+  ],
+  [
+   "2026-08-05",
+   "2026-08-06",
+   3002731,
+   929325,
+   6701382
+  ],
+  [
+   "2026-08-12",
+   "2026-08-13",
+   2947630,
+   959405,
+   6712859
+  ],
+  [
+   "2026-08-19",
+   "2026-08-20",
+   2930817,
+   936406,
+   6698426
+  ],
+  [
+   "2026-08-26",
+   "2026-08-27",
+   2916824,
+   959435,
+   6683670
+  ],
+  [
+   "2026-09-02",
+   "2026-09-03",
+   2929285,
+   944364,
+   6689880
+  ],
+  [
+   "2026-09-09",
+   "2026-09-10",
+   3036508,
+   843705,
+   6693205
+  ],
+  [
+   "2026-09-16",
+   "2026-09-17",
+   2921536,
+   991708,
+   6699262
+  ],
+  [
+   "2026-09-23",
+   "2026-09-24",
+   2969922,
+   947317,
+   6700760
+  ],
+  [
+   "2026-09-30",
+   "2026-10-01",
+   2881686,
+   984046,
+   6696087
+  ]
+ ],
+ "source": "Board of Governors Fed archived H.4.1 Table 1 Wednesday levels",
+ "status": "COMPLETE_WITH_EXPLICIT_MASKS",
+ "units": "millions of U.S. dollars"
+}
