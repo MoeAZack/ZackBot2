@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 309,
+ "registered_trials": 310,
  "completed_trials": 307,
  "historical_screen_passes": 12,
  "versions": {
@@ -478,6 +478,18 @@
       "fresh134"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "109": {
+   "status": "PREREGISTERED",
+   "source_freeze": "d86d21d9a7d42a4483db193be55468d52602994e",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 310,
+     "key": "l109_ordered_intraday_extrema_reclaim_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
