@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 329,
+ "registered_trials": 330,
  "completed_trials": 326,
  "historical_screen_passes": 12,
  "versions": {
@@ -920,6 +920,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "129": {
+   "status": "PREREGISTERED",
+   "source_freeze": "f94b89042e0056f272ec5df358a202537398aaae",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 330,
+     "key": "r129_state_space_transitory_fade_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
