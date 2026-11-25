@@ -91,7 +91,8 @@ def main():
             manifest_hash = getattr(M, variable)
             assert isinstance(manifest_hash, str) and len(manifest_hash) == 64
             int(manifest_hash, 16)
-            table['market_feature_input'] = dict(manifest_sha256=manifest_hash, source='Binance Data Vision',
+            table['market_feature_input'] = dict(manifest_sha256=manifest_hash,
+                                                 source=getattr(M, 'MARKET_FEATURE_SOURCE', 'Binance Data Vision'),
                                                  signal_field=description)
     table['publication']='SOURCE_PREVIOUSLY_PUSHED; case manifest locally committed before market execution; remote publication queued during workstation connection outage' if offline else 'Source and cases committed and pushed before market execution'
     candidates=[]
