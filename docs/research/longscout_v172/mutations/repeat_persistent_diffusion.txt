@@ -1,0 +1,6 @@
+BEFORE
+ & ~event.shift(fill_value=False)
+AFTER
+
+DETECTED BY
+test_use_first_qualifying_week

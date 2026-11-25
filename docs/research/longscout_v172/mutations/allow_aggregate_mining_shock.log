@@ -1,0 +1,14 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_aggregate_work_must_be_stable ______________________
+
+    def test_aggregate_work_must_be_stable():
+        share, work = sample()
+        work.iloc[13:] = 110.
+>       assert not M.pool_share_broadens(share, work).iloc[13]
+E       assert not np.True_
+
+tests\test_longscout_v172.py:34: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v172.py::test_aggregate_work_must_be_stable - ass...
+1 failed in 1.39s

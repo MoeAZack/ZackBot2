@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_prior_week_must_be_observed _______________________
+
+    def test_prior_week_must_be_observed():
+        share, work = sample()
+        share.iloc[8] = float('nan')
+>       assert not M.pool_share_broadens(share, work).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     False\n10    False\n11    False\n12    False\n13     True\n14    False\n15    False\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     False\n10    False\n11    False\n12    False\n13     True\n14    False\n15    False\ndtype: bool = <function pool_share_broadens at 0x000001EC155C31A0>(0     0.64\n1     0.64\n2     0.64\n3     0.64\n4     0.64\n5     0.64\n6     0.64\n7     0.64\n8      NaN\n9     0.64\n10    0.64\n11    0.64\n12    0.64\n13    0.58\n14    0.58\n15    0.58\ndtype: float64, 0     100.0\n1     100.0\n2     100.0\n3     100.0\n4     100.0\n5     100.0\n6     100.0\n7     100.0\n8     100.0\n9     100.0\n10    100.0\n11    100.0\n12    100.0\n13    100.0\n14    100.0\n15    100.0\ndtype: float64)
+E        +        where <function pool_share_broadens at 0x000001EC155C31A0> = M.pool_share_broadens
+
+tests\test_longscout_v172.py:40: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v172.py::test_prior_week_must_be_observed - asser...
+1 failed in 1.91s

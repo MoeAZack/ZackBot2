@@ -1,0 +1,6 @@
+BEFORE
+ & change.le(.075)
+AFTER
+
+DETECTED BY
+test_aggregate_work_must_be_stable

@@ -1,0 +1,6 @@
+BEFORE
+rolling(8, min_periods=8)
+AFTER
+rolling(8, min_periods=7)
+DETECTED BY
+test_prior_week_must_be_observed

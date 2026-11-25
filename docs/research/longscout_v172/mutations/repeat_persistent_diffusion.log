@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_use_first_qualifying_week ________________________
+
+    def test_use_first_qualifying_week():
+        share, work = sample()
+        event = M.pool_share_broadens(share, work)
+>       assert event[event].index.tolist() == [13]
+E       assert [13, 14, 15] == [13]
+E         
+E         Left contains 2 more items, first extra item: 14
+E         Use -v to get more diff
+
+tests\test_longscout_v172.py:27: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v172.py::test_use_first_qualifying_week - assert ...
+1 failed in 2.25s
