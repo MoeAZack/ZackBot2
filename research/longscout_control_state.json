@@ -675,7 +675,13 @@
    "head": "410e47a95b37183766c0e70141043821d1bda273"
   }
  },
- "running": {},
+ "running": {
+  "version": 212,
+  "source": "61be0dc2b1268001f314ae8678d33130e92c7cab",
+  "registration": "d9eb7a7cb4ded7d35647c5ab5b3eb6a8ea9e1790",
+  "output": "C:\\Dev\\ZackBot_research_cache\\longscout_codex_v212_20261124",
+  "start_cairo": "2026-11-25T16:18:08.905464+02:00"
+ },
  "queued": {
   "94": {
    "source_freeze": "91a6775d1eb0558b5de44086e2b9189d7aed4579",
@@ -783,6 +789,15 @@
    "trial": 370,
    "reason": "Python/pandas preserved the publisher hashrate integers beyond native integer range as an object column. The frozen loader stopped in signal initialization before trades or economic results.",
    "next": "V170 first. V172 will use explicit float precision on the same pinned input and unchanged hypothesis."
+  },
+  "212": {
+   "trial": 411,
+   "source": "61be0dc2b1268001f314ae8678d33130e92c7cab",
+   "registration": "d9eb7a7cb4ded7d35647c5ab5b3eb6a8ea9e1790",
+   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7165117752",
+   "issue_pointer": "https://github.com/MoeAZack/ZackBot2/issues/219#issuecomment-7165118431",
+   "reason": "Default V91 runner omitted research_symbol before simulator trades. The evidence path contains only the frozen source and the logs.",
+   "next": "V213 selects existing symbol-aware flow runner with identical economic logic."
   }
  },
  "unregistered_data_gates": {
