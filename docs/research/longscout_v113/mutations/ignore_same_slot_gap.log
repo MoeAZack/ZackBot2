@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_gaps_suppress_signals __________________________
+
+    def test_gaps_suppress_signals():
+        d = fixture()
+        # Missing 04:00 from this day invalidates the later 04:00 window.
+        d = d.drop(index=10*6+1)
+        deviation, _ = M.slot_deviations(d)
+>       assert np.isnan(deviation[d.index.get_loc(34*6+1)])
+E       AssertionError: assert np.False_
+E        +  where np.False_ = <ufunc 'isnan'>(np.float64(-0.05000000000000024))
+E        +    where <ufunc 'isnan'> = np.isnan
+
+tests\test_longscout_v113.py:71: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v113.py::test_gaps_suppress_signals - AssertionEr...
+1 failed in 1.44s

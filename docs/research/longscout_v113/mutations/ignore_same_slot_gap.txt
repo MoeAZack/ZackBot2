@@ -1,0 +1,6 @@
+BEFORE
+consecutive & np.isfinite(history)
+AFTER
+np.isfinite(history)
+DETECTED BY
+test_gaps_suppress_signals

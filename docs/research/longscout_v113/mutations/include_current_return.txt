@@ -1,0 +1,6 @@
+BEFORE
+sliding_window_view(returns[at], 30)[:-1]
+AFTER
+sliding_window_view(returns[at], 30)[1:]
+DETECTED BY
+test_prior_slot_matches_reference
