@@ -433,6 +433,12 @@
    "trials_after": 365,
    "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7161678219",
    "head": "0662571e202efab325e3a922c9e862de96083f5e"
+  },
+  "170": {
+   "passes": 0,
+   "trials_after": 366,
+   "comment": "https://github.com/MoeAZack/ZackBot2/pull/347#issuecomment-7161812570",
+   "head": "355554277154bbedbea87858557664dd3c722d71"
   }
  },
  "running": {},
@@ -521,8 +527,9 @@
   "automatic_restart": false
  },
  "runtime_followup": {
-  "status": "A2 first signal after 12:00 Cairo (10:00 UTC) on 25 Nov pending. Recheck read-only between versions.",
-  "bridge": "https://github.com/MoeAZack/ZackBot2/issues/219#issuecomment-7156499218"
+  "status": "A2 first signal verified 25 Nov 14:00:20 Cairo (12:00:20 UTC). Stage capacity, code max_positions, decision not_taken.",
+  "bridge": "https://github.com/MoeAZack/ZackBot2/issues/219#issuecomment-7156499218",
+  "result": "https://github.com/MoeAZack/ZackBot2/issues/219#issuecomment-7161819939"
  },
  "incomplete_versions": {
   "163": {
