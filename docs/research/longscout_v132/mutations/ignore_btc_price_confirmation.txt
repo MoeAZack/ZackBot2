@@ -1,0 +1,6 @@
+BEFORE
+ & price.diff().gt(0)
+AFTER
+
+DETECTED BY
+test_price_direction_and_cohort_eligibility

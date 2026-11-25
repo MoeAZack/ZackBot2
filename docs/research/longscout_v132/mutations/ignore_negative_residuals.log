@@ -1,0 +1,16 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_convergence_uses_both_residual_signs __________________
+
+    def test_convergence_uses_both_residual_signs():
+        values = pd.Series([0, .002, .0006, -.003, -.001, .003, .002, .0015])
+>       assert np.flatnonzero(M.convergence(values)).tolist() == [2, 4]
+E       assert [2] == [2, 4]
+E         
+E         Right contains one more item: 4
+E         Use -v to get more diff
+
+tests\test_longscout_v132.py:24: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v132.py::test_convergence_uses_both_residual_signs
+1 failed in 1.70s

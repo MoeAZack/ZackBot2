@@ -1,0 +1,6 @@
+BEFORE
+distance = residual.abs()
+AFTER
+distance = residual
+DETECTED BY
+test_convergence_uses_both_residual_signs

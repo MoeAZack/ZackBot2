@@ -1,0 +1,24 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_price_direction_and_cohort_eligibility _________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001EEF608D130>
+
+    def test_price_direction_and_cohort_eligibility(monkeypatch):
+        dates = pd.date_range('2024-01-01', periods=6, freq='4h')
+        btc = pd.DataFrame(dict(t=dates, c=[100., 101, 102, 104, 103, 105]))
+        coin = btc.assign(c=[90., 91, 92, 93, 94, 95])
+        residual = pd.Series([0, -.002, -.001, .003, .001, .002], index=dates)
+        monkeypatch.setattr(M, 'load_residuals', lambda: residual)
+        monkeypatch.setattr(M.L1, 'coin_regime', lambda frame: np.zeros(len(frame)))
+        M.set_btc(btc)
+>       assert np.flatnonzero(M.sig_triangular_close(coin, {}, {})['le']).tolist() == [2]
+E       assert [2, 4] == [2]
+E         
+E         Left contains one more item: 4
+E         Use -v to get more diff
+
+tests\test_longscout_v132.py:42: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v132.py::test_price_direction_and_cohort_eligibility
+1 failed in 2.07s

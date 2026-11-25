@@ -1,0 +1,6 @@
+BEFORE
+distance.le(.5 * previous)
+AFTER
+distance.le(previous)
+DETECTED BY
+test_convergence_uses_both_residual_signs
