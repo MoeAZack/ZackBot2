@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 409,
+ "registered_trials": 410,
  "completed_trials": 404,
  "historical_screen_passes": 13,
  "versions": {
@@ -2759,6 +2759,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "210": {
+   "status": "PREREGISTERED",
+   "source_freeze": "6f86a3083888c4c57811a71b56a02185605c632c",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 410,
+     "key": "l210_spx_skew_relief_against_vix_rise_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
