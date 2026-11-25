@@ -1,0 +1,51 @@
+{
+ "id": "LONGSCOUT-V121",
+ "status": "FROZEN before any market outcome of these rules",
+ "approval": "Owner restart 24 Nov 2026, updated 25 Nov: long/range, new families, research only, cutoff 27 Nov 18:00 Cairo",
+ "sources": {
+  "longscout_v121": {
+   "commit": "c9c4bfb4aec3af5d0e6e92016c34b04d4ea50bb0",
+   "modules": [
+    "longscout_v1",
+    "longscout_v121"
+   ]
+  }
+ },
+ "universe": "165 coins = the 134 fresh coins (LONGSCOUT-FRESH-V1 data lock 28d7b7c8, manifest fb0c0572...) + extra31 (cache manifest 99af9bfb...); BTC context = the fresh-set BTCUSDT file (as in the pooled run); traded coins never include BTC or the original nine. The 165 coins share the consumed 2022-2026 calendar: not untouched data (Codex 14 Nov).",
+ "rule": "Codex rule v1 unchanged (max one position, $8 risk, $3,333.33 cap, 40 coin orders seed 20261112, 15 bp; medians: n >= 100, meanR15 > 0, meanR23 >= 0, halves split 2025-01-01 > 0, ex-best-coin > 0, order 0 >= 30 per half)",
+ "extra_gate": "ALSO required for a pass: the median over the 40 orders of mean R15 restricted to trades on the 134 fresh coins > 0, and the same restricted to the 31 extra coins > 0 (both subsets must earn; neither may carry the other)",
+ "status_names": "WIDE165_PASS only when every rule-v1 gate and both subset gates hold; else FAIL",
+ "multiple_testing": "1 candidates; prior321 registered trials; all prior/future screens share a consumed calendar, not untouched confirmation.",
+ "never": "research_only default-OFF. No account/runtime/scheduler/secrets/merge/mark-ready, no PAPER promotion, no holdout tuning; changed hypothesis gets new candidate.",
+ "cases": {
+  "l121_relative_stablecoin_normalization_4h": {
+   "source": "longscout_v121",
+   "commit": "c9c4bfb4aec3af5d0e6e92016c34b04d4ea50bb0",
+   "key": "l121_relative_stablecoin_normalization_4h",
+   "tf": "4h",
+   "side": "long",
+   "management": {
+    "stop_atr": 2.5,
+    "tp_r": 2.0,
+    "max_bars": 18
+   },
+   "params": {},
+   "eligible_coins": "fresh134+extra31",
+   "prior_exposure": "No market outcome before this freeze; synthetic checks only",
+   "label": "NEW_CANDIDATE_RULE_V1_WIDE165_EXPLICIT_FEES",
+   "trial": 322
+  }
+ },
+ "cost_amendment": "Original frozen rule-v1 gates unchanged. V91 pnl15 labels explicitly mean 15bp FEES plus 2bp slip per side, not old combined15. Stress23fee plus2slip. Native fixed funding 0.00005 per4h held notional both sides pay; NOT realized historical funding. Frozen exchange-rule snapshot, unknown coverage must be disclosed.",
+ "dd_labels": "Standard <=15R; Elevated <=30R; High <=60R; Extreme >60R. Closed-equity drawdown includes initial zero. No DD acceptance gate invented.",
+ "preregistered_cairo": "2026-11-25T11:09:21.062737+02:00",
+ "forward_bar": "Require WIDE165_PASS, positive fresh134 R15 in rising and sideways BTC regimes, fresh134 median R23 >= 0, Standard/Elevated pooled median closed DD, and fresh134 median top-three winning trades / net profit < 50%. Use path trades and all 40 orders, with missing denominators failing the bar.",
+ "family_novelty": "Uses normalization of relative stablecoin pricing as a market-wide quote liquidity input. V117 uses contract funding and V120 compares futures premium with BTC price. Earlier BTC recovery rules do not observe a stablecoin pair.",
+ "runner": "longscout_v91_run.py",
+ "market_feature_input": {
+  "manifest_sha256": "e4a4e13834bf1d19dd5f39a6c61fc05201a063f57c78dc4e4764d3102c7ae637",
+  "source": "Binance Data Vision",
+  "signal_field": "USDCUSDT spot 4h close"
+ },
+ "publication": "Source and cases committed and pushed before market execution"
+}

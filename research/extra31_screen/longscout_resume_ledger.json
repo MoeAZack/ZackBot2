@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 321,
+ "registered_trials": 322,
  "completed_trials": 318,
  "historical_screen_passes": 12,
  "versions": {
@@ -733,6 +733,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "121": {
+   "status": "PREREGISTERED",
+   "source_freeze": "c9c4bfb4aec3af5d0e6e92016c34b04d4ea50bb0",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 322,
+     "key": "l121_relative_stablecoin_normalization_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
