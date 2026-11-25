@@ -1,0 +1,6 @@
+BEFORE
+return relief.shift(1, fill_value=False)
+AFTER
+return relief
+DETECTED BY
+test_delay_and_mark_prefix

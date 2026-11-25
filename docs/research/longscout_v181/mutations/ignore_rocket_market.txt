@@ -1,0 +1,6 @@
+BEFORE
+ & rocket_stable
+AFTER
+
+DETECTED BY
+test_reth_stays_near_its_own_level

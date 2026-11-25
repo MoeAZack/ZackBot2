@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_delay_and_mark_prefix __________________________
+
+    def test_delay_and_mark_prefix():
+        marks = sample()
+        result = M.isolated_discount_eases(marks)
+>       assert result[result].index.tolist() == [63]
+E       assert [62] == [63]
+E         
+E         At index 0 diff: 62 != 63
+E         Use -v to get more diff
+
+tests\test_longscout_v181.py:37: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v181.py::test_delay_and_mark_prefix - assert [62]...
+1 failed in 1.77s

@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_reth_stays_near_its_own_level ______________________
+
+    def test_reth_stays_near_its_own_level():
+        marks = sample()
+        marks.loc[61:, 'rETH'] = 1060.
+>       assert not M.isolated_discount_eases(marks).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n59    False\n60    False\n61    False\n62    False\n63     True\nLength: 64, dtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n59    False\n60    False\n61    False\n62    False\n63     True\nLength: 64, dtype: bool = <function isolated_discount_eases at 0x00000215EEC06A20>(       ETH    rETH   stETH\n0   1000.0  1080.0  1000.0\n1   1000.0  1080.0  1000.0\n2   1000.0  1080.0  1000.0\n3   1000.0... 1080.0  1000.0\n61  1000.0  1060.0   980.0\n62  1000.0  1060.0   990.0\n63  1000.0  1060.0   990.0\n\n[64 rows x 3 columns])
+E        +        where <function isolated_discount_eases at 0x00000215EEC06A20> = M.isolated_discount_eases
+
+tests\test_longscout_v181.py:25: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v181.py::test_reth_stays_near_its_own_level - ass...
+1 failed in 3.13s

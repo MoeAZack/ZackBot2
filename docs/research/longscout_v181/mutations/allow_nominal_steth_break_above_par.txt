@@ -1,0 +1,6 @@
+BEFORE
+ & steth.lt(.998)
+AFTER
+
+DETECTED BY
+test_discount_remains_on_recovery
