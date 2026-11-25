@@ -1,0 +1,176 @@
+{
+ "note": "Descriptive diagnostics on an already-consumed calendar, not untouched or forward evidence.",
+ "cases": {
+  "l114_positive_btc_convexity_1d": {
+   "status": "FAIL",
+   "medians": {
+    "n": 22.0,
+    "meanR7": 0.2613860736586819,
+    "meanR15": 0.25331230192155046,
+    "meanR23": 0.245238530184419,
+    "meanR15_early": 0.3109436846079294,
+    "meanR15_late": 0.17473916030758524,
+    "meanR15_ex_best": 0.16765291551206096
+   },
+   "gates": {
+    "trades": false,
+    "meanR15": true,
+    "early": true,
+    "late": true,
+    "ex_best_coin": true,
+    "meanR23": true,
+    "order0_30_per_half": false
+   },
+   "subsets": {
+    "fresh134": {
+     "median_meanR15": 0.2599072705971007,
+     "median_n": 12.0
+    },
+    "extra31": {
+     "median_meanR15": 0.21497024450812155,
+     "median_n": 10.5
+    },
+    "pass": true
+   },
+   "cost_model": {
+    "primary_fee_bp_per_side": 15,
+    "slip_bp_per_side": 2,
+    "stress_fee_bp_per_side": 23,
+    "native_funding": "0.00005 per 4h of held notional, both sides pay; fixed model, not realized historical rates",
+    "legacy_field_names": "pnl15 / meanR15 now mean 15bp fee PLUS 2bp slip; pnl23=23bp fee PLUS2bp slip",
+    "exchange_rules": "frozen testnet snapshot; unknown rules reported by engine"
+   },
+   "no_closed_trades": false,
+   "dd": {
+    "order0_R": 2.074285165688825,
+    "order0_label": "Standard",
+    "median_R": 2.405876645243419,
+    "median_label": "Standard",
+    "max_R": 3.6175193524033404,
+    "max_label": "Standard",
+    "per_order_R": [
+     2.074285165688825,
+     3.2641525415451427,
+     2.532212619148174,
+     2.5190222535327527,
+     2.2506615449602014,
+     2.4656762382699924,
+     3.5844705368782517,
+     2.354309577094689,
+     2.4691074162254623,
+     2.11628314219881,
+     2.4656762382699924,
+     3.6175193524033404,
+     2.404069206476753,
+     2.5620411487744352,
+     3.306827281053651,
+     3.437456580114733,
+     2.3543380687473245,
+     2.565472326729905,
+     2.5620411487744357,
+     2.052376134708493,
+     1.9779202551843826,
+     3.1303793862983778,
+     1.970608641901702,
+     3.193007948813186,
+     1.970608641901702,
+     2.6841221095352523,
+     2.1089715289161317,
+     2.292731036954085,
+     2.116283142198811,
+     2.2819882457159353,
+     2.0742851656888255,
+     2.938854795588923,
+     2.10897152891613,
+     2.1856233352114924,
+     1.970608641901702,
+     2.5727839400125854,
+     2.066973552406145,
+     2.407684084010085,
+     2.052376134708494,
+     3.4104322893568773
+    ],
+    "note": "Closed equity, initial zero included; not mark-to-market DD."
+   },
+   "btc_regimes": {
+    "rising": {
+     "median_n": 12.0,
+     "median_meanR15": 0.31379813389905553,
+     "positive_orders": 40
+    },
+    "sideways": {
+     "median_n": 10.0,
+     "median_meanR15": 0.10561624220479124,
+     "positive_orders": 28
+    },
+    "falling": {
+     "median_n": 0.0,
+     "median_meanR15": null,
+     "positive_orders": 0
+    }
+   },
+   "sides": {
+    "long": {
+     "median_n": 22.0,
+     "median_meanR15": 0.25331230192155046,
+     "positive_orders": 40
+    },
+    "short": {
+     "median_n": 0.0,
+     "median_meanR15": null,
+     "positive_orders": 0
+    }
+   },
+   "yearly": {
+    "2023": {
+     "median_n": 7.0,
+     "median_meanR15": 0.6065474967008022,
+     "positive_orders": 40
+    },
+    "2024": {
+     "median_n": 8.0,
+     "median_meanR15": 0.012568436931292268,
+     "positive_orders": 27
+    },
+    "2025": {
+     "median_n": 2.0,
+     "median_meanR15": -0.2713734914450938,
+     "positive_orders": 0
+    },
+    "2026": {
+     "median_n": 5.0,
+     "median_meanR15": 0.33206529810811486,
+     "positive_orders": 30
+    }
+   },
+   "missing_rule_trades": {
+    "symbols": [
+     "ICPUSDT",
+     "TLMUSDT"
+    ],
+    "path_trades_all_orders": 0,
+    "order0": 0
+   },
+   "positive_orders": 40,
+   "saved_tape_gate_reconstruction": "MATCH; not independent price replay",
+   "forward_bar": {
+    "qualified": false,
+    "gates": {
+     "wide_screen": false,
+     "rising": true,
+     "sideways": true,
+     "stress": true,
+     "drawdown": true,
+     "top3": false
+    },
+    "fresh_regime_R15": {
+     "rising": 0.14308053464129455,
+     "sideways": 0.33532859906971707,
+     "falling": null
+    },
+    "fresh_R23": 0.2516250087304389,
+    "fresh_top3_share": 1.558371892376229
+   }
+  }
+ }
+}

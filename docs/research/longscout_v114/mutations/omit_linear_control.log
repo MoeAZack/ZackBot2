@@ -1,0 +1,23 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_prior_fit_matches_linear_residuals ___________________
+
+    def test_prior_fit_matches_linear_residuals():
+        date, x, y = fixture()
+        t = 129
+        shifted_x, shifted_y = x[t-90:t], y[t-90:t]
+        design = np.column_stack([np.ones(90), shifted_x])
+        residues = lambda v: v - design @ np.linalg.lstsq(design, v, rcond=None)[0]
+        expected = np.corrcoef(residues(shifted_y), residues(shifted_x**2))[0, 1]
+        result = M.convexity(pd.Series(y, date), pd.Series(x, date))
+>       assert result.iloc[t] == pytest.approx(expected, abs=1e-10)
+E       assert np.float64(1.0) == 0.9871444229158518 ± 1.0e-10
+E         
+E         comparison failed
+E         Obtained: 1.0
+E         Expected: 0.9871444229158518 ± 1.0e-10
+
+tests\test_longscout_v114.py:40: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v114.py::test_prior_fit_matches_linear_residuals
+1 failed in 1.27s

@@ -1,0 +1,6 @@
+BEFORE
+(yz - xy * xz / vx) / denominator
+AFTER
+yz / denominator
+DETECTED BY
+test_prior_fit_matches_linear_residuals

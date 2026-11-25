@@ -1,0 +1,20 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_signals_can_follow_negative_btc_shock __________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000288271A9FA0>
+
+    def test_signals_can_follow_negative_btc_shock(monkeypatch):
+        t, x, y = fixture()
+        frame = lambda ret: pd.DataFrame(dict(t=t, c=100 * np.exp(np.cumsum(ret)/100)))
+        coin, btc = frame(y), frame(x)
+        monkeypatch.setattr(M.L1, 'regime_daily', lambda c: pd.Series(0., index=c.index))
+        M.set_btc(btc)
+        full = M.sig_convexity(coin, {}, {})
+>       assert full['le'].iloc[128] and not full['le'].iloc[127]
+E       assert (np.False_)
+
+tests\test_longscout_v114.py:52: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v114.py::test_signals_can_follow_negative_btc_shock
+1 failed in 1.27s

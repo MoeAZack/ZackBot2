@@ -1,0 +1,6 @@
+BEFORE
+absolute = x.abs()
+AFTER
+absolute = x
+DETECTED BY
+test_signals_can_follow_negative_btc_shock

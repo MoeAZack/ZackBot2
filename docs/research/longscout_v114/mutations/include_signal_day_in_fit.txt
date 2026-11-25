@@ -1,0 +1,6 @@
+BEFORE
+coin_ret.shift(), btc_ret.shift()
+AFTER
+coin_ret, btc_ret
+DETECTED BY
+test_prior_fit_matches_linear_residuals
