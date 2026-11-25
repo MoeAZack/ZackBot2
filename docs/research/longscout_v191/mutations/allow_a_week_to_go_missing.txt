@@ -1,0 +1,6 @@
+BEFORE
+adjacent & same_series
+AFTER
+same_series
+DETECTED BY
+test_requires_adjacent_reports

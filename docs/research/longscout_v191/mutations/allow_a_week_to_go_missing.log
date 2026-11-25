@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_requires_adjacent_reports ________________________
+
+    def test_requires_adjacent_reports():
+        frame, period = sample()
+        frame.index = frame.index[:-1].append(frame.index[-1:] + pd.Timedelta(days=7))
+        period.index = frame.index
+>       assert not M.delivery_fails_ease(frame, period).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2025-01-23    False\n2025-01-30    False\n2025-02-06    False\n2025-02-13    False\n2025-02-20    False\n2025-02-27    Fals...  False\n2025-03-27    False\n2025-04-03    False\n2025-04-10    False\n2025-04-17    False\n2025-05-01     True\ndtype: bool.any
+E        +      where 2025-01-23    False\n2025-01-30    False\n2025-02-06    False\n2025-02-13    False\n2025-02-20    False\n2025-02-27    Fals...  False\n2025-03-27    False\n2025-04-03    False\n2025-04-10    False\n2025-04-17    False\n2025-05-01     True\ndtype: bool = <function delivery_fails_ease at 0x0000018693B76AC0>(            PDFTD-USTET  PDFTD-UST\n2025-01-08         80.0       20.0\n2025-01-15         80.0       20.0\n2025-01-22   ...0.0       20.0\n2025-03-26         80.0       20.0\n2025-04-02        200.0       30.0\n2025-04-16         70.0       25.0, 2025-01-08    SBN2024\n2025-01-15    SBN2024\n2025-01-22    SBN2024\n2025-01-29    SBN2024\n2025-02-05    SBN2024\n2025-02-...025-03-12    SBN2024\n2025-03-19    SBN2024\n2025-03-26    SBN2024\n2025-04-02    SBN2024\n2025-04-16    SBN2024\ndtype: str)
+E        +        where <function delivery_fails_ease at 0x0000018693B76AC0> = M.delivery_fails_ease
+
+tests\test_longscout_v191.py:34: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v191.py::test_requires_adjacent_reports - assert ...
+1 failed in 1.31s

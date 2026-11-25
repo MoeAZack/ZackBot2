@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_uses_conservative_lag __________________________
+
+    def test_uses_conservative_lag():
+        frame, period = sample()
+        event = M.delivery_fails_ease(frame, period)
+>       assert event[event].index.tolist() == [frame.index[-1] + pd.Timedelta(days=15)]
+E       AssertionError: assert [Timestamp('2...09 00:00:00')] == [Timestamp('2...24 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2025-04-09 00:00:00') != Timestamp('2025-04-24 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v191.py:40: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v191.py::test_uses_conservative_lag - AssertionEr...
+1 failed in 1.29s

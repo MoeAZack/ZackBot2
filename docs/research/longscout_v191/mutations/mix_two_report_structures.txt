@@ -1,0 +1,6 @@
+BEFORE
+ & same_series
+AFTER
+
+DETECTED BY
+test_requires_one_reporting_series
