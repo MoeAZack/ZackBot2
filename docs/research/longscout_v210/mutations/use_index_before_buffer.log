@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_applies_availability_buffer _______________________
+
+    def test_applies_availability_buffer():
+        prices = sample()
+        flags = M.asymmetric_risk_eases(prices)
+>       assert flags[flags].index.tolist() == [prices.index[-1] + pd.Timedelta(days=2)]
+E       AssertionError: assert [Timestamp('2...27 00:00:00')] == [Timestamp('2...01 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2025-02-27 00:00:00') != Timestamp('2025-03-01 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v210.py:28: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v210.py::test_applies_availability_buffer - Asser...
+1 failed in 1.79s

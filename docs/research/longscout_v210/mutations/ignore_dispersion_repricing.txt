@@ -1,0 +1,6 @@
+BEFORE
+ & vix_higher
+AFTER
+
+DETECTED BY
+test_requires_vix_to_rise

@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________________ test_requires_vix_to_rise __________________________
+
+    def test_requires_vix_to_rise():
+>       assert not M.asymmetric_risk_eases(sample(current_vix=19.8)).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2025-01-17    False\n2025-01-18    False\n2025-01-19    False\n2025-01-22    False\n2025-01-23    False\n2025-01-24    Fals...  False\n2025-02-23    False\n2025-02-26    False\n2025-02-27    False\n2025-02-28    False\n2025-03-01     True\ndtype: bool.any
+E        +      where 2025-01-17    False\n2025-01-18    False\n2025-01-19    False\n2025-01-22    False\n2025-01-23    False\n2025-01-24    Fals...  False\n2025-02-23    False\n2025-02-26    False\n2025-02-27    False\n2025-02-28    False\n2025-03-01     True\ndtype: bool = <function asymmetric_risk_eases at 0x000001AAD73D2AC0>(             SKEW   VIX\n2025-01-15  110.0  19.0\n2025-01-16  110.0  19.0\n2025-01-17  110.0  19.0\n2025-01-20  110.0  19....2025-02-21  110.0  19.0\n2025-02-24  110.0  19.0\n2025-02-25  110.0  19.0\n2025-02-26  123.0  20.0\n2025-02-27  116.0  19.8)
+E        +        where <function asymmetric_risk_eases at 0x000001AAD73D2AC0> = M.asymmetric_risk_eases
+E        +        and                SKEW   VIX\n2025-01-15  110.0  19.0\n2025-01-16  110.0  19.0\n2025-01-17  110.0  19.0\n2025-01-20  110.0  19....2025-02-21  110.0  19.0\n2025-02-24  110.0  19.0\n2025-02-25  110.0  19.0\n2025-02-26  123.0  20.0\n2025-02-27  116.0  19.8 = sample(current_vix=19.8)
+
+tests\test_longscout_v210.py:36: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v210.py::test_requires_vix_to_rise - assert not n...
+1 failed in 1.81s
