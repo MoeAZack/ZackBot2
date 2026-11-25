@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 335,
+ "registered_trials": 336,
  "completed_trials": 332,
  "historical_screen_passes": 12,
  "versions": {
@@ -1052,6 +1052,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "135": {
+   "status": "PREREGISTERED",
+   "source_freeze": "31150f62b95f50d19b50674f5214f755b2245bcc",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 336,
+     "key": "l135_btc_collateral_funding_divergence_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
