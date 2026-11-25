@@ -1,0 +1,21 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_market_net_subtracts_exits _______________________
+
+    def test_market_net_subtracts_exits():
+        med = fixture()
+        med.iloc[:, 1] = 20e6
+        med.iloc[8:, 1] = 5e6
+        med.iloc[8:, 2:7] = 20e6
+        result = M.liquid_net_change(med)
+>       assert result.iloc[8] == pytest.approx(4 / 65)
+E       assert np.float64(0....2307692307693) == 0.06153846153846154 ± 6.2e-08
+E         
+E         comparison failed
+E         Obtained: 0.07692307692307693
+E         Expected: 0.06153846153846154 ± 6.2e-08
+
+tests\test_longscout_v130.py:34: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v130.py::test_market_net_subtracts_exits - assert...
+1 failed in 2.22s

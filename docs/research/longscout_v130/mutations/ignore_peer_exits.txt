@@ -1,0 +1,6 @@
+BEFORE
+entrants - exits
+AFTER
+entrants
+DETECTED BY
+test_market_net_subtracts_exits

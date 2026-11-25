@@ -1,0 +1,15 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_missing_prior_cannot_be_an_entrant ___________________
+
+    def test_missing_prior_cannot_be_an_entrant():
+        med = fixture()
+        med.iloc[7, 0] = np.nan
+        med.iloc[8:, 0] = 20e6
+>       assert M.liquid_net_change(med).iloc[8] == 0
+E       assert np.float64(0.015625) == 0
+
+tests\test_longscout_v130.py:44: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v130.py::test_missing_prior_cannot_be_an_entrant
+1 failed in 1.43s

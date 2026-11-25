@@ -1,0 +1,24 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_positive_coin_and_btc_gate _______________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000285DF3A59D0>
+
+    def test_positive_coin_and_btc_gate(monkeypatch):
+        t = fixture().index
+        upward = pd.DataFrame(dict(t=t, c=100 + np.arange(len(t)), qv=2e7))
+        downward = upward.assign(c=100 - np.arange(len(t)))
+        market = pd.Series(False, index=t)
+        market.iloc[11] = True
+        monkeypatch.setattr(M, '_MARKET', market)
+        monkeypatch.setattr(M.L1, 'regime_daily', lambda c: pd.Series(0.0, index=c.index))
+        assert np.flatnonzero(M.sig_liquid_expansion(upward, {}, {})['le']).tolist() == [11]
+>       assert not M.sig_liquid_expansion(downward, {}, {})['le'].any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     False\n10    False\n11     True\n12    False\n13    False\n14    False\n15    False\n16    False\n17    False\ndtype: bool.any
+
+tests\test_longscout_v130.py:57: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v130.py::test_positive_coin_and_btc_gate - assert...
+1 failed in 1.84s

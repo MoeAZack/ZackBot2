@@ -1,0 +1,6 @@
+BEFORE
+paired & liquid & ~was_liquid
+AFTER
+liquid & ~was_liquid
+DETECTED BY
+test_missing_prior_cannot_be_an_entrant

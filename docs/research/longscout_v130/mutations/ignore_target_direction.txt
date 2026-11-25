@@ -1,0 +1,6 @@
+BEFORE
+ & price.gt(price.shift(10))
+AFTER
+
+DETECTED BY
+test_positive_coin_and_btc_gate
