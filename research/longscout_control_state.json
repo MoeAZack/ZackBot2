@@ -531,6 +531,16 @@
    "source": "474d5b8b6c3c6f90cdd2c383418fbc8ebd0ddacf",
    "reason": "Source-manifest sample label was changed by the Windows text encoding pipeline. The frozen loader stopped during BTC input initialization, before signal generation or economic outcomes.",
    "next": "V164 first; preserve failed trial and use a new registration for the repaired source contract."
+  },
+  "169": {
+   "version": 169,
+   "source": "d2b77d1b9769a4238344267b1b2feff1497df6ab",
+   "registration": "d1a1a73e5298144c41d045cd2810750d8c930a84",
+   "output": "C:\\Dev\\ZackBot_research_cache\\longscout_codex_v169_20261124",
+   "start_cairo": "2026-11-25T13:56:23.125845+02:00",
+   "trial": 370,
+   "reason": "Python/pandas preserved the publisher hashrate integers beyond native integer range as an object column. The frozen loader stopped in signal initialization before trades or economic results.",
+   "next": "V170 first. V172 will use explicit float precision on the same pinned input and unchanged hypothesis."
   }
  }
 }

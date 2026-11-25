@@ -1839,16 +1839,18 @@
    ]
   },
   "169": {
-   "status": "PREREGISTERED",
+   "status": "INCOMPLETE_INPUT_CONTRACT",
    "source_freeze": "d2b77d1b9769a4238344267b1b2feff1497df6ab",
    "batch_passes": null,
    "candidates": [
     {
      "trial": 370,
      "key": "l169_btc_mining_pool_share_diffusion_1d",
-     "verdict": "PREREGISTERED_NOT_RUN"
+     "verdict": "INCOMPLETE_INPUT_CONTRACT",
+     "reason": "Python/pandas preserved the publisher hashrate integers beyond native integer range as an object column. The frozen loader stopped in signal initialization before trades or economic results."
     }
-   ]
+   ],
+   "reason": "Python/pandas preserved the publisher hashrate integers beyond native integer range as an object column. The frozen loader stopped in signal initialization before trades or economic results."
   }
  },
  "owner_stop": {
