@@ -1,0 +1,16 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________ test_positive_close_and_implied_contraction_required _____________
+
+    def test_positive_close_and_implied_contraction_required():
+        close, iv = fixture()
+>       assert np.flatnonzero(M.vol_recovery(close, iv)).tolist() == [40]
+E       assert [] == [40]
+E         
+E         Right contains one more item: 40
+E         Use -v to get more diff
+
+tests\test_longscout_v127.py:32: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v127.py::test_positive_close_and_implied_contraction_required
+1 failed in 1.70s

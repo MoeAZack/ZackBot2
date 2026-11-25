@@ -1,0 +1,21 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________________ test_missing_input_and_prefix ________________________
+
+    def test_missing_input_and_prefix():
+        close, iv = fixture()
+        flags = M.vol_recovery(close, iv)
+        for stop in (30, 40, 41, 44):
+            pd.testing.assert_series_equal(M.vol_recovery(close.iloc[:stop], iv.iloc[:stop]), flags.iloc[:stop])
+        iv.iloc[39] = np.nan
+>       assert not M.vol_recovery(close, iv).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n2024-01-06    Fals...024-02-13    False\n2024-02-14    False\n2024-02-15    False\n2024-02-16    False\n2024-02-17    False\nFreq: D, dtype: bool.any
+E        +      where 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n2024-01-06    Fals...024-02-13    False\n2024-02-14    False\n2024-02-15    False\n2024-02-16    False\n2024-02-17    False\nFreq: D, dtype: bool = <function vol_recovery at 0x000002A19E006A20>(2024-01-01    100.000000\n2024-01-02    100.100050\n2024-01-03    100.200200\n2024-01-04    100.300450\n2024-01-05    100....-02-14    104.498235\n2024-02-15    104.602786\n2024-02-16    104.707441\n2024-02-17    104.812201\nFreq: D, dtype: float64, 2024-01-01    60.0\n2024-01-02    60.0\n2024-01-03    60.0\n2024-01-04    60.0\n2024-01-05    60.0\n2024-01-06    60.0\n2024...\n2024-02-13    50.0\n2024-02-14    50.0\n2024-02-15    50.0\n2024-02-16    50.0\n2024-02-17    50.0\nFreq: D, dtype: float64)
+E        +        where <function vol_recovery at 0x000002A19E006A20> = M.vol_recovery
+
+tests\test_longscout_v127.py:50: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v127.py::test_missing_input_and_prefix - assert n...
+1 failed in 1.83s

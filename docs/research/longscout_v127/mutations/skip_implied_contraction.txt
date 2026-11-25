@@ -1,0 +1,6 @@
+BEFORE
+ & implied.diff().le(-.02)
+AFTER
+
+DETECTED BY
+test_rising_realized_vol_alone_is_not_relief

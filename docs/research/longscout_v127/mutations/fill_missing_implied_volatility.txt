@@ -1,0 +1,6 @@
+BEFORE
+percent.reindex(price.index) / 100
+AFTER
+percent.reindex(price.index).ffill() / 100
+DETECTED BY
+test_missing_input_and_prefix

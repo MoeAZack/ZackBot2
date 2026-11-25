@@ -1,0 +1,6 @@
+BEFORE
+ & ret.gt(0)
+AFTER
+ & ret.lt(0)
+DETECTED BY
+test_positive_close_and_implied_contraction_required
