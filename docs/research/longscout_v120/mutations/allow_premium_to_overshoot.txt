@@ -1,0 +1,6 @@
+BEFORE
+ & current.le(0)
+AFTER
+
+DETECTED BY
+test_wrong_price_and_overshoot_suppress_signal

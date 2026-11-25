@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________ test_wrong_price_and_overshoot_suppress_signal ________________
+
+    def test_wrong_price_and_overshoot_suppress_signal():
+        price, premium = fixture()
+        premium.iloc[36] = .0002
+>       assert not M.market_conditions(price, premium, True).long.any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01 00:00:00    False\n2024-01-01 04:00:00    False\n2024-01-01 08:00:00    False\n2024-01-01 12:00:00    False\n20...024-01-08 00:00:00    False\n2024-01-08 04:00:00    False\n2024-01-08 08:00:00    False\nFreq: 4h, Name: long, dtype: bool.any
+E        +      where 2024-01-01 00:00:00    False\n2024-01-01 04:00:00    False\n2024-01-01 08:00:00    False\n2024-01-01 12:00:00    False\n20...024-01-08 00:00:00    False\n2024-01-08 04:00:00    False\n2024-01-08 08:00:00    False\nFreq: 4h, Name: long, dtype: bool =                       long  short      move\n2024-01-01 00:00:00  False  False       NaN\n2024-01-01 04:00:00  False  Fa...0:00:00  False  False -0.009901\n2024-01-08 04:00:00  False  False  0.000000\n2024-01-08 08:00:00  False  False  0.000000.long
+E        +        where                       long  short      move\n2024-01-01 00:00:00  False  False       NaN\n2024-01-01 04:00:00  False  Fa...0:00:00  False  False -0.009901\n2024-01-08 04:00:00  False  False  0.000000\n2024-01-08 08:00:00  False  False  0.000000 = <function market_conditions at 0x000001E632B05580>(2024-01-01 00:00:00    100.0\n2024-01-01 04:00:00    100.0\n2024-01-01 08:00:00    100.0\n2024-01-01 12:00:00    100.0\n20...  101.0\n2024-01-08 00:00:00    100.0\n2024-01-08 04:00:00    100.0\n2024-01-08 08:00:00    100.0\nFreq: 4h, dtype: float64, 2024-01-01 00:00:00    0.0000\n2024-01-01 04:00:00    0.0000\n2024-01-01 08:00:00    0.0000\n2024-01-01 12:00:00    0.000...0010\n2024-01-08 00:00:00    0.0000\n2024-01-08 04:00:00    0.0000\n2024-01-08 08:00:00    0.0000\nFreq: 4h, dtype: float64, True)
+E        +          where <function market_conditions at 0x000001E632B05580> = M.market_conditions
+
+tests\test_longscout_v120.py:45: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v120.py::test_wrong_price_and_overshoot_suppress_signal
+1 failed in 1.38s

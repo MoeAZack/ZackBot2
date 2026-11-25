@@ -1,0 +1,21 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_historical_gap_and_future_prefix ____________________
+
+    def test_historical_gap_and_future_prefix():
+        price, premium = fixture()
+        full = M.market_conditions(price, premium, True)
+        for end in (30, 36, 37, 42):
+            pd.testing.assert_frame_equal(M.market_conditions(price.iloc[:end], premium.iloc[:end], True), full.iloc[:end])
+        premium.iloc[20] = np.nan
+        gap = M.market_conditions(price, premium, True)
+>       assert not gap.long.any() and not gap.short.any()
+E       assert (not np.True_)
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01 00:00:00    False\n2024-01-01 04:00:00    False\n2024-01-01 08:00:00    False\n2024-01-01 12:00:00    False\n20...024-01-08 00:00:00    False\n2024-01-08 04:00:00    False\n2024-01-08 08:00:00    False\nFreq: 4h, Name: long, dtype: bool.any
+E        +      where 2024-01-01 00:00:00    False\n2024-01-01 04:00:00    False\n2024-01-01 08:00:00    False\n2024-01-01 12:00:00    False\n20...024-01-08 00:00:00    False\n2024-01-08 04:00:00    False\n2024-01-08 08:00:00    False\nFreq: 4h, Name: long, dtype: bool =                       long  short      move\n2024-01-01 00:00:00  False  False       NaN\n2024-01-01 04:00:00  False  Fa...0:00:00  False  False -0.009901\n2024-01-08 04:00:00  False  False  0.000000\n2024-01-08 08:00:00  False  False  0.000000.long
+
+tests\test_longscout_v120.py:58: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v120.py::test_historical_gap_and_future_prefix - ...
+1 failed in 1.15s

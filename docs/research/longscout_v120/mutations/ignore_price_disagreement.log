@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________________ test_both_convergence_sides _________________________
+
+    def test_both_convergence_sides():
+        price, premium = fixture()
+        flags = M.market_conditions(price, premium, True)
+>       assert np.flatnonzero(flags.long).tolist() == [36]
+E       assert [37] == [36]
+E         
+E         At index 0 diff: 37 != 36
+E         Use -v to get more diff
+
+tests\test_longscout_v120.py:36: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v120.py::test_both_convergence_sides - assert [37...
+1 failed in 1.19s

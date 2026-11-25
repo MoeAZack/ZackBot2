@@ -1,0 +1,6 @@
+BEFORE
+premium = premium.reindex(btc.index)
+AFTER
+premium = premium.reindex(btc.index).ffill()
+DETECTED BY
+test_historical_gap_and_future_prefix
