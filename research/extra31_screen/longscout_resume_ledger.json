@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 322,
+ "registered_trials": 323,
  "completed_trials": 319,
  "historical_screen_passes": 12,
  "versions": {
@@ -754,6 +754,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "122": {
+   "status": "PREREGISTERED",
+   "source_freeze": "bc8b6e32049e5191aa5c0aa41a8bffc1276fc81f",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 323,
+     "key": "l122_btc_spot_turnover_lead_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
