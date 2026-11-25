@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 390,
+ "registered_trials": 391,
  "completed_trials": 385,
  "historical_screen_passes": 13,
  "versions": {
@@ -2309,6 +2309,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "190": {
+   "status": "PREREGISTERED",
+   "source_freeze": "2008d30194ed632c0ad6df79cbd31af593e27351",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 391,
+     "key": "r190_cme_option_equivalent_oi_relief_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
