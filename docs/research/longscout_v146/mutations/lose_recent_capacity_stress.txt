@@ -1,0 +1,6 @@
+BEFORE
+high & 
+AFTER
+
+DETECTED BY
+test_no_entry_without_prior_capacity_stress

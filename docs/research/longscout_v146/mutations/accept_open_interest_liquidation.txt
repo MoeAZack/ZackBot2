@@ -1,0 +1,6 @@
+BEFORE
+ & oi.diff().gt(0)
+AFTER
+
+DETECTED BY
+test_open_interest_must_rise

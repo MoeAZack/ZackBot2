@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_no_entry_without_prior_capacity_stress _________________
+
+    def test_no_entry_without_prior_capacity_stress():
+        oi, volume = fixture(stressed=110.)
+>       assert not M.turnover_catches_up(oi, volume).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...46    False\n47    False\n48    False\n49    False\n50    False\n51    False\n52    False\n53    False\n54     True\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...46    False\n47    False\n48    False\n49    False\n50    False\n51    False\n52    False\n53    False\n54     True\ndtype: bool = <function turnover_catches_up at 0x000001A3363FB7E0>(0     100.0\n1     100.0\n2     100.0\n3     100.0\n4     100.0\n5     100.0\n6     100.0\n7     100.0\n8     100.0\n9     100....   100.0\n47    110.0\n48    110.0\n49    110.0\n50    110.0\n51    110.0\n52    110.0\n53    110.0\n54    111.0\ndtype: float64, 0     100.0\n1     100.0\n2     100.0\n3     100.0\n4     100.0\n5     100.0\n6     100.0\n7     100.0\n8     100.0\n9     100....   100.0\n47    100.0\n48    100.0\n49    100.0\n50    100.0\n51    100.0\n52    100.0\n53    100.0\n54    430.0\ndtype: float64)
+E        +        where <function turnover_catches_up at 0x000001A3363FB7E0> = M.turnover_catches_up
+
+tests\test_longscout_v146.py:35: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v146.py::test_no_entry_without_prior_capacity_stress
+1 failed in 1.62s

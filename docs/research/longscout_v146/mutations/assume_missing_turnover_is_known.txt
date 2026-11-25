@@ -1,0 +1,6 @@
+BEFORE
+rolling(7, min_periods=7)
+AFTER
+rolling(7, min_periods=6)
+DETECTED BY
+test_a_missing_day_invalidates_capacity

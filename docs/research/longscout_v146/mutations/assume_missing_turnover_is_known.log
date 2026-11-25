@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_a_missing_day_invalidates_capacity ___________________
+
+    def test_a_missing_day_invalidates_capacity():
+        oi, volume = fixture()
+        volume.iloc[-2] = float('nan')
+>       assert not M.turnover_catches_up(oi, volume).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...46    False\n47    False\n48    False\n49    False\n50    False\n51    False\n52    False\n53    False\n54     True\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...46    False\n47    False\n48    False\n49    False\n50    False\n51    False\n52    False\n53    False\n54     True\ndtype: bool = <function turnover_catches_up at 0x00000294CA58B7E0>(0     100.0\n1     100.0\n2     100.0\n3     100.0\n4     100.0\n5     100.0\n6     100.0\n7     100.0\n8     100.0\n9     100....   100.0\n47    140.0\n48    140.0\n49    140.0\n50    140.0\n51    140.0\n52    140.0\n53    140.0\n54    141.0\ndtype: float64, 0     100.0\n1     100.0\n2     100.0\n3     100.0\n4     100.0\n5     100.0\n6     100.0\n7     100.0\n8     100.0\n9     100....   100.0\n47    100.0\n48    100.0\n49    100.0\n50    100.0\n51    100.0\n52    100.0\n53      NaN\n54    430.0\ndtype: float64)
+E        +        where <function turnover_catches_up at 0x00000294CA58B7E0> = M.turnover_catches_up
+
+tests\test_longscout_v146.py:47: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v146.py::test_a_missing_day_invalidates_capacity
+1 failed in 1.71s
