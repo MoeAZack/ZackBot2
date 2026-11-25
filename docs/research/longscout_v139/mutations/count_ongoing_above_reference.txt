@@ -1,0 +1,6 @@
+BEFORE
+prior.lt(1.) & 
+AFTER
+
+DETECTED BY
+test_crossing_fires_once_with_two_day_buffer

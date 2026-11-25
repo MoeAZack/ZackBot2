@@ -1,0 +1,6 @@
+BEFORE
+recovered & available.le(decision)
+AFTER
+recovered
+DETECTED BY
+test_every_contributing_record_must_be_available

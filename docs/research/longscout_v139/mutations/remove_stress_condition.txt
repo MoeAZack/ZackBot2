@@ -1,0 +1,6 @@
+BEFORE
+ & stressed
+AFTER
+
+DETECTED BY
+test_recovery_requires_material_prior_stress

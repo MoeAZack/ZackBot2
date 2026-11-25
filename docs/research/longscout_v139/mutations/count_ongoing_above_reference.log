@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________ test_crossing_fires_once_with_two_day_buffer _________________
+
+    def test_crossing_fires_once_with_two_day_buffer():
+        days, hashrate, completion = setup_series(90.)
+        signals = M.mining_recovery(hashrate, completion)
+>       assert signals[signals].index.tolist() == [days[56]]
+E       AssertionError: assert [Timestamp('2...01 00:00:00')] == [Timestamp('2...26 00:00:00')]
+E         
+E         Left contains 4 more items, first extra item: Timestamp('2024-02-27 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v139.py:29: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v139.py::test_crossing_fires_once_with_two_day_buffer
+1 failed in 1.83s

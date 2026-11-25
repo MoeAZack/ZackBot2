@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________ test_recovery_requires_material_prior_stress _________________
+
+    def test_recovery_requires_material_prior_stress():
+        _, hashrate, completion = setup_series(99.)
+>       assert not M.mining_recovery(hashrate, completion).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n              ... ... False\n2024-03-02    False\n2024-03-03    False\n2024-03-04    False\n2024-03-05    False\nFreq: D, Length: 65, dtype: bool.any
+E        +      where 2024-01-01    False\n2024-01-02    False\n2024-01-03    False\n2024-01-04    False\n2024-01-05    False\n              ... ... False\n2024-03-02    False\n2024-03-03    False\n2024-03-04    False\n2024-03-05    False\nFreq: D, Length: 65, dtype: bool = <function mining_recovery at 0x0000021E0FFF2AC0>(2024-01-01    100.0\n2024-01-02    100.0\n2024-01-03    100.0\n2024-01-04    100.0\n2024-01-05    100.0\n              ... ...0.0\n2024-03-02    110.0\n2024-03-03    110.0\n2024-03-04    110.0\n2024-03-05    110.0\nFreq: D, Length: 65, dtype: float64, 2024-01-01    1704168000\n2024-01-02    1704254400\n2024-01-03    1704340800\n2024-01-04    1704427200\n2024-01-05    1704...1709438400\n2024-03-03    1709524800\n2024-03-04    1709611200\n2024-03-05    1709697600\nFreq: D, Length: 65, dtype: int64)
+E        +        where <function mining_recovery at 0x0000021E0FFF2AC0> = M.mining_recovery
+
+tests\test_longscout_v139.py:36: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v139.py::test_recovery_requires_material_prior_stress
+1 failed in 1.78s
