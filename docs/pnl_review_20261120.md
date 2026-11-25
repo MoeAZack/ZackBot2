@@ -39,13 +39,51 @@ Read-only samples around **15:17 Cairo** (not the earlier handoff's exact snapsh
 | Measured closed net (row-view rounded) | **+62.1378** | **-50.3074** |
 | Base + measured closes, zero adjustments | 4062.1378 | 3949.6926 |
 | Latest recorded marked equity | 4072.83 | 3958.34 |
-| Remaining marked/cap/timing component | +10.6922 | +8.6474 |
+| Recorded equity minus closed capital | +10.6922 | +8.6474 |
 
-A3 sample is 15:17:55 Cairo; A4 is 15:17:53 Cairo. The remainder is **not independently verified open P&L**, and is not proven missing cash. Equity pairs do not store contemporaneous open price P&L or the exchange-cap component; separately read files are not an atomic snapshot. No A4 state was read to fill that gap. Exact marked reconciliation therefore remains unresolved within these inputs. A same-time sanitized aggregate of open measured-basis price P&L and exchange-cap effect would complete that identity without requiring identifiers or canary state disclosure.
+A3 sample is 15:17:55 Cairo. A4 sample is 15:17:53 Cairo. These differences compare recorded equity with a closed-only subtotal. Use the open mark and margin balance captured at the equity sample to determine how much each contributes.
 
 The large A4 discrepancy is substantially explained by using booked instead of measured closes. In particular, its fill correction is -45.85, offset partly by lower actual commissions. A3's measured correction also changes its closed total. Do not relabel the supplied booked gains as measured results, or double-count closed funding.
 
-`python -B tools/pnl_reconcile.py <ledger directory>` produces aggregate-only accounting diagnostics. It never imports the app/engine, connects to an account, reads state/config/keys, writes ledger files or changes capital. It labels the marked remainder unresolved, preserves pending measurements, and separately reports deduplicated funding evidence without adding it to closed capital.
+## Run the marked-equity tie-out
+
+Run once per account with staged ledger inputs and a sanitized open-positions JSON. The table shows booked and measured closed P&L, the open price mark, cap and floor effects, computed and recorded equity, residual, and status. Omit `--format table` for the JSON report.
+
+```powershell
+python -B tools/pnl_reconcile.py "<ledger directory>" --open-positions "<open-positions.json>" --format table
+```
+
+The open-positions file is a single object with the following schema. Amounts must be finite JSON numbers in the same quote currency as recorded equity. Optional amounts default to zero. The sample timestamp must be an ISO 8601 string with an explicit UTC offset or `Z`. Extra fields are rejected.
+
+| Field | Required | Meaning |
+|---|---|---|
+| `sample_timestamp` | Yes | Time the open price P&L and margin balance were observed. |
+| `open_price_pnl` | Yes | Signed aggregate price P&L on quantities still open, using measured entries and sample-time marks. |
+| `exchange_margin_balance` | Yes | Signed total exchange margin balance at that sample. |
+| `open_realized_partials` | No | Signed realized price P&L on partial exits for lots still open. |
+| `open_fees` | No | Nonnegative fees attributed to lots still open. |
+| `open_funding` | No | Signed funding attributed to lots still open. |
+
+Sample JSON with synthetic values:
+
+```json
+{
+  "sample_timestamp": "2026-11-20T15:17:55+02:00",
+  "open_price_pnl": 10.6922,
+  "exchange_margin_balance": 4100,
+  "open_realized_partials": 0,
+  "open_fees": 0,
+  "open_funding": 0
+}
+```
+
+The calculation matches the positive-base guard-equity code, including cent rounding before the margin cap and again when equity is recorded. The cap and zero-floor effects are signed changes applied in that order. Open realized partials, fees, and funding appear as audit context in JSON. The guard-equity formula adds only the open price mark. `funding.jsonl` is deduplicated attribution evidence. Measured closed net already includes closed-row funding.
+
+- `TIED_OUT` means the samples are within 120 seconds and the absolute residual is within the larger of $1.50 and 0.05% of recorded equity. Residual is recorded equity minus computed equity.
+- `GAP` means the inputs support the calculation and the residual exceeds that tolerance. The report points to the cap, floor, or open price mark to investigate first, along with sample alignment.
+- `UNRESOLVED_MARKED_COMPONENTS` means evidence is missing, stale, or incompatible with the calculation. Examples include pending closes with no checkpoint, closes after the equity sample, and a whole-account capital basis. The command keeps its original aggregate diagnostics when `--open-positions` is omitted.
+
+Synthetic fixtures using the published 20 November aggregates produce `TIED_OUT` for A3 with a $0.00 residual and A4 with a +$1.00 residual. The synthetic open marks and cap values demonstrate the calculation. A historical tie-out requires a contemporaneous aggregate from the original sample.
 
 ## Amended pilot gate
 
@@ -60,4 +98,4 @@ These are minimum review criteria, not automatic mainnet authorization:
 7. Zero open accounting/ownership/protection/execution blockers, independent evidence, exact-head acceptance gates and explicit owner mainnet authorization. Existing MAINNET NO-GO remains.
 
 ROADMAP FIT: correct the economic evidence and expose a confirmed admission blocker without changing protection or account behavior.
-DEFERRED: runtime attribution repair/install, exact marked reconciliation requiring a same-time aggregate, strategy retuning, activation and mainnet.
+DEFERRED: runtime attribution repair/install, historical validation with actual same-time aggregates, strategy retuning, activation and mainnet.
