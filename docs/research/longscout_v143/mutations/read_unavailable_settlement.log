@@ -1,0 +1,21 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________ test_funding_is_strictly_observed_and_normalized _______________
+
+    def test_funding_is_strictly_observed_and_normalized():
+        h = M.L117.HOUR_MS
+        funding = pd.DataFrame(dict(calc_time=[0, 4*h, 12*h], funding_interval_hours=[4, 4, 8],
+                                    last_funding_rate=[.01, .02, .03]))
+        values = M.observed_funding(np.array([4*h, 4*h + 1, 8*h, 10*h, 12*h, 12*h + 1]), funding)
+>       np.testing.assert_allclose(values, [np.nan, .04, .04, np.nan, np.nan, .03])
+E       AssertionError: 
+E       Not equal to tolerance rtol=1e-07, atol=0
+E       
+E       nan location mismatch:
+E        ACTUAL: array([0.04, 0.04, 0.04,  nan, 0.03, 0.03])
+E        DESIRED: array([ nan, 0.04, 0.04,  nan,  nan, 0.03])
+
+tests\test_longscout_v143.py:24: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v143.py::test_funding_is_strictly_observed_and_normalized
+1 failed in 1.47s

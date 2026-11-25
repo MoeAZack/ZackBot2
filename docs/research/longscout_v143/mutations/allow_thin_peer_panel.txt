@@ -1,0 +1,6 @@
+BEFORE
+.ge(60)
+AFTER
+.ge(59)
+DETECTED BY
+test_rank_requires_synchronized_panel

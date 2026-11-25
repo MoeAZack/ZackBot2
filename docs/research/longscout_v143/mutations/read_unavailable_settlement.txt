@@ -1,0 +1,6 @@
+BEFORE
+side='left'
+AFTER
+side='right'
+DETECTED BY
+test_funding_is_strictly_observed_and_normalized

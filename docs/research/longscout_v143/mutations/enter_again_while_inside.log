@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_fade_only_after_leaving_a_tail _____________________
+
+    def test_fade_only_after_leaving_a_tail():
+        rank = pd.Series([.05, .2, .3, .5, .95, .8, .7, .45, np.nan])
+        long, short, exit_long, exit_short = M.range_flags(rank, rank.shift(), rank.notna())
+>       assert np.flatnonzero(long).tolist() == [1]
+E       assert [1, 2, 7] == [1]
+E         
+E         Left contains 2 more items, first extra item: 2
+E         Use -v to get more diff
+
+tests\test_longscout_v143.py:38: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v143.py::test_fade_only_after_leaving_a_tail - as...
+1 failed in 1.25s

@@ -1,0 +1,23 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_rank_requires_synchronized_panel ____________________
+
+    def test_rank_requires_synchronized_panel():
+        panel = pd.DataFrame([range(60), range(60)])
+        panel.iloc[1, 0] = float('nan')
+        rank = M.funding_rank(panel)
+>       assert rank.iloc[0].notna().all() and rank.iloc[1].isna().all()
+E       assert (np.True_ and np.False_)
+E        +  where np.True_ = all()
+E        +    where all = 0     True\n1     True\n2     True\n3     True\n4     True\n5     True\n6     True\n7     True\n8     True\n9     True\n10    Tr...51    True\n52    True\n53    True\n54    True\n55    True\n56    True\n57    True\n58    True\n59    True\nName: 0, dtype: bool.all
+E        +      where 0     True\n1     True\n2     True\n3     True\n4     True\n5     True\n6     True\n7     True\n8     True\n9     True\n10    Tr...51    True\n52    True\n53    True\n54    True\n55    True\n56    True\n57    True\n58    True\n59    True\nName: 0, dtype: bool = notna()
+E        +        where notna = 0     0.016667\n1     0.033333\n2     0.050000\n3     0.066667\n4     0.083333\n5     0.100000\n6     0.116667\n7     0.13333...00000\n54    0.916667\n55    0.933333\n56    0.950000\n57    0.966667\n58    0.983333\n59    1.000000\nName: 0, dtype: float64.notna
+E        +  and   np.False_ = all()
+E        +    where all = 0      True\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...se\n52    False\n53    False\n54    False\n55    False\n56    False\n57    False\n58    False\n59    False\nName: 1, dtype: bool.all
+E        +      where 0      True\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...se\n52    False\n53    False\n54    False\n55    False\n56    False\n57    False\n58    False\n59    False\nName: 1, dtype: bool = isna()
+E        +        where isna = 0          NaN\n1     0.016949\n2     0.033898\n3     0.050847\n4     0.067797\n5     0.084746\n6     0.101695\n7     0.11864...98305\n54    0.915254\n55    0.932203\n56    0.949153\n57    0.966102\n58    0.983051\n59    1.000000\nName: 1, dtype: float64.isna
+
+tests\test_longscout_v143.py:31: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v143.py::test_rank_requires_synchronized_panel - ...
+1 failed in 1.44s

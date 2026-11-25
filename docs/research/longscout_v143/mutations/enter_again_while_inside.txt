@@ -1,0 +1,6 @@
+BEFORE
+ & previous.le(.10)
+AFTER
+
+DETECTED BY
+test_fade_only_after_leaving_a_tail
