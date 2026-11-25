@@ -56,9 +56,9 @@ def read_url(url):
         return response.read()
 
 
-def archive_rows(symbol, month):
+def archive_rows(symbol, month, base=ARCHIVE):
     stem = f'{symbol}-fundingRate-{month}'
-    url = f'{ARCHIVE}/{symbol}/{stem}.zip'
+    url = f'{base}/{symbol}/{stem}.zip'
     data = read_url(url)
     expected, name = read_url(f'{url}.CHECKSUM').decode('ascii').split()
     actual = digest(data)
