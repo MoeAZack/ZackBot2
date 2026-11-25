@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 349,
+ "registered_trials": 350,
  "completed_trials": 346,
  "historical_screen_passes": 13,
  "versions": {
@@ -1377,6 +1377,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "149": {
+   "status": "PREREGISTERED",
+   "source_freeze": "5df92742ee8a437708c11ac4cc54f9cca5ba105e",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 350,
+     "key": "l149_eth_net_supply_contraction_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
