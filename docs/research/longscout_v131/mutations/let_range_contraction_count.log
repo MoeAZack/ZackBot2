@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________________ test_spread_drop_with_stable_range_only ___________________
+
+    def test_spread_drop_with_stable_range_only():
+        price, spread, price_range = fixture()
+        assert np.flatnonzero(M.spread_recovery(price, spread, price_range)).tolist() == [26]
+        price_range.iloc[26] = .02
+>       assert not M.spread_recovery(price, spread, price_range).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...29    False\n30    False\n31    False\n32    False\n33    False\n34    False\n35    False\n36    False\n37    False\ndtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n5     False\n6     False\n7     False\n8     False\n9     Fals...29    False\n30    False\n31    False\n32    False\n33    False\n34    False\n35    False\n36    False\n37    False\ndtype: bool = <function spread_recovery at 0x0000028BF7772B60>(0     100.0\n1     101.0\n2     102.0\n3     103.0\n4     104.0\n5     105.0\n6     106.0\n7     107.0\n8     108.0\n9     109....   129.0\n30    130.0\n31    131.0\n32    132.0\n33    133.0\n34    134.0\n35    135.0\n36    136.0\n37    137.0\ndtype: float64, 0     0.010\n1     0.010\n2     0.010\n3     0.010\n4     0.010\n5     0.010\n6     0.010\n7     0.010\n8     0.010\n9     0.01...   0.010\n30    0.010\n31    0.010\n32    0.010\n33    0.010\n34    0.010\n35    0.010\n36    0.010\n37    0.010\ndtype: float64, 0     0.04\n1     0.04\n2     0.04\n3     0.04\n4     0.04\n5     0.04\n6     0.04\n7     0.04\n8     0.04\n9     0.04\n10    0.... 0.04\n29    0.04\n30    0.04\n31    0.04\n32    0.04\n33    0.04\n34    0.04\n35    0.04\n36    0.04\n37    0.04\ndtype: float64)
+E        +        where <function spread_recovery at 0x0000028BF7772B60> = M.spread_recovery
+
+tests\test_longscout_v131.py:50: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v131.py::test_spread_drop_with_stable_range_only
+1 failed in 1.24s

@@ -1,0 +1,6 @@
+BEFORE
+ & price_range.ge(prior_range)
+AFTER
+
+DETECTED BY
+test_spread_drop_with_stable_range_only

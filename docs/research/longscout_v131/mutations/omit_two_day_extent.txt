@@ -1,0 +1,6 @@
+BEFORE
+ - np.sqrt(gamma / denom)
+AFTER
+
+DETECTED BY
+test_two_day_spread_matches_scalar_equation

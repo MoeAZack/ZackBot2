@@ -1,0 +1,24 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_________________ test_two_day_spread_matches_scalar_equation _________________
+
+    def test_two_day_spread_matches_scalar_equation():
+        h, l = pd.Series([120., 121., 145.]), pd.Series([100., 101., 132.])
+        result, _ = M.spread_proxy(h, l)
+        for i in (1, 2):
+            beta = sum(math.log(h.iloc[j] / l.iloc[j])**2 for j in (i-1, i))
+            gamma = math.log(max(h.iloc[i-1:i+1]) / min(l.iloc[i-1:i+1]))**2
+            constant = 3 - 2*math.sqrt(2)
+            alpha = max(0, (math.sqrt(2*beta) - math.sqrt(beta))/constant - math.sqrt(gamma/constant))
+            expected = 2*(math.exp(alpha)-1)/(math.exp(alpha)+1)
+>           assert result.iloc[i] == pytest.approx(expected)
+E           assert np.float64(0.6005756135693812) == 0.1591364355788394 ± 1.6e-07
+E             
+E             comparison failed
+E             Obtained: 0.6005756135693812
+E             Expected: 0.1591364355788394 ± 1.6e-07
+
+tests\test_longscout_v131.py:33: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v131.py::test_two_day_spread_matches_scalar_equation
+1 failed in 1.63s

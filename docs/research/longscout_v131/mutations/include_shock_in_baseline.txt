@@ -1,0 +1,6 @@
+BEFORE
+normal = spread.shift(2).rolling
+AFTER
+normal = spread.shift(-4).rolling
+DETECTED BY
+test_baseline_is_prior_to_shock
