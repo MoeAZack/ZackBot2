@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 342,
+ "registered_trials": 343,
  "completed_trials": 339,
  "historical_screen_passes": 12,
  "versions": {
@@ -1221,6 +1221,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "142": {
+   "status": "PREREGISTERED",
+   "source_freeze": "3037609265dea996926220ee45a89206d1cee267",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 343,
+     "key": "l142_btc_account_breadth_catches_up_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
