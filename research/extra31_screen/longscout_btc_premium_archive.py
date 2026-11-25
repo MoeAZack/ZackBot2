@@ -41,18 +41,21 @@ def collect(month, base_url, symbol, value_column):
         csv_rows = csv_rows[1:]
     rows = {}
     for row in csv_rows:
-        start, end, value = int(row[0]), int(row[6]), Decimal(row[value_column])
+        start, end = int(row[0]), int(row[6])
+        columns = (value_column,) if isinstance(value_column, int) else value_column
+        values = [Decimal(row[column]) for column in columns]
         if start >= 10**15:
             if start % 1000 != 0 or end % 1000 != 999:
                 raise ValueError(f'{month}: invalid microsecond timestamps')
             start, end = start // 1000, end // 1000
         if symbol == 'USDCUSDT' and start % STEP == 0 and start <= end < start + STEP - 1:
             continue
-        if start % STEP != 0 or end != start + STEP - 1 or not value.is_finite():
+        if start % STEP != 0 or end != start + STEP - 1 or not all(value.is_finite() for value in values):
             raise ValueError(f'{month}: invalid 4h reference row')
         if start in rows:
             raise ValueError(f'{month}: duplicate source row')
-        rows[start] = str(value)
+        formatted = [str(value) for value in values]
+        rows[start] = formatted[0] if isinstance(value_column, int) else formatted
     return month, sha, rows
 
 
