@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 407,
+ "registered_trials": 408,
  "completed_trials": 402,
  "historical_screen_passes": 13,
  "versions": {
@@ -2713,6 +2713,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "208": {
+   "status": "PREREGISTERED",
+   "source_freeze": "17a778b6bb0ddbb9556d8344367dfec1137042fa",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 408,
+     "key": "l208_commercial_crude_rebuild_steady_utilization_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
