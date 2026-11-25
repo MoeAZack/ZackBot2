@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 375,
+ "registered_trials": 376,
  "completed_trials": 370,
  "historical_screen_passes": 13,
  "versions": {
@@ -1966,6 +1966,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "175": {
+   "status": "PREREGISTERED",
+   "source_freeze": "87e535c2ec0e780ef04ce72545f077256e6bb6c2",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 376,
+     "key": "l175_sofr_upper_tail_relief_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
