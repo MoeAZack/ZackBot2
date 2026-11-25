@@ -1,0 +1,23 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+___________ test_missing_oi_cannot_trigger_and_future_does_not_leak ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001B6B80F16A0>
+
+    def test_missing_oi_cannot_trigger_and_future_does_not_leak(monkeypatch):
+        price, oi = fixture(monkeypatch)
+        reference = M.recovery_flags(price, oi)
+        for cut in (1, 2, 3, 5):
+            pd.testing.assert_series_equal(M.recovery_flags(price.iloc[:cut], oi.iloc[:cut]), reference.iloc[:cut])
+        oi.iloc[2] = np.nan
+>       assert not M.recovery_flags(price, oi).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01    False\n2024-01-02    False\n2024-01-03     True\n2024-01-04    False\n2024-01-05    False\n2024-01-06    False\n2024-01-07    False\nFreq: D, dtype: bool.any
+E        +      where 2024-01-01    False\n2024-01-02    False\n2024-01-03     True\n2024-01-04    False\n2024-01-05    False\n2024-01-06    False\n2024-01-07    False\nFreq: D, dtype: bool = <function recovery_flags at 0x000001B6B7BA6A20>(2024-01-01    100\n2024-01-02     97\n2024-01-03     98\n2024-01-04    100\n2024-01-05     97\n2024-01-06     98\n2024-01-07     99\nFreq: D, dtype: int64, 2024-01-01    100.0\n2024-01-02     96.0\n2024-01-03      NaN\n2024-01-04    100.0\n2024-01-05    100.0\n2024-01-06    100.0\n2024-01-07    100.0\nFreq: D, dtype: float64)
+E        +        where <function recovery_flags at 0x000001B6B7BA6A20> = M.recovery_flags
+
+tests\test_longscout_v118.py:48: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v118.py::test_missing_oi_cannot_trigger_and_future_does_not_leak
+1 failed in 1.27s

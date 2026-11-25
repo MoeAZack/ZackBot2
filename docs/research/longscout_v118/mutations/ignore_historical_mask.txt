@@ -1,0 +1,6 @@
+BEFORE
+oi_change = open_interest.reindex(btc.index).pct_change(fill_method=None)
+AFTER
+oi_change = open_interest.reindex(btc.index).ffill().pct_change(fill_method=None)
+DETECTED BY
+test_missing_oi_cannot_trigger_and_future_does_not_leak

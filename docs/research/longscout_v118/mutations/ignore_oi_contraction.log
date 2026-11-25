@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________ test_shock_requires_price_and_oi_and_today_recovery _____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002733F215670>
+
+    def test_shock_requires_price_and_oi_and_today_recovery(monkeypatch):
+        price, oi = fixture(monkeypatch)
+        hit = M.recovery_flags(price, oi)
+>       assert np.flatnonzero(hit).tolist() == [2]
+E       assert [2, 5] == [2]
+E         
+E         Left contains one more item: 5
+E         Use -v to get more diff
+
+tests\test_longscout_v118.py:37: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v118.py::test_shock_requires_price_and_oi_and_today_recovery
+1 failed in 1.18s

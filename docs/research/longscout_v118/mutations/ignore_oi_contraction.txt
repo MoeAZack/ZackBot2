@@ -1,0 +1,6 @@
+BEFORE
+ & oi_change.le(-.02)
+AFTER
+
+DETECTED BY
+test_shock_requires_price_and_oi_and_today_recovery

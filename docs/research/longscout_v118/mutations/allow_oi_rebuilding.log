@@ -1,0 +1,22 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________ test_shock_requires_price_and_oi_and_today_recovery _____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002A8468A5A30>
+
+    def test_shock_requires_price_and_oi_and_today_recovery(monkeypatch):
+        price, oi = fixture(monkeypatch)
+        hit = M.recovery_flags(price, oi)
+        assert np.flatnonzero(hit).tolist() == [2]
+        oi.iloc[2] = 98
+>       assert not M.recovery_flags(price, oi).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2024-01-01    False\n2024-01-02    False\n2024-01-03     True\n2024-01-04    False\n2024-01-05    False\n2024-01-06    False\n2024-01-07    False\nFreq: D, dtype: bool.any
+E        +      where 2024-01-01    False\n2024-01-02    False\n2024-01-03     True\n2024-01-04    False\n2024-01-05    False\n2024-01-06    False\n2024-01-07    False\nFreq: D, dtype: bool = <function recovery_flags at 0x000002A846356A20>(2024-01-01    100\n2024-01-02     97\n2024-01-03     98\n2024-01-04    100\n2024-01-05     97\n2024-01-06     98\n2024-01-07     99\nFreq: D, dtype: int64, 2024-01-01    100\n2024-01-02     96\n2024-01-03     98\n2024-01-04    100\n2024-01-05    100\n2024-01-06    100\n2024-01-07    100\nFreq: D, dtype: int64)
+E        +        where <function recovery_flags at 0x000002A846356A20> = M.recovery_flags
+
+tests\test_longscout_v118.py:39: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v118.py::test_shock_requires_price_and_oi_and_today_recovery
+1 failed in 1.14s
