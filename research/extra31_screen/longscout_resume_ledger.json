@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 327,
+ "registered_trials": 328,
  "completed_trials": 324,
  "historical_screen_passes": 12,
  "versions": {
@@ -876,6 +876,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "127": {
+   "status": "PREREGISTERED",
+   "source_freeze": "e75d83ebd518858035dd6914792f043a1a5f1708",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 328,
+     "key": "l127_btc_implied_volatility_relief_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
