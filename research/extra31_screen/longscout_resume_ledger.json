@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 373,
+ "registered_trials": 374,
  "completed_trials": 368,
  "historical_screen_passes": 13,
  "versions": {
@@ -1919,6 +1919,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "173": {
+   "status": "PREREGISTERED",
+   "source_freeze": "db9e80dcc0df5c575b75bdf5012c9623309f2d6d",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 374,
+     "key": "l173_tips_curve_front_easing_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
