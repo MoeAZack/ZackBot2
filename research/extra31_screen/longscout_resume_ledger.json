@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 397,
+ "registered_trials": 398,
  "completed_trials": 392,
  "historical_screen_passes": 13,
  "versions": {
@@ -2482,6 +2482,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "197": {
+   "status": "PREREGISTERED",
+   "source_freeze": "389452d9e07b483a5dac249de642aa1ac191f86a",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 398,
+     "key": "l197_chicago_fed_credit_subindex_easing_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
