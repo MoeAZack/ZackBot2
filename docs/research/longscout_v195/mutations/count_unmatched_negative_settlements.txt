@@ -1,0 +1,6 @@
+BEFORE
+before.le(-.0001) & paired
+AFTER
+before.le(-.0001)
+DETECTED BY
+test_missing_quote_does_not_create_fake_relief

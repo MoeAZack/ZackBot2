@@ -1,0 +1,19 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________ test_missing_quote_does_not_create_fake_relief ________________
+
+    def test_missing_quote_does_not_create_fake_relief():
+        rates = sample(width=90, prior=36, current=10)
+        rates.iloc[1, 17:37] = np.nan
+>       assert not M.funding_pressure_eases(rates).target.any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0    False\n1     True\nName: target, dtype: bool.any
+E        +      where 0    False\n1     True\nName: target, dtype: bool =    target  peer0  peer1  peer2  peer3  ...  peer85  peer86  peer87  peer88  peer89\n0   False  False  False  False  Fal...False   False\n1    True   True   True   True   True  ...    True    True    True    True    True\n\n[2 rows x 91 columns].target
+E        +        where    target  peer0  peer1  peer2  peer3  ...  peer85  peer86  peer87  peer88  peer89\n0   False  False  False  False  Fal...False   False\n1    True   True   True   True   True  ...    True    True    True    True    True\n\n[2 rows x 91 columns] = <function funding_pressure_eases at 0x000001C04D171440>(   target    peer0    peer1    peer2  ...  peer86  peer87  peer88  peer89\n0     0.0 -0.00025 -0.00025 -0.00025  ...   ...   0.0     0.0     0.0\n1     0.0 -0.00025 -0.00025 -0.00025  ...     0.0     0.0     0.0     0.0\n\n[2 rows x 91 columns])
+E        +          where <function funding_pressure_eases at 0x000001C04D171440> = M.funding_pressure_eases
+
+tests\test_longscout_v195.py:39: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v195.py::test_missing_quote_does_not_create_fake_relief
+1 failed in 1.78s

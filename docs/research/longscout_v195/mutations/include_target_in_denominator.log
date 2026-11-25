@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________________ test_exact_leave_one_out_threshold ______________________
+
+    def test_exact_leave_one_out_threshold():
+        rates = sample()
+        flags = M.funding_pressure_eases(rates)
+>       assert flags.target.tolist() == [False, True]
+E       assert [False, False] == [False, True]
+E         
+E         At index 1 diff: False != True
+E         Use -v to get more diff
+
+tests\test_longscout_v195.py:32: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v195.py::test_exact_leave_one_out_threshold - ass...
+1 failed in 1.69s

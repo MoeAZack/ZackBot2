@@ -1,0 +1,6 @@
+BEFORE
+peers.ge(60)
+AFTER
+peers.ge(59)
+DETECTED BY
+test_needs_sixty_other_peers

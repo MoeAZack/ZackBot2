@@ -1,0 +1,6 @@
+BEFORE
+peers = paired.rsub(total, axis=0)
+AFTER
+peers = pd.DataFrame({symbol: total for symbol in paired})
+DETECTED BY
+test_exact_leave_one_out_threshold
