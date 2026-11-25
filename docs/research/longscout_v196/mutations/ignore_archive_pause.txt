@@ -1,0 +1,6 @@
+BEFORE
+return pulse.shift(7, fill_value=False)
+AFTER
+return pulse
+DETECTED BY
+test_uses_seven_day_delay

@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________________ test_uses_seven_day_delay __________________________
+
+    def test_uses_seven_day_delay():
+        values = sample()
+        signal = M.transaction_density_rises(values)
+>       assert signal[signal].index.tolist() == [55]
+E       assert [48] == [55]
+E         
+E         At index 0 diff: 48 != 55
+E         Use -v to get more diff
+
+tests\test_longscout_v196.py:37: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v196.py::test_uses_seven_day_delay - assert [48] ...
+1 failed in 2.07s

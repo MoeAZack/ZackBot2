@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_block_count_must_stay_stable ______________________
+
+    def test_block_count_must_stay_stable():
+        values = sample()
+        values.loc[45:, 'block_count'] = 13.
+>       assert not M.transaction_density_rises(values).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n57    False\n58    False\n59    False\n60    False\n61    False\nLength: 62, dtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n57    False\n58    False\n59    False\n60    False\n61    False\nLength: 62, dtype: bool = <function transaction_density_rises at 0x000002823E786AC0>(    block_weight  transaction_count  block_count\n0         1000.0              100.0         10.0\n1         1000.0    ...0        1000.0              140.0         13.0\n61        1000.0              140.0         13.0\n\n[62 rows x 3 columns])
+E        +        where <function transaction_density_rises at 0x000002823E786AC0> = M.transaction_density_rises
+
+tests\test_longscout_v196.py:31: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v196.py::test_block_count_must_stay_stable - asse...
+1 failed in 2.14s

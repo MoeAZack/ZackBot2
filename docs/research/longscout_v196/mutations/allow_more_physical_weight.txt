@@ -1,0 +1,6 @@
+BEFORE
+ & relative.block_weight.between(.95, 1.05)
+AFTER
+
+DETECTED BY
+test_weight_must_stay_stable

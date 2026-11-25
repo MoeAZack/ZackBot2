@@ -1,0 +1,6 @@
+BEFORE
+ & relative.block_count.between(.90, 1.10)
+AFTER
+
+DETECTED BY
+test_block_count_must_stay_stable
