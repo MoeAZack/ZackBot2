@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 323,
+ "registered_trials": 324,
  "completed_trials": 320,
  "historical_screen_passes": 12,
  "versions": {
@@ -778,6 +778,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "123": {
+   "status": "PREREGISTERED",
+   "source_freeze": "a5228ce45dd87e6c255f2b55d7b92d65899f3e7b",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 324,
+     "key": "r123_funding_cadence_change_fade_4h",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
