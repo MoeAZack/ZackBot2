@@ -1,7 +1,7 @@
 {
  "prior_v90_trials": 281,
  "prior_screen_passes": 11,
- "registered_trials": 401,
+ "registered_trials": 402,
  "completed_trials": 396,
  "historical_screen_passes": 13,
  "versions": {
@@ -2575,6 +2575,18 @@
       "extra31"
      ],
      "forward_worthy": false
+    }
+   ]
+  },
+  "202": {
+   "status": "PREREGISTERED",
+   "source_freeze": "bc175b05e8b41af4ce755466a93bfa722d283c26",
+   "batch_passes": null,
+   "candidates": [
+    {
+     "trial": 402,
+     "key": "l202_btc_fear_relief_surprise_1d",
+     "verdict": "PREREGISTERED_NOT_RUN"
     }
    ]
   }
