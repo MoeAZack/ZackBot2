@@ -1,0 +1,6 @@
+BEFORE
+gap <= np.maximum(interval[known], interval[pre]) * HOUR_MS + 60_000
+AFTER
+gap >= 0
+DETECTED BY
+test_gap_blocks_until_two_adjacent_events

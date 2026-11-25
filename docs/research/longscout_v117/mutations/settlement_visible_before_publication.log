@@ -1,0 +1,16 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+______________________ test_settlement_is_strictly_prior ______________________
+
+    def test_settlement_is_strictly_prior():
+        data = rates([0, 4, 8, 12], [-.0003, -.0002, 0, -.0004])
+>       assert mask([4, 5, 8, 9, 13], data) == [False, True, True, False, False]
+E       assert [True, True, ... False, False] == [False, True,... False, False]
+E         
+E         At index 0 diff: True != False
+E         Use -v to get more diff
+
+tests\test_longscout_v117.py:36: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v117.py::test_settlement_is_strictly_prior - asse...
+1 failed in 1.54s

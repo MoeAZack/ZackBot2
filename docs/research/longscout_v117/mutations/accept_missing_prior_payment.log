@@ -1,0 +1,16 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________ test_gap_blocks_until_two_adjacent_events __________________
+
+    def test_gap_blocks_until_two_adjacent_events():
+        data = rates([0, 4, 12, 16], [-.0003] * 4)
+>       assert mask([5, 10, 13, 17, 25], data) == [True, False, False, True, False]
+E       assert [True, False,..., True, False] == [True, False,..., True, False]
+E         
+E         At index 2 diff: True != False
+E         Use -v to get more diff
+
+tests\test_longscout_v117.py:42: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v117.py::test_gap_blocks_until_two_adjacent_events
+1 failed in 1.55s
