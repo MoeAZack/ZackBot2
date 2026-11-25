@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_______________________ test_btc_attention_stays_normal _______________________
+
+    def test_btc_attention_stays_normal():
+        counts = sample()
+        counts.iloc[65:67, 1] = 150.
+>       assert not M.eth_attention_spikes(counts).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 2025-01-01    False\n2025-01-02    False\n2025-01-03    False\n2025-01-04    False\n2025-01-05    False\n              ... ... False\n2025-03-18    False\n2025-03-19    False\n2025-03-20    False\n2025-03-21    False\nFreq: D, Length: 80, dtype: bool.any
+E        +      where 2025-01-01    False\n2025-01-02    False\n2025-01-03    False\n2025-01-04    False\n2025-01-05    False\n              ... ... False\n2025-03-18    False\n2025-03-19    False\n2025-03-20    False\n2025-03-21    False\nFreq: D, Length: 80, dtype: bool = <function eth_attention_spikes at 0x0000027A011F6AC0>(            Ethereum  Bitcoin  Stock_market\n2025-01-01     100.0    100.0         100.0\n2025-01-02     100.0    100.0 ...   100.0\n2025-03-20     100.0    100.0         100.0\n2025-03-21     100.0    100.0         100.0\n\n[80 rows x 3 columns])
+E        +        where <function eth_attention_spikes at 0x0000027A011F6AC0> = M.eth_attention_spikes
+
+tests\test_longscout_v194.py:29: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v194.py::test_btc_attention_stays_normal - assert...
+1 failed in 1.89s

@@ -1,0 +1,6 @@
+BEFORE
+ & normalized.Stock_market.between(.85, 1.15)
+AFTER
+
+DETECTED BY
+test_market_attention_stays_normal

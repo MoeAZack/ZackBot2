@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+________________________ test_uses_delayed_first_event ________________________
+
+    def test_uses_delayed_first_event():
+        counts = sample()
+        flag = M.eth_attention_spikes(counts)
+>       assert flag[flag].index.tolist() == [counts.index[67]]
+E       AssertionError: assert [Timestamp('2...07 00:00:00')] == [Timestamp('2...09 00:00:00')]
+E         
+E         At index 0 diff: Timestamp('2025-03-07 00:00:00') != Timestamp('2025-03-09 00:00:00')
+E         Use -v to get more diff
+
+tests\test_longscout_v194.py:41: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v194.py::test_uses_delayed_first_event - Assertio...
+1 failed in 1.48s

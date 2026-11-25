@@ -1,0 +1,6 @@
+BEFORE
+ & normalized.Bitcoin.between(.85, 1.15)
+AFTER
+
+DETECTED BY
+test_btc_attention_stays_normal
