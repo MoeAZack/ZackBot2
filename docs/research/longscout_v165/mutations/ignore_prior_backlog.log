@@ -1,0 +1,18 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________________ test_clearance_requires_prior_backlog ____________________
+
+    def test_clearance_requires_prior_backlog():
+        pending, arrivals = sample()
+        pending.iloc[70:75] = 130.
+>       assert not M.queue_clears(pending, arrivals).any()
+E       assert not np.True_
+E        +  where np.True_ = any()
+E        +    where any = 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n75    False\n76     True\n77    False\n78    False\n79    False\nLength: 80, dtype: bool.any
+E        +      where 0     False\n1     False\n2     False\n3     False\n4     False\n      ...  \n75    False\n76     True\n77    False\n78    False\n79    False\nLength: 80, dtype: bool = <function queue_clears at 0x00000224150F6AC0>(0     100.0\n1     100.0\n2     100.0\n3     100.0\n4     100.0\n      ...  \n75     80.0\n76     80.0\n77     80.0\n78     80.0\n79     80.0\nLength: 80, dtype: float64, 0     200.0\n1     200.0\n2     200.0\n3     200.0\n4     200.0\n      ...  \n75    200.0\n76    200.0\n77    200.0\n78    200.0\n79    200.0\nLength: 80, dtype: float64)
+E        +        where <function queue_clears at 0x00000224150F6AC0> = M.queue_clears
+
+tests\test_longscout_v165.py:39: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v165.py::test_clearance_requires_prior_backlog - ...
+1 failed in 1.91s

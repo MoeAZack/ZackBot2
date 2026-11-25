@@ -1,0 +1,6 @@
+BEFORE
+ & arrival_is_normal
+AFTER
+
+DETECTED BY
+test_arrival_decline_does_not_count

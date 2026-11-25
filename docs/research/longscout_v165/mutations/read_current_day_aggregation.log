@@ -1,0 +1,17 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+__________________________ test_clearance_is_delayed __________________________
+
+    def test_clearance_is_delayed():
+        pending, arrivals = sample()
+        signal = M.queue_clears(pending, arrivals)
+>       assert signal[signal].index.tolist() == [76]
+E       assert [75] == [76]
+E         
+E         At index 0 diff: 75 != 76
+E         Use -v to get more diff
+
+tests\test_longscout_v165.py:26: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_longscout_v165.py::test_clearance_is_delayed - assert [75] ...
+1 failed in 1.37s
